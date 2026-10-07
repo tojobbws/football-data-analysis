@@ -74,6 +74,25 @@ export function syncFinishedDetails(ctx: JobContext, opts: { limit?: number } = 
   });
 }
 
+/**
+ * Results: refresh fixtures that kicked off but are not final yet (score/status), 20 per request,
+ * plus any fixture with a PENDING analysis — the Settlement Engine depends on this.
+ * Details come in the same response, so finished matches are marked as detail-synced too.
+ */
+export function syncResults(ctx: JobContext, opts: { days?: number; now?: Date } = {}) {
+  const leagues = ctx.env.TRACKED_LEAGUES;
+  return runJob(ctx, 'results', { leagues, ...opts }, async () => {
+    const ids = await ctx.repo.fixturesAwaitingResult(leagues, opts.now ?? new Date(), opts.days ?? 14);
+    let n = 0;
+    for (const batch of chunk(ids, MAX_FIXTURE_IDS_PER_CALL)) {
+      const { data } = await ctx.api.fixturesByIds(batch);
+      n += await persistFixtures(ctx.repo, data, { withDetails: true });
+      await ctx.repo.markFixtureDetailsSynced(data.filter((f) => ['FT', 'AET', 'PEN'].includes(f.fixture.status.short)).map((f) => f.fixture.id));
+    }
+    return n;
+  });
+}
+
 /** Fixtures kicking off soon: refresh status + confirmed lineups (released ~20-40 min before KO). */
 export function syncPrematchLineups(ctx: JobContext, opts: { withinMinutes?: number } = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;

@@ -4,7 +4,7 @@
 >
 > บทวิเคราะห์จัดทำขึ้นเพื่อข้อมูลและความบันเทิง ไม่ใช่คำแนะนำในการเล่นพนัน และไม่มีโมเดลใดรับประกันผลการแข่งขันได้
 
-สถานะ: **Phase 1–6 เสร็จ** (Data Engine + Database + Odds History + Probability Engine + Candidate Generator) และวาง schema ของ Track Record แบบแก้ไม่ได้ไว้แล้ว
+สถานะ: **Phase 1–7 เสร็จ** (Data Engine + Database + Odds History + Probability Engine + Candidate Generator + Publish + Settlement) — loop วิเคราะห์ → เผยแพร่ → จบเกม → ตัดสินผล → Performance ทำงานครบ
 
 ## โครงสร้าง
 
@@ -53,6 +53,7 @@ Layer แยกกันชัด: **API logic อยู่ใน `packages/foot
 | `sync:teams` | ทีม + สนาม | สัปดาห์ละครั้ง |
 | `sync:fixtures [--from --to]` | ตารางแข่ง/ผล | วันละครั้ง (+ ชั่วโมงละครั้งช่วงแข่ง) |
 | `sync:details` | events, stats, **xG**, lineups, player stats ของนัดที่จบ (20 นัด/request) | ชั่วโมงละครั้ง |
+| `sync:results [--days]` | สกอร์/สถานะนัดที่เตะไปแล้วแต่ยังไม่จบใน DB + ทุกนัดที่มีบทวิเคราะห์ PENDING (20 นัด/request) | ชั่วโมงละครั้ง |
 | `sync:lineups [--minutes]` | ตัวจริงก่อนเตะ | ทุก 15–60 นาที |
 | `sync:injuries [--days]` | ตัวเจ็บ | วันละครั้ง |
 | `sync:predictions [--hours]` | API Prediction (เก็บเป็น snapshot, เป็นแค่ 1 input) | วันละครั้ง |
@@ -153,7 +154,26 @@ select * from fp_verify_prediction_chain();    -- ตรวจทั้งสา
 - หลัง publish แก้/ลบไม่ได้ (DB trigger + hash chain)
 - `analysis_performance` แยกผลตามรอบ (`dimension = 'round'`)
 
+## Settlement Engine (Phase 7)
+
+```bash
+npm run sync:results     # อัปเดตสกอร์นัดที่เตะแล้ว
+npm run model:settle     # PENDING -> WIN / HALF_WIN / LOSS / HALF_LOSS / PUSH / VOID
+```
+```sql
+select public_id, home_team, away_team, selection, line, status, result_score, settled_at from published_analysis order by kickoff_at desc;
+select * from analysis_performance;   -- win_rate, avg_clv, beat_closing_rate แยก all / market / league / month / round
+```
+
+กฎ `settlement-v0.1` (`decideSettlement()` ใน `packages/analysis`):
+- ตัดสินด้วย **สกอร์ 90 นาที** เท่านั้น (ต่อเวลา/จุดโทษไม่นับ), quarter line ได้ HALF_WIN / HALF_LOSS
+- **VOID** เมื่อ: ยกเลิก/ยุติ/ตัดสินชนะบนโต๊ะ (CANC, ABD, AWD, WO) หรือไม่ได้แข่งภายใน **48 ชม.** จากเวลาเตะที่วิเคราะห์ไว้
+- "ยังไม่ได้แข่ง" จะ VOID ได้ก็ต่อเมื่อข้อมูล fixture ถูก sync **หลัง** เส้นตาย 48 ชม. — sync ค้างจะไม่ทำให้ VOID ผิด ๆ
+- ข้อมูลไม่ชัด (ไม่มีสกอร์ 90 นาที, ตลาดที่ไม่รู้จัก) = รอ ไม่เดา
+- closing odds = median ราคาสุดท้ายก่อนเตะของแต่ละเจ้า (≥ 2 เจ้า) → `clv = odds_at_publish / closing − 1`
+- DB บังคับเอง: settle ได้ครั้งเดียว, หลังจบเกมเท่านั้น, `settled_at` ใช้นาฬิกา DB, เนื้อหาบทวิเคราะห์และ hash chain ไม่เปลี่ยน
+
 ## ลำดับถัดไป
 
 - **Phase 6b** AI layer: อธิบายภาษาไทย + มีสิทธิ์ลดเป็น 🌫️ เท่านั้น (ไม่สร้างตัวเลขเอง)
-- **Phase 7** Settlement Engine — ใช้ `settle()` ใน `packages/analysis` (รองรับ quarter line แล้ว) + closing odds/CLV จาก `odds_closing`
+- **Phase 8** Performance: หน้า /performance (streak, calendar, monthly report) จาก `analysis_performance` + `published_analysis`

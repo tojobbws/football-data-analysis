@@ -5,6 +5,7 @@ import { generateCandidatesJob } from './candidates-job.js';
 import { playerImpactJob } from './impact-job.js';
 import { publishJob } from './publish-job.js';
 import { matchReport } from './report-job.js';
+import { settleJob } from './settle-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
 
 const USAGE = `usage: npm run job -w @fp/analysis-worker -- <job> [options]
@@ -16,6 +17,7 @@ jobs:
   candidates [--hours N]       evaluate all selections vs odds, store decision (default next 36h)
   report [--hours N]           🔎 Markdown report of upcoming matches (default next 18h) -> reports/
   publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
+  settle                       settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
   backtest [--warmup N]        walk-forward backtest on finished matches in the DB`;
 
 async function main() {
@@ -25,7 +27,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'min-gap-hours': { type: 'string' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'report'].includes(job ?? '')) {
+  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'settle', 'report'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -38,6 +40,7 @@ async function main() {
         minGapHours: values['min-gap-hours'] ? Number(values['min-gap-hours']) : undefined,
       });
     else if (job === 'publish') await publishJob(ctx);
+    else if (job === 'settle') await settleJob(ctx);
     else if (job === 'report') {
       const r = await matchReport(ctx, { hours: values.hours ? Number(values.hours) : undefined });
       console.log(r.markdown);

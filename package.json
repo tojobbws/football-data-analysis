@@ -19,6 +19,7 @@
     "sync:teams": "npm run job -w @fp/football-sync -- teams",
     "sync:fixtures": "npm run job -w @fp/football-sync -- fixtures",
     "sync:details": "npm run job -w @fp/football-sync -- details",
+    "sync:results": "npm run job -w @fp/football-sync -- results",
     "sync:lineups": "npm run job -w @fp/football-sync -- lineups",
     "sync:injuries": "npm run job -w @fp/football-sync -- injuries",
     "sync:predictions": "npm run job -w @fp/football-sync -- predictions",
@@ -32,6 +33,7 @@
     "model:candidates": "npm run job -w @fp/analysis-worker -- candidates",
     "model:impact": "npm run job -w @fp/analysis-worker -- impact",
     "model:publish": "npm run job -w @fp/analysis-worker -- publish",
+    "model:settle": "npm run job -w @fp/analysis-worker -- settle",
     "model:report": "npm run job -w @fp/analysis-worker -- report"
   },
   "devDependencies": {

@@ -7,7 +7,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import detail from '../../../packages/football/test/fixtures/fixture-detail.json' with { type: 'json' };
-import { syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncTeams } from '../src/jobs.js';
+import { syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncResults, syncTeams } from '../src/jobs.js';
 import { syncOdds } from '../../odds-sync/src/jobs.js';
 
 const future = new Date(Date.now() + 2 * 86_400_000).toISOString();
@@ -125,6 +125,21 @@ describe('sync pipeline', () => {
     expect(Number(away.line)).toBe(0.75);
     expect(Number(away.home_line)).toBe(-0.75);
     expect(away.raw_response_id).not.toBeNull();
+  });
+
+  it('results: refreshes a kicked-off match that is not final yet, leaves future matches alone', async () => {
+    await db.query(`update fixtures set status_short = '2H', ft_home = null, ft_away = null, details_synced_at = null where id = 1001`);
+    const before = ctx.client.requestCount;
+    await syncResults(ctx, { days: 3650 });
+    expect(ctx.client.requestCount - before).toBe(1);
+    const f = await one(`select status_short, ft_home, details_synced_at from fixtures where id = 1001`);
+    expect(f.status_short).toBe('FT');
+    expect(f.ft_home).not.toBeNull();
+    expect(f.details_synced_at).not.toBeNull();
+    expect((await one(`select status_short from fixtures where id = 2002`)).status_short).toBe('NS');
+    // nothing left to refresh
+    await syncResults(ctx, { days: 3650 });
+    expect(ctx.client.requestCount - before).toBe(1);
   });
 
   it('records every run and every raw response', async () => {

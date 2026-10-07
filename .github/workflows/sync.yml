@@ -3,7 +3,7 @@ name: data-sync
 # Schedules are UTC (Thailand = UTC+7).
 on:
   schedule:
-    - cron: '5 * * * *'     # hourly: odds + lineups + finished-match details
+    - cron: '5 * * * *'     # hourly: odds + lineups + results + settlement + finished-match details
     - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings
     - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats
   workflow_dispatch:
@@ -50,6 +50,8 @@ jobs:
         run: |
           npm run sync:lineups -- --minutes 75
           npm run sync:odds
+          npm run sync:results
+          npm run model:settle
           npm run sync:details
           npm run model:probabilities -- --days 2
           npm run model:impact -- --hours 36
@@ -60,6 +62,8 @@ jobs:
         if: github.event.schedule == '30 22 * * *'
         run: |
           npm run sync:fixtures -- --from "$(date -u +%F)" --to "$(date -u -d '+10 days' +%F)"
+          npm run sync:results
+          npm run model:settle
           npm run sync:injuries -- --days 3
           npm run sync:details -- --limit 400
           npm run sync:predictions -- --hours 48

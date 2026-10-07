@@ -9,6 +9,7 @@ import {
   syncLeagues,
   syncPlayers,
   syncPrematchLineups,
+  syncResults,
   syncStandings,
   syncTeams,
 } from './jobs.js';
@@ -20,6 +21,7 @@ jobs:
   teams                           teams + venues
   fixtures [--from D --to D] [--season Y]  fixtures (whole season, or YYYY-MM-DD window; --season for history)
   details  [--limit N]            events/stats/xG/lineups/players of finished matches
+  results  [--days N]             scores/status of matches that kicked off (last N days, default 14) + pending analyses
   lineups  [--minutes N]          confirmed lineups for matches starting soon (default 90)
   injuries [--days N]             injuries for the next N days (default 3)
   predictions [--hours N]         API-Football predictions for next N hours (default 48)
@@ -62,6 +64,9 @@ async function main() {
         break;
       case 'details':
         await syncFinishedDetails(ctx, { limit: num(values.limit) });
+        break;
+      case 'results':
+        await syncResults(ctx, { days: num(values.days) });
         break;
       case 'lineups':
         await syncPrematchLineups(ctx, { withinMinutes: num(values.minutes) });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expectedValue, fairProbability, isQuarterLine, settle, settleAsian } from '../src/index.js';
+import { closingLineValue, decideSettlement, expectedValue, fairProbability, isQuarterLine, settle, settleAsian, type FixtureState } from '../src/index.js';
 
 describe('settleAsian', () => {
   it('half lines', () => {
@@ -54,5 +54,59 @@ describe('fair probability / EV', () => {
     const p = fairProbability(d);
     expect(expectedValue(d, 1 / p)).toBeCloseTo(0, 10);
     expect(expectedValue(d, 1 / p + 0.1)).toBeGreaterThan(0);
+  });
+});
+
+describe('decideSettlement (Phase 7)', () => {
+  const ko = new Date('2026-10-10T19:00:00Z');
+  const h = (n: number) => new Date(ko.getTime() + n * 3_600_000);
+  const ah = { market: 'ASIAN_HANDICAP', selection: 'AWAY', line: 0.75, kickoffAt: ko };
+  const fx = (o: Partial<FixtureState> = {}): FixtureState => ({ statusShort: 'FT', kickoffAt: ko, home: 1, away: 0, syncedAt: h(3), ...o });
+
+  it('settles on the 90-minute score', () => {
+    expect(decideSettlement(ah, fx(), h(3))).toEqual({ action: 'SETTLE', status: 'HALF_LOSS', score: '1-0' });
+    expect(decideSettlement({ market: 'MATCH_WINNER', selection: 'DRAW', line: null, kickoffAt: ko }, fx({ statusShort: 'AET', home: 1, away: 1 }), h(3))).toEqual({
+      action: 'SETTLE',
+      status: 'WIN',
+      score: '1-1',
+    });
+    expect(decideSettlement({ market: 'OVER_UNDER', selection: 'UNDER', line: 2.5, kickoffAt: ko }, fx({ statusShort: 'PEN', home: 2, away: 2 }), h(3))).toMatchObject({
+      status: 'LOSS',
+    });
+  });
+
+  it('voids cancelled / abandoned / awarded matches', () => {
+    for (const s of ['CANC', 'ABD', 'AWD', 'WO']) expect(decideSettlement(ah, fx({ statusShort: s, home: null, away: null }), h(1))).toEqual({ action: 'VOID', reason: s });
+  });
+
+  it('voids a match played more than 48h after the analysed kickoff', () => {
+    expect(decideSettlement(ah, fx({ kickoffAt: h(72) }), h(80))).toEqual({ action: 'VOID', reason: 'RESCHEDULED' });
+    // moved by less than 48h -> settles normally
+    expect(decideSettlement(ah, fx({ kickoffAt: h(20) }), h(25)).action).toBe('SETTLE');
+  });
+
+  it('waits while not finished, voids only after 48h with FRESH fixture data', () => {
+    expect(decideSettlement(ah, fx({ statusShort: '2H', home: 1, away: 0 }), h(1))).toMatchObject({ action: 'WAIT' });
+    expect(decideSettlement(ah, fx({ statusShort: 'PST', home: null, away: null, syncedAt: h(10) }), h(49))).toMatchObject({ action: 'WAIT' });
+    // stale sync (last refreshed before the deadline) must never void
+    expect(decideSettlement(ah, fx({ statusShort: 'NS', home: null, away: null, syncedAt: h(-1) }), h(200))).toMatchObject({ action: 'WAIT' });
+    expect(decideSettlement(ah, fx({ statusShort: 'PST', home: null, away: null, syncedAt: h(50) }), h(50))).toEqual({ action: 'VOID', reason: 'NOT_PLAYED_PST' });
+  });
+
+  it('waits instead of guessing on missing data', () => {
+    expect(decideSettlement(ah, fx({ home: null }), h(3))).toMatchObject({ action: 'WAIT' });
+    expect(decideSettlement({ market: 'OTHER', selection: 'X', line: null, kickoffAt: ko }, fx(), h(3))).toMatchObject({ action: 'WAIT' });
+    expect(decideSettlement({ ...ah, line: null }, fx(), h(3))).toMatchObject({ action: 'WAIT' });
+  });
+});
+
+describe('closingLineValue', () => {
+  it('uses the median of bookmakers and needs at least 2', () => {
+    expect(closingLineValue(2.1, [2.0])).toBeNull();
+    expect(closingLineValue(2.1, [1.9, 2.0, 2.4])).toEqual({ closingOdds: 2.0, clv: 0.05 });
+    expect(closingLineValue(1.8, [1.9, 2.1])).toEqual({ closingOdds: 2.0, clv: -0.1 });
+  });
+  it('keeps closing odds even without a publish price', () => {
+    expect(closingLineValue(null, [1.9, 2.1])).toEqual({ closingOdds: 2.0, clv: null });
   });
 });

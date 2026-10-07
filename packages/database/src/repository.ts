@@ -452,6 +452,83 @@ export class Repository {
     return new Map(res.rows.map((r) => [Number(r.id), r.name]));
   }
 
+  // ---------- settlement ----------
+
+  /**
+   * Fixtures whose result we still need: kicked off > 105 min ago, not final/void yet,
+   * within the last `days` — plus any fixture that still has a PENDING analysis.
+   */
+  async fixturesAwaitingResult(leagueIds: number[], now: Date, days = 14, limit = 400): Promise<number[]> {
+    const res = await this.db.query<{ id: string | number }>(
+      `select id from fixtures f
+        where f.kickoff_at < $2::timestamptz - interval '105 minutes'
+          and f.status_short not in ('FT','AET','PEN','CANC','ABD','AWD','WO')
+          and ((f.league_id = any($1::int[]) and f.kickoff_at > $2::timestamptz - make_interval(days => $3))
+               or exists (select 1 from analysis_predictions p where p.fixture_id = f.id and p.status = 'PENDING'))
+        order by f.kickoff_at
+        limit $4`,
+      [leagueIds, now.toISOString(), days, limit],
+    );
+    return res.rows.map((r) => Number(r.id));
+  }
+
+  /** PENDING analyses whose (published) kickoff has passed, with the fixture's current state. */
+  async pendingSettlements(now: Date) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select p.id, p.public_id, p.fixture_id, p.market, p.selection, p.line, p.kickoff_at, p.odds_at_publish,
+              f.status_short, f.kickoff_at as fixture_kickoff_at, f.synced_at,
+              coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga
+         from analysis_predictions p join fixtures f on f.id = p.fixture_id
+        where p.status = 'PENDING' and p.kickoff_at < $1
+        order by p.kickoff_at, p.id`,
+      [now.toISOString()],
+    );
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    return res.rows.map((r) => ({
+      id: Number(r.id),
+      publicId: String(r.public_id),
+      fixtureId: Number(r.fixture_id),
+      market: r.market == null ? null : String(r.market),
+      selection: r.selection == null ? null : String(r.selection),
+      line: num(r.line),
+      kickoffAt: new Date(r.kickoff_at as string),
+      oddsAtPublish: num(r.odds_at_publish),
+      fixture: {
+        statusShort: String(r.status_short),
+        kickoffAt: new Date(r.fixture_kickoff_at as string),
+        home: num(r.gh),
+        away: num(r.ga),
+        syncedAt: new Date(r.synced_at as string),
+      },
+    }));
+  }
+
+  /** Each bookmaker's last pre-kickoff odds for one selection (see view odds_closing). */
+  async closingOdds(fixtureId: number, market: string, selection: string, line: number | null): Promise<number[]> {
+    const res = await this.db.query<{ closing_odds: string | number }>(
+      `select closing_odds from odds_closing
+        where fixture_id = $1 and market = $2 and selection = $3 and line is not distinct from $4::numeric`,
+      [fixtureId, market, selection, line],
+    );
+    return res.rows.map((r) => Number(r.closing_odds));
+  }
+
+  /**
+   * Write the final status once (DB trigger rejects a second settlement and sets settled_at).
+   * Returns false if the row was no longer PENDING (settled by a concurrent run).
+   */
+  async settlePrediction(id: number, s: { status: string; resultScore: string; closingOdds: number | null; clv: number | null }): Promise<boolean> {
+    const res = await this.db.query<{ id: string | number }>(
+      `update analysis_predictions
+          set status = $2, result_score = $3,
+              closing_odds = coalesce(closing_odds, $4::numeric), clv = coalesce(clv, $5::numeric)
+        where id = $1 and status = 'PENDING'
+        returning id`,
+      [id, s.status, s.resultScore, s.closingOdds, s.clv],
+    );
+    return res.rows.length > 0;
+  }
+
   // ---------- publish ----------
 
   async isPublished(fixtureId: number, round: string): Promise<boolean> {
