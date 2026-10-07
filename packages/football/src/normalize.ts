@@ -195,7 +195,7 @@ export function toLineupRows(item: FixtureItem): { lineups: Row[]; players: Row[
       formation: l.formation,
       coach_id: l.coach?.id ?? null,
       coach_name: l.coach?.name ?? null,
-      raw: l,
+      // no per-row raw copy: the full response (incl. lineups) is kept in api_raw_responses
     });
     const add = (list: typeof l.startXI, isStarter: boolean) => {
       for (const p of list ?? []) {
