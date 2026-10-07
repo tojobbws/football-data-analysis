@@ -243,7 +243,7 @@ export function toFixturePlayerStatRows(item: FixtureItem): Row[] {
         interceptions: s.tackles?.interceptions ?? null,
         cards_yellow: s.cards?.yellow ?? null,
         cards_red: s.cards?.red ?? null,
-        raw: p,
+        // no per-row raw copy: the full response (incl. every player's stats) is kept in api_raw_responses
       });
     }
   }
