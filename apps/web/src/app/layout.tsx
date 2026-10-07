@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 const nav = [
   { href: '/', label: 'หน้าแรก' },
   { href: '/matches', label: '🔎 แมตช์' },
+  { href: '/analysis', label: '📝 บทวิเคราะห์' },
   { href: '/performance', label: '📊 ผลงานการวิเคราะห์' },
 ];
 
