@@ -1,0 +1,136 @@
+/**
+ * End-to-end: fake API-Football -> real job code -> PGlite (real Postgres) with all migrations.
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Repository, type JobContext } from '@fp/database';
+import { ApiFootball, ApiFootballClient } from '@fp/football';
+import { createLogger, type Env } from '@fp/shared';
+import { createTestDb } from '../../../packages/database/test/helpers.js';
+import detail from '../../../packages/football/test/fixtures/fixture-detail.json' with { type: 'json' };
+import { syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncTeams } from '../src/jobs.js';
+import { syncOdds } from '../../odds-sync/src/jobs.js';
+
+const future = new Date(Date.now() + 2 * 86_400_000).toISOString();
+
+const upcomingFixture = {
+  ...detail,
+  fixture: { ...detail.fixture, id: 2002, date: future, status: { long: 'Not Started', short: 'NS', elapsed: null } },
+  goals: { home: null, away: null },
+  score: { halftime: { home: null, away: null }, fulltime: { home: null, away: null }, extratime: { home: null, away: null }, penalty: { home: null, away: null } },
+  teams: { home: { id: 42, name: 'Arsenal', logo: null, winner: null }, away: { id: 99, name: 'Brand New FC', logo: null, winner: null } },
+};
+const { events: _e, lineups: _l, statistics: _s, players: _p, ...finishedListItem } = detail;
+
+const routes: Record<string, (p: URLSearchParams) => unknown[]> = {
+  '/leagues': () => [
+    {
+      league: { id: 39, name: 'Premier League', type: 'League', logo: null },
+      country: { name: 'England', code: 'GB', flag: null },
+      seasons: [{ year: 2026, start: '2026-08-15', end: '2027-05-23', current: true, coverage: { odds: true } }],
+    },
+  ],
+  '/teams': () => [
+    { team: { id: 40, name: 'Liverpool', code: 'LIV', country: 'England', founded: 1892, national: false, logo: null }, venue: { id: 550, name: 'Anfield', address: null, city: 'Liverpool', capacity: 61276, surface: 'grass', image: null } },
+    { team: { id: 42, name: 'Arsenal', code: 'ARS', country: 'England', founded: 1886, national: false, logo: null }, venue: { id: 494, name: 'Emirates Stadium', address: null, city: 'London', capacity: 60383, surface: 'grass', image: null } },
+  ],
+  '/fixtures': (p) => (p.get('ids') ? [detail] : [finishedListItem, upcomingFixture]),
+  '/predictions': () => [
+    { predictions: { winner: { id: 42, name: 'Arsenal', comment: null }, win_or_draw: true, under_over: null, goals: { home: '-2.5', away: '-1.5' }, advice: 'x', percent: { home: '50%', draw: '30%', away: '20%' } } },
+  ],
+  '/odds': () => [
+    {
+      league: { id: 39, season: 2026 },
+      fixture: { id: 2002 },
+      update: '2026-10-06T10:00:00+00:00',
+      bookmakers: [{ id: 8, name: 'Bet365', bets: [{ id: 4, name: 'Asian Handicap', values: [{ value: 'Home -0.75', odd: '1.95' }, { value: 'Away -0.75', odd: '1.95' }] }] }],
+    },
+    { league: { id: 39, season: 2026 }, fixture: { id: 777777 }, update: '2026-10-06T10:00:00+00:00', bookmakers: [] }, // unknown fixture
+  ],
+};
+
+const fakeFetch = (async (input: URL | RequestInfo) => {
+  const url = new URL(String(input));
+  const handler = routes[url.pathname];
+  const response = handler ? handler(url.searchParams) : [];
+  return new Response(JSON.stringify({ get: url.pathname, parameters: {}, errors: [], results: response.length, paging: { current: 1, total: 1 }, response }), { status: 200 });
+}) as typeof fetch;
+
+let ctx: JobContext;
+let db: Awaited<ReturnType<typeof createTestDb>>;
+
+beforeAll(async () => {
+  db = await createTestDb();
+  const repo = new Repository(db);
+  const client = new ApiFootballClient({ apiKey: 'test', fetchImpl: fakeFetch, requestsPerMinute: 1000, onRawResponse: (r) => repo.insertRawResponse(r) });
+  const env: Env = {
+    API_FOOTBALL_KEY: 'test',
+    API_FOOTBALL_BASE_URL: 'https://v3.football.api-sports.io',
+    API_FOOTBALL_RPM: 1000,
+    DATABASE_URL: 'pglite',
+    TRACKED_LEAGUES: [39],
+    SEASON: 2026,
+    ODDS_MARKETS: ['MATCH_WINNER', 'ASIAN_HANDICAP', 'OVER_UNDER'],
+    ODDS_BOOKMAKERS: [],
+    LOG_LEVEL: 'error',
+  };
+  ctx = { env, db, repo, client, api: new ApiFootball(client), log: createLogger('error') };
+}, 60_000);
+
+afterAll(async () => {
+  await db?.close();
+});
+
+const one = async (sql: string) => (await db.query<Record<string, unknown>>(sql)).rows[0]!;
+
+describe('sync pipeline', () => {
+  it('leagues -> teams -> fixtures (with stubs for unknown teams)', async () => {
+    await syncLeagues(ctx);
+    await syncTeams(ctx);
+    await syncFixtures(ctx);
+    expect(Number((await one(`select count(*) n from fixtures`)).n)).toBe(2);
+    expect((await one(`select name from teams where id = 99`)).name).toBe('Brand New FC');
+    expect((await one(`select is_tracked from leagues where id = 39`)).is_tracked).toBe(true);
+    expect((await one(`select slug from fixtures where id = 1001`)).slug).toBe('liverpool-vs-arsenal-2026-09-18');
+  });
+
+  it('re-running is idempotent', async () => {
+    await syncFixtures(ctx);
+    expect(Number((await one(`select count(*) n from fixtures`)).n)).toBe(2);
+  });
+
+  it('details: events, stats incl. xG, lineups, player stats', async () => {
+    await syncFinishedDetails(ctx);
+    expect(Number((await one(`select count(*) n from fixture_events where fixture_id = 1001`)).n)).toBe(2);
+    expect(Number((await one(`select value_num from fixture_statistics where fixture_id = 1001 and type = 'expected_goals'`)).value_num)).toBe(1.87);
+    expect(Number((await one(`select count(*) n from fixture_lineup_players where fixture_id = 1001`)).n)).toBe(2);
+    expect((await one(`select details_synced_at from fixtures where id = 1001`)).details_synced_at).not.toBeNull();
+    // second run: nothing left to fetch
+    const before = ctx.client.requestCount;
+    await syncFinishedDetails(ctx);
+    expect(ctx.client.requestCount).toBe(before);
+  });
+
+  it('api predictions are snapshotted and not re-fetched within the gap', async () => {
+    await syncApiPredictions(ctx);
+    await syncApiPredictions(ctx);
+    expect(Number((await one(`select count(*) n from api_predictions where fixture_id = 2002`)).n)).toBe(1);
+    expect(Number((await one(`select percent_home from api_predictions`)).percent_home)).toBe(50);
+  });
+
+  it('odds: stores history, de-duplicates unchanged updates, skips unknown fixtures', async () => {
+    await syncOdds(ctx);
+    await syncOdds(ctx);
+    expect(Number((await one(`select count(*) n from odds_history`)).n)).toBe(2);
+    const away = await one(`select line, home_line, raw_response_id from odds_history where raw_value = 'Away -0.75'`);
+    expect(Number(away.line)).toBe(0.75);
+    expect(Number(away.home_line)).toBe(-0.75);
+    expect(away.raw_response_id).not.toBeNull();
+  });
+
+  it('records every run and every raw response', async () => {
+    const runs = await one(`select count(*) n, count(*) filter (where status <> 'SUCCESS') bad from sync_runs`);
+    expect(Number(runs.n)).toBeGreaterThan(5);
+    expect(Number(runs.bad)).toBe(0);
+    expect(Number((await one(`select count(*) n from api_raw_responses`)).n)).toBe(ctx.client.requestCount);
+  });
+});

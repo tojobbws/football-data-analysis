@@ -1,0 +1,16 @@
+{
+  "name": "@fp/football-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/jobs.ts",
+  "exports": { ".": "./src/jobs.ts" },
+  "scripts": {
+    "job": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@fp/database": "*",
+    "@fp/football": "*",
+    "@fp/shared": "*"
+  }
+}

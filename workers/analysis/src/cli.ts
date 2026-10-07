@@ -1,0 +1,57 @@
+import { parseArgs } from 'node:util';
+import { createJobContext } from '@fp/database';
+import { loadDotEnvFile } from '@fp/shared';
+import { generateCandidatesJob } from './candidates-job.js';
+import { playerImpactJob } from './impact-job.js';
+import { publishJob } from './publish-job.js';
+import { matchReport } from './report-job.js';
+import { backtest, computeProbabilities, tune } from './jobs.js';
+
+const USAGE = `usage: npm run job -w @fp/analysis-worker -- <job> [options]
+
+jobs:
+  tune [--league ID]           grid-search settings per league (time split) -> model_configs
+  probabilities [--days N] [--min-gap-hours H]   model probabilities for fixtures in the next N days (default 7)
+  impact [--hours N]           Player Impact layer: re-price with missing players (lineups / injuries)
+  candidates [--hours N]       evaluate all selections vs odds, store decision (default next 36h)
+  report [--hours N]           🔎 Markdown report of upcoming matches (default next 18h) -> reports/
+  publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
+  backtest [--warmup N]        walk-forward backtest on finished matches in the DB`;
+
+async function main() {
+  loadDotEnvFile();
+  const { positionals, values } = parseArgs({
+    allowPositionals: true,
+    options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'min-gap-hours': { type: 'string' } },
+  });
+  const job = positionals[0];
+  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'report'].includes(job ?? '')) {
+    console.log(USAGE);
+    process.exit(1);
+  }
+  const ctx = createJobContext();
+  try {
+    if (job === 'tune') await tune(ctx, { leagues: values.league ? [Number(values.league)] : undefined });
+    else if (job === 'probabilities')
+      await computeProbabilities(ctx, {
+        days: values.days ? Number(values.days) : undefined,
+        minGapHours: values['min-gap-hours'] ? Number(values['min-gap-hours']) : undefined,
+      });
+    else if (job === 'publish') await publishJob(ctx);
+    else if (job === 'report') {
+      const r = await matchReport(ctx, { hours: values.hours ? Number(values.hours) : undefined });
+      console.log(r.markdown);
+      console.log(`\nsaved: ${r.path}`);
+    }
+    else if (job === 'impact') await playerImpactJob(ctx, { hours: values.hours ? Number(values.hours) : undefined });
+    else if (job === 'candidates') await generateCandidatesJob(ctx, { hours: values.hours ? Number(values.hours) : undefined });
+    else await backtest(ctx, { warmupMatches: values.warmup ? Number(values.warmup) : undefined });
+  } finally {
+    await ctx.db.close();
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

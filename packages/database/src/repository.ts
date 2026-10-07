@@ -1,0 +1,692 @@
+import type { OddsRow, RawResponseRecord } from '@fp/football';
+import type { Db, Queryable } from './db.js';
+import { insertReturning, insertRows, toParam, writeRows, type Row } from './upsert.js';
+
+export interface FinishedMatchRow {
+  fixtureId: number;
+  kickoffAt: Date;
+  homeTeamId: number;
+  awayTeamId: number;
+  homeGoals: number;
+  awayGoals: number;
+  homeXg: number | null;
+  awayXg: number | null;
+  /** Minute of the first red card (either team) within 90'; null = none, or events not synced. */
+  redCardMinute: number | null;
+  /** Events were synced for this match (so a null redCardMinute really means "no red card"). */
+  eventsKnown: boolean;
+}
+
+export interface PlayerStatRow {
+  fixtureId: number;
+  kickoffAt: Date;
+  teamId: number;
+  playerId: number;
+  minutes: number | null;
+  position: string | null;
+  rating: number | null;
+  goals: number | null;
+  assists: number | null;
+  shotsTotal: number | null;
+  passesKey: number | null;
+}
+
+export interface ModelConfigInput {
+  leagueId: number;
+  purpose: 'SIDES' | 'TOTALS' | 'ELO' | 'ENSEMBLE' | 'IMPACT';
+  modelVersionId: string;
+  params: Record<string, unknown>;
+  metrics: Record<string, unknown>;
+  enabled: boolean;
+  matchesEvaluated: number;
+}
+
+export interface ModelConfig extends ModelConfigInput {
+  id: number;
+  tunedAt: Date;
+}
+
+function parseJson(v: unknown): Record<string, unknown> {
+  if (typeof v === 'string') return JSON.parse(v) as Record<string, unknown>;
+  return (v ?? {}) as Record<string, unknown>;
+}
+
+/**
+ * Data-access layer. Workers call these; no SQL elsewhere.
+ * Writes are idempotent (safe to re-run any sync job).
+ */
+export class Repository {
+  constructor(readonly db: Db) {}
+
+  // ---------- audit ----------
+  async insertRawResponse(rec: RawResponseRecord): Promise<number> {
+    const id = await insertReturning<string | number>(this.db, 'api_raw_responses', {
+      source: rec.source,
+      endpoint: rec.endpoint,
+      params: rec.params,
+      http_status: rec.httpStatus,
+      results: rec.results,
+      errors: rec.errors,
+      response: rec.response,
+      fetched_at: rec.fetchedAt,
+    });
+    return Number(id);
+  }
+
+  async startSyncRun(job: string, params: Record<string, unknown>): Promise<number> {
+    return Number(await insertReturning<string | number>(this.db, 'sync_runs', { job, params }));
+  }
+
+  async finishSyncRun(id: number, r: { status: 'SUCCESS' | 'FAILED'; requestsUsed: number; itemsWritten: number; error?: string }) {
+    await this.db.query(
+      `update sync_runs set status = $2, requests_used = $3, items_written = $4, error = $5, finished_at = now() where id = $1`,
+      [id, r.status, r.requestsUsed, r.itemsWritten, r.error ?? null],
+    );
+  }
+
+  // ---------- reference data ----------
+  upsertLeagues(rows: Row[]) {
+    return writeRows(this.db, 'leagues', rows, { conflict: ['id'], touch: 'synced_at' });
+  }
+  insertLeagueStubs(rows: Row[]) {
+    return writeRows(this.db, 'leagues', rows, { conflict: ['id'], update: 'nothing' });
+  }
+  upsertLeagueSeasons(rows: Row[]) {
+    return writeRows(this.db, 'league_seasons', rows, { conflict: ['league_id', 'season'], touch: 'synced_at' });
+  }
+  upsertVenues(rows: Row[]) {
+    return writeRows(this.db, 'venues', rows, { conflict: ['id'], touch: 'synced_at' });
+  }
+  /** Insert venues only if unknown (fixture-derived stubs must not overwrite full rows). */
+  insertVenueStubs(rows: Row[]) {
+    return writeRows(this.db, 'venues', rows, { conflict: ['id'], update: 'nothing' });
+  }
+  upsertTeams(rows: Row[]) {
+    return writeRows(this.db, 'teams', rows, { conflict: ['id'], touch: 'synced_at' });
+  }
+  insertTeamStubs(rows: Row[]) {
+    return writeRows(this.db, 'teams', rows, { conflict: ['id'], update: 'nothing' });
+  }
+  upsertTeamSeasons(rows: Row[]) {
+    return writeRows(this.db, 'team_seasons', rows, { conflict: ['team_id', 'league_id', 'season'], update: 'nothing' });
+  }
+  upsertPlayers(rows: Row[]) {
+    return writeRows(this.db, 'players', rows, { conflict: ['id'], touch: 'synced_at' });
+  }
+  upsertPlayerSeasonStats(rows: Row[]) {
+    return writeRows(this.db, 'player_season_stats', rows, {
+      conflict: ['player_id', 'team_id', 'league_id', 'season'],
+      touch: 'synced_at',
+    });
+  }
+
+  // ---------- fixtures ----------
+  upsertFixtures(rows: Row[]) {
+    return writeRows(this.db, 'fixtures', rows, { conflict: ['id'], touch: 'synced_at' });
+  }
+
+  /** Replace all detail data of one fixture atomically (events/stats/lineups/players). */
+  async replaceFixtureDetails(
+    fixtureId: number,
+    d: { events: Row[]; statistics: Row[]; lineups: Row[]; lineupPlayers: Row[]; playerStats: Row[] },
+  ): Promise<number> {
+    return this.db.transaction(async (tx: Queryable) => {
+      let n = 0;
+      // only replace a section if the API returned data for it (never wipe with empty)
+      if (d.events.length) {
+        await tx.query('delete from fixture_events where fixture_id = $1', [fixtureId]);
+        n += await writeRows(tx, 'fixture_events', d.events, { conflict: ['fixture_id', 'seq'] });
+      }
+      if (d.statistics.length) {
+        n += await writeRows(tx, 'fixture_statistics', d.statistics, { conflict: ['fixture_id', 'team_id', 'type'], touch: 'synced_at' });
+      }
+      if (d.lineups.length) {
+        await tx.query('delete from fixture_lineup_players where fixture_id = $1', [fixtureId]);
+        n += await writeRows(tx, 'fixture_lineups', d.lineups, { conflict: ['fixture_id', 'team_id'], touch: 'synced_at' });
+        if (d.lineupPlayers.length) {
+          // no natural key -> plain insert after delete
+          n += await insertRows(tx, 'fixture_lineup_players', d.lineupPlayers);
+        }
+      }
+      if (d.playerStats.length) {
+        n += await writeRows(tx, 'fixture_player_stats', d.playerStats, { conflict: ['fixture_id', 'player_id'], touch: 'synced_at' });
+      }
+      return n;
+    });
+  }
+
+  async markFixtureDetailsSynced(ids: number[]) {
+    if (!ids.length) return;
+    await this.db.query('update fixtures set details_synced_at = now() where id = any($1::bigint[])', [ids]);
+  }
+
+  upsertInjuries(rows: Row[]) {
+    return writeRows(this.db, 'injuries', rows, { conflict: ['fixture_id', 'player_id'], update: ['type', 'reason', 'raw'], touch: 'synced_at' });
+  }
+
+  upsertStandings(rows: Row[]) {
+    return writeRows(this.db, 'standings', rows, { conflict: ['league_id', 'season', 'group_name', 'team_id'], touch: 'synced_at' });
+  }
+
+  async insertApiPrediction(row: Row): Promise<number> {
+    await insertReturning(this.db, 'api_predictions', row);
+    return 1;
+  }
+
+  // ---------- odds ----------
+  upsertBookmakers(rows: Array<{ id: number; name: string }>) {
+    return writeRows(this.db, 'bookmakers', rows, { conflict: ['id'], touch: 'synced_at' });
+  }
+
+  /** Append-only. Same (fixture, bookmaker, bet, value, update-time) is skipped. Returns rows actually inserted. */
+  insertOddsHistory(rows: OddsRow[], rawResponseId: number | null) {
+    return writeRows(
+      this.db,
+      'odds_history',
+      rows.map((r) => ({
+        fixture_id: r.fixtureId,
+        bookmaker_id: r.bookmakerId,
+        market: r.market,
+        api_bet_id: r.apiBetId,
+        api_bet_name: r.apiBetName,
+        selection: r.selection,
+        line: r.line,
+        home_line: r.homeLine,
+        raw_value: r.rawValue,
+        odds: r.odds,
+        source_updated_at: r.sourceUpdatedAt,
+        raw_response_id: rawResponseId,
+      })),
+      { conflict: ['fixture_id', 'bookmaker_id', 'api_bet_id', 'raw_value', 'source_updated_at'], update: 'nothing' },
+    );
+  }
+
+  // ---------- read queries for workers ----------
+  async existingFixtureIds(ids: number[]): Promise<Set<number>> {
+    if (!ids.length) return new Set();
+    const res = await this.db.query<{ id: string | number }>('select id from fixtures where id = any($1::bigint[])', [ids]);
+    return new Set(res.rows.map((r) => Number(r.id)));
+  }
+
+  /** Finished fixtures whose details are missing or were synced before full time (+ a buffer). */
+  async fixturesNeedingDetails(leagueIds: number[], limit = 200): Promise<number[]> {
+    const res = await this.db.query<{ id: string | number }>(
+      `select id from fixtures
+        where league_id = any($1::int[])
+          and status_short in ('FT','AET','PEN')
+          and (details_synced_at is null or details_synced_at < kickoff_at + interval '3 hours')
+        order by kickoff_at desc
+        limit $2`,
+      [leagueIds, limit],
+    );
+    return res.rows.map((r) => Number(r.id));
+  }
+
+  async upcomingFixtures(leagueIds: number[], fromIso: string, toIso: string): Promise<Array<{ id: number; kickoff_at: string; league_id: number }>> {
+    const res = await this.db.query<{ id: string | number; kickoff_at: string | Date; league_id: number }>(
+      `select id, kickoff_at, league_id from fixtures
+        where league_id = any($1::int[]) and status_short in ('NS','TBD')
+          and kickoff_at >= $2 and kickoff_at <= $3
+        order by kickoff_at`,
+      [leagueIds, fromIso, toIso],
+    );
+    return res.rows.map((r) => ({ id: Number(r.id), kickoff_at: new Date(r.kickoff_at).toISOString(), league_id: r.league_id }));
+  }
+
+  // ---------- probability engine ----------
+
+  /** Finished matches of a league (all seasons in DB) with 90-min score, xG and first red card when available. */
+  async finishedMatches(leagueId: number): Promise<FinishedMatchRow[]> {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.id, f.kickoff_at, f.home_team_id, f.away_team_id,
+              coalesce(f.ft_home, f.goals_home) as gh,
+              coalesce(f.ft_away, f.goals_away) as ga,
+              xh.value_num as xg_home, xa.value_num as xg_away,
+              (select min(e.elapsed) from fixture_events e
+                where e.fixture_id = f.id and e.type = 'Card' and e.elapsed <= 90
+                  and lower(e.detail) in ('red card', 'second yellow card')) as red_minute,
+              exists (select 1 from fixture_events e where e.fixture_id = f.id) as events_known
+         from fixtures f
+         left join fixture_statistics xh on xh.fixture_id = f.id and xh.team_id = f.home_team_id and xh.type = 'expected_goals'
+         left join fixture_statistics xa on xa.fixture_id = f.id and xa.team_id = f.away_team_id and xa.type = 'expected_goals'
+        where f.league_id = $1
+          and f.status_short in ('FT','AET','PEN')
+          and coalesce(f.ft_home, f.goals_home) is not null
+          and coalesce(f.ft_away, f.goals_away) is not null
+        order by f.kickoff_at`,
+      [leagueId],
+    );
+    return res.rows.map((r) => ({
+      fixtureId: Number(r.id),
+      kickoffAt: new Date(r.kickoff_at as string),
+      homeTeamId: Number(r.home_team_id),
+      awayTeamId: Number(r.away_team_id),
+      homeGoals: Number(r.gh),
+      awayGoals: Number(r.ga),
+      homeXg: r.xg_home == null ? null : Number(r.xg_home),
+      awayXg: r.xg_away == null ? null : Number(r.xg_away),
+      redCardMinute: r.red_minute == null ? null : Number(r.red_minute),
+      eventsKnown: Boolean(r.events_known),
+    }));
+  }
+
+  async upcomingFixturesWithTeams(leagueId: number, fromIso: string, toIso: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select id, kickoff_at, home_team_id, away_team_id from fixtures
+        where league_id = $1 and status_short in ('NS','TBD') and kickoff_at >= $2 and kickoff_at <= $3
+        order by kickoff_at`,
+      [leagueId, fromIso, toIso],
+    );
+    return res.rows.map((r) => ({
+      id: Number(r.id),
+      kickoffAt: new Date(r.kickoff_at as string),
+      homeTeamId: Number(r.home_team_id),
+      awayTeamId: Number(r.away_team_id),
+    }));
+  }
+
+  /** Lines the market actually offers for this fixture (so we price what can be compared). */
+  async offeredLines(fixtureId: number): Promise<{ ahHome: number[]; ou: number[] }> {
+    const res = await this.db.query<{ market: string; v: string | number }>(
+      `select distinct market, case when market = 'ASIAN_HANDICAP' then home_line else line end as v
+         from odds_history
+        where fixture_id = $1 and market in ('ASIAN_HANDICAP','OVER_UNDER')
+          and (case when market = 'ASIAN_HANDICAP' then home_line else line end) is not null`,
+      [fixtureId],
+    );
+    return {
+      ahHome: res.rows.filter((r) => r.market === 'ASIAN_HANDICAP').map((r) => Number(r.v)),
+      ou: res.rows.filter((r) => r.market === 'OVER_UNDER').map((r) => Number(r.v)),
+    };
+  }
+
+  ensureModelVersion(id: string, description: string, params: Record<string, unknown>) {
+    return writeRows(this.db, 'model_versions', [{ id, description, params }], { conflict: ['id'], update: 'nothing' });
+  }
+
+  async lastProbabilityAt(fixtureId: number, modelVersionId: string): Promise<Date | null> {
+    const res = await this.db.query<{ t: string | Date | null }>(
+      'select max(computed_at) as t from probability_predictions where fixture_id = $1 and model_version_id = $2',
+      [fixtureId, modelVersionId],
+    );
+    const t = res.rows[0]?.t;
+    return t ? new Date(t) : null;
+  }
+
+  /** Insert-only. */
+  insertProbabilityPredictions(rows: Row[]) {
+    return writeRows(this.db, 'probability_predictions', rows, {
+      conflict: ['fixture_id', 'model_version_id', 'computed_at', 'market', 'selection', 'line'],
+      update: 'nothing',
+    });
+  }
+
+  async insertModelConfigs(rows: ModelConfigInput[]): Promise<number> {
+    let n = 0;
+    for (const r of rows) {
+      await insertReturning(this.db, 'model_configs', {
+        league_id: r.leagueId,
+        purpose: r.purpose,
+        model_version_id: r.modelVersionId,
+        params: r.params,
+        metrics: r.metrics,
+        enabled: r.enabled,
+        matches_evaluated: r.matchesEvaluated,
+      });
+      n++;
+    }
+    return n;
+  }
+
+  /** Active (latest) config per purpose for a league. */
+  async latestModelConfigs(leagueId: number): Promise<Partial<Record<ModelConfigInput['purpose'], ModelConfig>>> {
+    const res = await this.db.query<Record<string, unknown>>(
+      'select id, purpose, model_version_id, params, metrics, enabled, matches_evaluated, tuned_at from model_configs_latest where league_id = $1',
+      [leagueId],
+    );
+    const out: Partial<Record<ModelConfigInput['purpose'], ModelConfig>> = {};
+    for (const r of res.rows) {
+      const purpose = r.purpose as ModelConfigInput['purpose'];
+      out[purpose] = {
+        id: Number(r.id),
+        leagueId,
+        purpose,
+        modelVersionId: String(r.model_version_id),
+        params: parseJson(r.params),
+        metrics: parseJson(r.metrics),
+        enabled: Boolean(r.enabled),
+        matchesEvaluated: Number(r.matches_evaluated),
+        tunedAt: new Date(r.tuned_at as string),
+      };
+    }
+    return out;
+  }
+
+  // ---------- player impact ----------
+
+  private mapPlayerStat(r: Record<string, unknown>): PlayerStatRow {
+    const n = (v: unknown) => (v == null ? null : Number(v));
+    return {
+      fixtureId: Number(r.fixture_id),
+      kickoffAt: new Date(r.kickoff_at as string),
+      teamId: Number(r.team_id),
+      playerId: Number(r.player_id),
+      minutes: n(r.minutes),
+      position: (r.position as string | null) ?? null,
+      rating: n(r.rating),
+      goals: n(r.goals),
+      assists: n(r.assists),
+      shotsTotal: n(r.shots_total),
+      passesKey: n(r.passes_key),
+    };
+  }
+
+  private static readonly PLAYER_STAT_COLS = `s.fixture_id, f.kickoff_at, s.team_id, s.player_id, s.minutes, s.position, s.rating,
+              s.goals, s.assists, s.shots_total, s.passes_key`;
+
+  /** Player match stats of the given teams (any competition) in the window before `before`. */
+  async playerStatsForTeams(teamIds: number[], before: Date, days = 400): Promise<PlayerStatRow[]> {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select ${Repository.PLAYER_STAT_COLS}
+         from fixture_player_stats s join fixtures f on f.id = s.fixture_id
+        where s.team_id = any($1::int[]) and f.kickoff_at < $2 and f.kickoff_at >= $2::timestamptz - make_interval(days => $3)`,
+      [teamIds, before.toISOString(), days],
+    );
+    return res.rows.map((r) => this.mapPlayerStat(r));
+  }
+
+  /** All player match stats for fixtures of a league (for calibration). */
+  async playerStatsForLeague(leagueId: number): Promise<PlayerStatRow[]> {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select ${Repository.PLAYER_STAT_COLS}
+         from fixture_player_stats s join fixtures f on f.id = s.fixture_id
+        where f.league_id = $1`,
+      [leagueId],
+    );
+    return res.rows.map((r) => this.mapPlayerStat(r));
+  }
+
+  private async lineupsWhere(where: string, param: number): Promise<Map<string, { starters: Set<number>; bench: Set<number> }>> {
+    const res = await this.db.query<{ fixture_id: string | number; team_id: number; player_id: number | null; is_starter: boolean }>(
+      `select lp.fixture_id, lp.team_id, lp.player_id, lp.is_starter
+         from fixture_lineup_players lp join fixtures f on f.id = lp.fixture_id
+        where ${where} = $1 and lp.player_id is not null`,
+      [param],
+    );
+    const out = new Map<string, { starters: Set<number>; bench: Set<number> }>();
+    for (const r of res.rows) {
+      const k = `${Number(r.fixture_id)}:${Number(r.team_id)}`;
+      const e = out.get(k) ?? { starters: new Set<number>(), bench: new Set<number>() };
+      (r.is_starter ? e.starters : e.bench).add(Number(r.player_id));
+      out.set(k, e);
+    }
+    return out;
+  }
+
+  /** key = `${fixtureId}:${teamId}` */
+  lineupsForLeague(leagueId: number) {
+    return this.lineupsWhere('f.league_id', leagueId);
+  }
+
+  lineupsForFixture(fixtureId: number) {
+    return this.lineupsWhere('f.id', fixtureId);
+  }
+
+  async injuriesForFixture(fixtureId: number) {
+    const res = await this.db.query<{ team_id: number | null; player_id: number | null; type: string | null }>(
+      'select team_id, player_id, type from injuries where fixture_id = $1',
+      [fixtureId],
+    );
+    return res.rows.map((r) => ({ teamId: r.team_id == null ? null : Number(r.team_id), playerId: r.player_id == null ? null : Number(r.player_id), type: r.type }));
+  }
+
+  async playerNames(ids: number[]): Promise<Map<number, string>> {
+    if (!ids.length) return new Map();
+    const res = await this.db.query<{ id: number; name: string }>(
+      `select id, name from players where id = any($1::int[])
+       union
+       select distinct on (player_id) player_id as id, player_name as name from fixture_lineup_players
+        where player_id = any($1::int[]) and player_name is not null`,
+      [ids],
+    );
+    return new Map(res.rows.map((r) => [Number(r.id), r.name]));
+  }
+
+  // ---------- publish ----------
+
+  async isPublished(fixtureId: number, round: string): Promise<boolean> {
+    const res = await this.db.query('select 1 from analysis_predictions where fixture_id = $1 and publish_round = $2', [fixtureId, round]);
+    return res.rows.length > 0;
+  }
+
+  async latestRun(fixtureId: number, rulesVersion: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select id, outcome, started_at, summary, inputs, model_version_id, decision_rule_version
+         from analysis_runs where fixture_id = $1 and decision_rule_version = $2
+        order by started_at desc, id desc limit 1`,
+      [fixtureId, rulesVersion],
+    );
+    const r = res.rows[0];
+    if (!r) return null;
+    return {
+      id: String(r.id),
+      outcome: String(r.outcome) as 'SIGNAL' | 'NO_CLEAR_SIGNAL',
+      startedAt: new Date(r.started_at as string),
+      summary: parseJson(r.summary),
+      inputs: parseJson(r.inputs),
+      modelVersionId: r.model_version_id == null ? null : String(r.model_version_id),
+      rulesVersion: String(r.decision_rule_version),
+    };
+  }
+
+  async runCandidates(runId: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select id, market, selection, line, odds, model_probability, market_probability, edge, support_score, rank, factors
+         from analysis_candidates where run_id = $1 order by rank nulls last, support_score desc`,
+      [runId],
+    );
+    return res.rows.map((r) => ({
+      id: Number(r.id),
+      market: String(r.market),
+      selection: String(r.selection),
+      line: r.line == null ? null : Number(r.line),
+      odds: r.odds == null ? null : Number(r.odds),
+      modelProbability: Number(r.model_probability),
+      marketProbability: r.market_probability == null ? null : Number(r.market_probability),
+      edge: r.edge == null ? null : Number(r.edge),
+      rank: r.rank == null ? null : Number(r.rank),
+      factors: parseJson(r.factors),
+    }));
+  }
+
+  async fixtureHeader(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.id, f.league_id, f.kickoff_at, f.home_team_id, f.away_team_id, th.name as home, ta.name as away, l.name as league
+         from fixtures f join teams th on th.id = f.home_team_id join teams ta on ta.id = f.away_team_id
+         join leagues l on l.id = f.league_id where f.id = $1`,
+      [fixtureId],
+    );
+    const r = res.rows[0];
+    return r
+      ? { id: Number(r.id), leagueId: Number(r.league_id), kickoffAt: new Date(r.kickoff_at as string), homeTeamId: Number(r.home_team_id), awayTeamId: Number(r.away_team_id), home: String(r.home), away: String(r.away), league: String(r.league) }
+      : null;
+  }
+
+  /** When the confirmed lineup was stored (null = no lineup row). */
+  async lineupSyncedAt(fixtureId: number): Promise<Date | null> {
+    const res = await this.db.query<{ t: string | Date | null }>('select max(synced_at) as t from fixture_lineups where fixture_id = $1', [fixtureId]);
+    const t = res.rows[0]?.t;
+    return t ? new Date(t) : null;
+  }
+
+  /** Last n finished results of a team before a date (for the snapshot). */
+  async teamForm(teamId: number, before: Date, n = 5) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.id, f.kickoff_at, f.home_team_id, f.away_team_id,
+              coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga,
+              xh.value_num as xg_home, xa.value_num as xg_away
+         from fixtures f
+         left join fixture_statistics xh on xh.fixture_id = f.id and xh.team_id = f.home_team_id and xh.type = 'expected_goals'
+         left join fixture_statistics xa on xa.fixture_id = f.id and xa.team_id = f.away_team_id and xa.type = 'expected_goals'
+        where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $2
+        order by f.kickoff_at desc limit $3`,
+      [teamId, before.toISOString(), n],
+    );
+    return res.rows.map((r) => {
+      const home = Number(r.home_team_id) === teamId;
+      const gf = Number(home ? r.gh : r.ga);
+      const ga = Number(home ? r.ga : r.gh);
+      const xf = home ? r.xg_home : r.xg_away;
+      const xa = home ? r.xg_away : r.xg_home;
+      return {
+        fixtureId: Number(r.id),
+        kickoffAt: new Date(r.kickoff_at as string).toISOString(),
+        venue: home ? 'H' : 'A',
+        goalsFor: gf,
+        goalsAgainst: ga,
+        result: gf > ga ? 'W' : gf < ga ? 'L' : 'D',
+        xgFor: xf == null ? null : Number(xf),
+        xgAgainst: xa == null ? null : Number(xa),
+      };
+    });
+  }
+
+  async latestApiPrediction(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select collected_at, percent_home, percent_draw, percent_away, advice, under_over, winner_team_id
+         from api_predictions where fixture_id = $1 order by collected_at desc limit 1`,
+      [fixtureId],
+    );
+    return res.rows[0] ?? null;
+  }
+
+  async lineupPlayers(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      'select team_id, player_id, player_name, number, position, is_starter from fixture_lineup_players where fixture_id = $1 order by team_id, is_starter desc',
+      [fixtureId],
+    );
+    return res.rows;
+  }
+
+  async injuriesDetailed(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      'select team_id, player_id, player_name, type, reason from injuries where fixture_id = $1',
+      [fixtureId],
+    );
+    return res.rows;
+  }
+
+  /** Opening / current odds for one selection (consensus of first & last quotes per bookmaker). */
+  async selectionMovement(fixtureId: number, market: string, selection: string, line: number | null) {
+    const res = await this.db.query<{ opening: string; current: string; books: string }>(
+      `select percentile_cont(0.5) within group (order by opening_odds) as opening,
+              percentile_cont(0.5) within group (order by current_odds) as current,
+              count(*) as books
+         from odds_movement
+        where fixture_id = $1 and market = $2 and selection = $3 and line is not distinct from $4::numeric`,
+      [fixtureId, market, selection, line],
+    );
+    const r = res.rows[0];
+    return r && r.opening != null && Number(r.books) > 0 ? { opening: Number(r.opening), current: Number(r.current), bookmakers: Number(r.books) } : null;
+  }
+
+  /** Publish prediction + snapshot atomically. DB triggers enforce pre-kickoff, immutability, hash chain. */
+  async publishPrediction(prediction: Row, snapshot: Row): Promise<{ id: number; publicId: string; recordHash: string }> {
+    return this.db.transaction(async (tx) => {
+      const cols = Object.keys(prediction);
+      const res = await tx.query<{ id: string; public_id: string; record_hash: string }>(
+        `insert into analysis_predictions (${cols.map((c) => `"${c}"`).join(', ')})
+         values (${cols.map((_, i) => `$${i + 1}`).join(', ')}) returning id, public_id, record_hash`,
+        cols.map((c) => toParam(prediction[c])),
+      );
+      const p = res.rows[0]!;
+      await insertRows(tx, 'analysis_snapshots', [{ ...snapshot, analysis_prediction_id: p.id }]);
+      return { id: Number(p.id), publicId: p.public_id, recordHash: p.record_hash };
+    });
+  }
+
+  // ---------- candidate generator ----------
+
+  async fixturesForCandidates(leagueIds: number[], fromIso: string, toIso: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select id, league_id, kickoff_at, home_team_id, away_team_id from fixtures
+        where league_id = any($1::int[]) and status_short in ('NS','TBD') and kickoff_at > $2 and kickoff_at <= $3
+        order by kickoff_at`,
+      [leagueIds, fromIso, toIso],
+    );
+    return res.rows.map((r) => ({
+      id: Number(r.id),
+      leagueId: Number(r.league_id),
+      kickoffAt: new Date(r.kickoff_at as string),
+      homeTeamId: Number(r.home_team_id),
+      awayTeamId: Number(r.away_team_id),
+    }));
+  }
+
+  /** All rows of the latest Probability Engine run for a fixture (per model version). */
+  async latestProbabilities(fixtureId: number, primaryVersion: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `with last as (
+         select max(computed_at) as t from probability_predictions where fixture_id = $1 and model_version_id = $2
+       )
+       select p.model_version_id, p.market, p.selection, p.line, p.probability, p.inputs, p.computed_at
+         from probability_predictions p, last
+        where p.fixture_id = $1 and p.computed_at = last.t`,
+      [fixtureId, primaryVersion],
+    );
+    return res.rows.map((r) => ({
+      modelVersionId: String(r.model_version_id),
+      market: String(r.market),
+      selection: String(r.selection),
+      line: r.line == null ? null : Number(r.line),
+      probability: Number(r.probability),
+      inputs: r.inputs == null ? null : parseJson(r.inputs),
+      computedAt: new Date(r.computed_at as string),
+    }));
+  }
+
+  /** Latest quote per (bookmaker, bet, value) for a fixture. */
+  async latestQuotes(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select distinct on (bookmaker_id, api_bet_id, raw_value)
+              bookmaker_id, market, selection, line, home_line, odds, source_updated_at
+         from odds_history
+        where fixture_id = $1 and market in ('MATCH_WINNER','ASIAN_HANDICAP','OVER_UNDER')
+        order by bookmaker_id, api_bet_id, raw_value, source_updated_at desc`,
+      [fixtureId],
+    );
+    return res.rows.map((r) => ({
+      bookmakerId: Number(r.bookmaker_id),
+      market: String(r.market) as 'MATCH_WINNER' | 'ASIAN_HANDICAP' | 'OVER_UNDER',
+      selection: String(r.selection),
+      line: r.line == null ? null : Number(r.line),
+      homeLine: r.home_line == null ? null : Number(r.home_line),
+      odds: Number(r.odds),
+      updatedAt: new Date(r.source_updated_at as string),
+    }));
+  }
+
+  async lastAnalysisRun(fixtureId: number, rulesVersion: string): Promise<{ inputs: Record<string, unknown>; startedAt: Date } | null> {
+    const res = await this.db.query<{ inputs: unknown; started_at: string | Date }>(
+      `select inputs, started_at from analysis_runs where fixture_id = $1 and decision_rule_version = $2 order by started_at desc, id desc limit 1`,
+      [fixtureId, rulesVersion],
+    );
+    const r = res.rows[0];
+    return r ? { inputs: r.inputs == null ? {} : parseJson(r.inputs), startedAt: new Date(r.started_at) } : null;
+  }
+
+  /** Writes the run and ALL evaluated candidates atomically. Returns run id. */
+  async insertAnalysisRun(run: Row, candidates: Row[]): Promise<string> {
+    return this.db.transaction(async (tx) => {
+      const id = await insertReturning<string>(tx, 'analysis_runs', run);
+      if (candidates.length) await insertRows(tx, 'analysis_candidates', candidates.map((c) => ({ ...c, run_id: id })));
+      return id;
+    });
+  }
+
+  async lastApiPredictionAt(fixtureId: number): Promise<Date | null> {
+    const res = await this.db.query<{ t: string | Date | null }>('select max(collected_at) as t from api_predictions where fixture_id = $1', [fixtureId]);
+    const t = res.rows[0]?.t;
+    return t ? new Date(t) : null;
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "fixture": {
+    "id": 1001,
+    "referee": "M. Oliver",
+    "timezone": "UTC",
+    "date": "2026-09-18T16:30:00+00:00",
+    "timestamp": 1792341000,
+    "venue": { "id": 550, "name": "Anfield", "city": "Liverpool" },
+    "status": { "long": "Match Finished", "short": "FT", "elapsed": 90 }
+  },
+  "league": { "id": 39, "name": "Premier League", "country": "England", "logo": null, "flag": null, "season": 2026, "round": "Regular Season - 8" },
+  "teams": {
+    "home": { "id": 40, "name": "Liverpool", "logo": "l.png", "winner": true },
+    "away": { "id": 42, "name": "Arsenal", "logo": "a.png", "winner": false }
+  },
+  "goals": { "home": 2, "away": 1 },
+  "score": {
+    "halftime": { "home": 1, "away": 0 },
+    "fulltime": { "home": 2, "away": 1 },
+    "extratime": { "home": null, "away": null },
+    "penalty": { "home": null, "away": null }
+  },
+  "events": [
+    { "time": { "elapsed": 23, "extra": null }, "team": { "id": 40, "name": "Liverpool" }, "player": { "id": 306, "name": "M. Salah" }, "assist": { "id": null, "name": null }, "type": "Goal", "detail": "Normal Goal", "comments": null },
+    { "time": { "elapsed": 61, "extra": null }, "team": { "id": 42, "name": "Arsenal" }, "player": { "id": 1460, "name": "B. Saka" }, "assist": { "id": 1, "name": "M. Ødegaard" }, "type": "Goal", "detail": "Normal Goal", "comments": null }
+  ],
+  "lineups": [
+    {
+      "team": { "id": 40, "name": "Liverpool" },
+      "coach": { "id": 9, "name": "A. Slot" },
+      "formation": "4-3-3",
+      "startXI": [{ "player": { "id": 306, "name": "M. Salah", "number": 11, "pos": "F", "grid": "5:3" } }],
+      "substitutes": [{ "player": { "id": 307, "name": "Sub", "number": 30, "pos": "M", "grid": null } }]
+    }
+  ],
+  "statistics": [
+    {
+      "team": { "id": 40, "name": "Liverpool" },
+      "statistics": [
+        { "type": "Shots on Goal", "value": 6 },
+        { "type": "Ball Possession", "value": "55%" },
+        { "type": "expected_goals", "value": "1.87" },
+        { "type": "Passes %", "value": "88%" },
+        { "type": "Red Cards", "value": null }
+      ]
+    }
+  ],
+  "players": [
+    {
+      "team": { "id": 40, "name": "Liverpool" },
+      "players": [
+        {
+          "player": { "id": 306, "name": "M. Salah" },
+          "statistics": [
+            {
+              "games": { "minutes": 90, "position": "F", "rating": "8.1", "substitute": false },
+              "shots": { "total": 4, "on": 2 },
+              "goals": { "total": 1, "assists": null },
+              "passes": { "total": 30, "key": 3, "accuracy": "80" },
+              "tackles": { "total": 1, "blocks": null, "interceptions": 0 },
+              "cards": { "yellow": 0, "red": 0 }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

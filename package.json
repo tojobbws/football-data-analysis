@@ -1,0 +1,43 @@
+{
+  "name": "football-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "workers/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "sync:leagues": "npm run job -w @fp/football-sync -- leagues",
+    "sync:teams": "npm run job -w @fp/football-sync -- teams",
+    "sync:fixtures": "npm run job -w @fp/football-sync -- fixtures",
+    "sync:details": "npm run job -w @fp/football-sync -- details",
+    "sync:lineups": "npm run job -w @fp/football-sync -- lineups",
+    "sync:injuries": "npm run job -w @fp/football-sync -- injuries",
+    "sync:predictions": "npm run job -w @fp/football-sync -- predictions",
+    "sync:standings": "npm run job -w @fp/football-sync -- standings",
+    "sync:players": "npm run job -w @fp/football-sync -- players",
+    "sync:odds": "npm run job -w @fp/odds-sync -- odds",
+    "dev:web": "npm run dev -w @fp/web",
+    "model:probabilities": "npm run job -w @fp/analysis-worker -- probabilities",
+    "model:backtest": "npm run job -w @fp/analysis-worker -- backtest",
+    "model:tune": "npm run job -w @fp/analysis-worker -- tune",
+    "model:candidates": "npm run job -w @fp/analysis-worker -- candidates",
+    "model:impact": "npm run job -w @fp/analysis-worker -- impact",
+    "model:publish": "npm run job -w @fp/analysis-worker -- publish",
+    "model:report": "npm run job -w @fp/analysis-worker -- report"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

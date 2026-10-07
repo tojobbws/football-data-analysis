@@ -1,0 +1,73 @@
+name: data-sync
+
+# Schedules are UTC (Thailand = UTC+7).
+on:
+  schedule:
+    - cron: '5 * * * *'     # hourly: odds + lineups + finished-match details
+    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings
+    - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Job to run (e.g. bootstrap, odds, details, players)'
+        required: true
+        default: bootstrap
+
+concurrency:
+  group: data-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      API_FOOTBALL_RPM: ${{ vars.API_FOOTBALL_RPM || '10' }}
+      TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
+      SEASON: ${{ vars.SEASON || '2026' }}
+      ODDS_MARKETS: ${{ vars.ODDS_MARKETS || 'MATCH_WINNER,ASIAN_HANDICAP,OVER_UNDER' }}
+      ODDS_BOOKMAKERS: ${{ vars.ODDS_BOOKMAKERS || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - name: Manual job
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          case "${{ inputs.job }}" in
+            odds) npm run sync:odds ;;
+            *)    npm run job -w @fp/football-sync -- "${{ inputs.job }}" ;;
+          esac
+
+      - name: Hourly
+        if: github.event.schedule == '5 * * * *'
+        run: |
+          npm run sync:lineups -- --minutes 75
+          npm run sync:odds
+          npm run sync:details
+          npm run model:probabilities -- --days 2
+          npm run model:impact -- --hours 36
+          npm run model:candidates -- --hours 36
+          npm run model:publish
+
+      - name: Daily
+        if: github.event.schedule == '30 22 * * *'
+        run: |
+          npm run sync:fixtures -- --from "$(date -u +%F)" --to "$(date -u -d '+10 days' +%F)"
+          npm run sync:injuries -- --days 3
+          npm run sync:details -- --limit 400
+          npm run sync:predictions -- --hours 48
+          npm run sync:standings
+          npm run model:probabilities -- --days 7
+
+      - name: Weekly
+        if: github.event.schedule == '0 20 * * 1'
+        run: |
+          npm run sync:players
+          npm run model:tune

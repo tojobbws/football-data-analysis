@@ -1,0 +1,99 @@
+import { parseArgs } from 'node:util';
+import { createJobContext } from '@fp/database';
+import { loadDotEnvFile } from '@fp/shared';
+import {
+  syncApiPredictions,
+  syncFinishedDetails,
+  syncFixtures,
+  syncInjuries,
+  syncLeagues,
+  syncPlayers,
+  syncPrematchLineups,
+  syncStandings,
+  syncTeams,
+} from './jobs.js';
+
+const USAGE = `usage: npm run job -- <job> [options]
+
+jobs:
+  leagues                         leagues + seasons for TRACKED_LEAGUES
+  teams                           teams + venues
+  fixtures [--from D --to D] [--season Y]  fixtures (whole season, or YYYY-MM-DD window; --season for history)
+  details  [--limit N]            events/stats/xG/lineups/players of finished matches
+  lineups  [--minutes N]          confirmed lineups for matches starting soon (default 90)
+  injuries [--days N]             injuries for the next N days (default 3)
+  predictions [--hours N]         API-Football predictions for next N hours (default 48)
+  standings
+  players  [--max-pages N]        player season stats (heavy, weekly)
+  bootstrap                       leagues -> teams -> fixtures -> standings`;
+
+async function main() {
+  loadDotEnvFile();
+  const { positionals, values } = parseArgs({
+    allowPositionals: true,
+    options: {
+      from: { type: 'string' },
+      season: { type: 'string' },
+      to: { type: 'string' },
+      limit: { type: 'string' },
+      minutes: { type: 'string' },
+      days: { type: 'string' },
+      hours: { type: 'string' },
+      'max-pages': { type: 'string' },
+    },
+  });
+  const job = positionals[0];
+  if (!job) {
+    console.log(USAGE);
+    process.exit(1);
+  }
+  const num = (v: string | undefined) => (v === undefined ? undefined : Number(v));
+  const ctx = createJobContext();
+  try {
+    switch (job) {
+      case 'leagues':
+        await syncLeagues(ctx);
+        break;
+      case 'teams':
+        await syncTeams(ctx);
+        break;
+      case 'fixtures':
+        await syncFixtures(ctx, { from: values.from, to: values.to, season: num(values.season) });
+        break;
+      case 'details':
+        await syncFinishedDetails(ctx, { limit: num(values.limit) });
+        break;
+      case 'lineups':
+        await syncPrematchLineups(ctx, { withinMinutes: num(values.minutes) });
+        break;
+      case 'injuries':
+        await syncInjuries(ctx, { days: num(values.days) });
+        break;
+      case 'predictions':
+        await syncApiPredictions(ctx, { hours: num(values.hours) });
+        break;
+      case 'standings':
+        await syncStandings(ctx);
+        break;
+      case 'players':
+        await syncPlayers(ctx, { maxPages: num(values['max-pages']) });
+        break;
+      case 'bootstrap':
+        await syncLeagues(ctx);
+        await syncTeams(ctx);
+        await syncFixtures(ctx);
+        await syncStandings(ctx);
+        break;
+      default:
+        console.log(USAGE);
+        process.exitCode = 1;
+    }
+  } finally {
+    await ctx.db.close();
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
