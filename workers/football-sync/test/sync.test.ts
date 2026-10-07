@@ -110,6 +110,15 @@ describe('sync pipeline', () => {
     expect(ctx.client.requestCount).toBe(before);
   });
 
+  it('details filters by league and season', async () => {
+    await db.query(`update fixtures set details_synced_at = null where id = 1001`);
+    expect(await ctx.repo.fixturesNeedingDetails([39], 10, [2025])).toEqual([]);
+    expect(await ctx.repo.fixturesNeedingDetails([40], 10)).toEqual([]);
+    expect(await ctx.repo.fixturesNeedingDetails([39], 10, [2026])).toEqual([1001]);
+    await syncFinishedDetails(ctx, { leagues: [39], seasons: [2026] });
+    expect(await ctx.repo.fixturesNeedingDetails([39], 10)).toEqual([]);
+  });
+
   it('api predictions are snapshotted and not re-fetched within the gap', async () => {
     await syncApiPredictions(ctx);
     await syncApiPredictions(ctx);

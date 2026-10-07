@@ -60,10 +60,11 @@ export function syncFixtures(ctx: JobContext, opts: { from?: string; to?: string
 }
 
 /** Finished matches: events, statistics (incl. xG), lineups, player stats — 20 fixtures per request. */
-export function syncFinishedDetails(ctx: JobContext, opts: { limit?: number } = {}) {
-  const leagues = ctx.env.TRACKED_LEAGUES;
-  return runJob(ctx, 'details', { leagues, ...opts }, async () => {
-    const ids = await ctx.repo.fixturesNeedingDetails(leagues, opts.limit ?? 200);
+export function syncFinishedDetails(ctx: JobContext, opts: { limit?: number; leagues?: number[]; seasons?: number[] } = {}) {
+  // optional filters, e.g. backfill history only for some leagues/seasons
+  const leagues = opts.leagues?.length ? opts.leagues : ctx.env.TRACKED_LEAGUES;
+  return runJob(ctx, 'details', { ...opts, leagues }, async () => {
+    const ids = await ctx.repo.fixturesNeedingDetails(leagues, opts.limit ?? 200, opts.seasons);
     let n = 0;
     for (const batch of chunk(ids, MAX_FIXTURE_IDS_PER_CALL)) {
       const { data } = await ctx.api.fixturesByIds(batch);

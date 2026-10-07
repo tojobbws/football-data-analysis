@@ -214,15 +214,16 @@ export class Repository {
   }
 
   /** Finished fixtures whose details are missing or were synced before full time (+ a buffer). */
-  async fixturesNeedingDetails(leagueIds: number[], limit = 200): Promise<number[]> {
+  async fixturesNeedingDetails(leagueIds: number[], limit = 200, seasons?: number[]): Promise<number[]> {
     const res = await this.db.query<{ id: string | number }>(
       `select id from fixtures
         where league_id = any($1::int[])
+          and ($3::int[] is null or season = any($3::int[]))
           and status_short in ('FT','AET','PEN')
           and (details_synced_at is null or details_synced_at < kickoff_at + interval '3 hours')
         order by kickoff_at desc
         limit $2`,
-      [leagueIds, limit],
+      [leagueIds, limit, seasons?.length ? seasons : null],
     );
     return res.rows.map((r) => Number(r.id));
   }

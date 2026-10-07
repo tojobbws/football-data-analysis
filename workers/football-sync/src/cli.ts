@@ -20,7 +20,7 @@ jobs:
   leagues                         leagues + seasons for TRACKED_LEAGUES
   teams                           teams + venues
   fixtures [--from D --to D] [--season Y]  fixtures (whole season, or YYYY-MM-DD window; --season for history)
-  details  [--limit N]            events/stats/xG/lineups/players of finished matches
+  details  [--limit N] [--league IDS] [--season YEARS]   events/stats/xG/lineups/players of finished matches (IDS/YEARS comma-separated)
   results  [--days N]             scores/status of matches that kicked off (last N days, default 14) + pending analyses
   lineups  [--minutes N]          confirmed lineups for matches starting soon (default 90)
   injuries [--days N]             injuries for the next N days (default 3)
@@ -38,6 +38,7 @@ async function main() {
       season: { type: 'string' },
       to: { type: 'string' },
       limit: { type: 'string' },
+      league: { type: 'string' },
       minutes: { type: 'string' },
       days: { type: 'string' },
       hours: { type: 'string' },
@@ -50,6 +51,7 @@ async function main() {
     process.exit(1);
   }
   const num = (v: string | undefined) => (v === undefined ? undefined : Number(v));
+  const ints = (v: string | undefined) => (v === undefined ? undefined : v.split(',').map((x) => Number(x.trim())).filter(Number.isInteger));
   const ctx = createJobContext();
   try {
     switch (job) {
@@ -63,7 +65,7 @@ async function main() {
         await syncFixtures(ctx, { from: values.from, to: values.to, season: num(values.season) });
         break;
       case 'details':
-        await syncFinishedDetails(ctx, { limit: num(values.limit) });
+        await syncFinishedDetails(ctx, { limit: num(values.limit), leagues: ints(values.league), seasons: ints(values.season) });
         break;
       case 'results':
         await syncResults(ctx, { days: num(values.days) });
