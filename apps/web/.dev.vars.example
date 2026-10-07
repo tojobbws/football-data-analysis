@@ -1,0 +1,4 @@
+# copy to .dev.vars (gitignored) for `npm run preview -w @fp/web`
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_ANON_KEY=<anon / publishable key from Supabase > Project Settings > API>
+WEB_LEAGUES=39,140,135,78,61,296,5

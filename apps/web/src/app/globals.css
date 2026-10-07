@@ -1,1 +1,19 @@
 @import 'tailwindcss';
+
+@theme {
+  --font-sans: var(--font-thai), ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #0f172a;
+  --color-pitch: #0f766e;
+  --color-pitch-soft: #ccfbf1;
+  --color-compass: #b45309;
+  --color-compass-soft: #fef3c7;
+}
+
+html {
+  font-feature-settings: 'tnum' 1; /* tabular numbers: odds and % line up */
+}
+
+body {
+  background: #f6f7f9;
+  color: var(--color-ink);
+}

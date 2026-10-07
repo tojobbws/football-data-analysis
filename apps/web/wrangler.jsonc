@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "football-data-analysis-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // non-secret config; SUPABASE_ANON_KEY is set with `wrangler secret put` (or .dev.vars locally)
+  "vars": {
+    "SUPABASE_URL": "https://mlbmwllpbaaekryklwrs.supabase.co",
+    "WEB_LEAGUES": "39,140,135,78,61,296,5"
+  }
+}
