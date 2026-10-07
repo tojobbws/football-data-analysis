@@ -24,6 +24,7 @@ jobs:
     env:
       API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       API_FOOTBALL_RPM: ${{ vars.API_FOOTBALL_RPM || '10' }}
       TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
       SEASON: ${{ vars.SEASON || '2026' }}
@@ -57,6 +58,7 @@ jobs:
           npm run model:impact -- --hours 36
           npm run model:candidates -- --hours 36
           npm run model:publish
+          npm run model:ai-shadow
 
       - name: Daily
         if: github.event.schedule == '30 22 * * *'

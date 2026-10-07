@@ -4,7 +4,7 @@
 >
 > บทวิเคราะห์จัดทำขึ้นเพื่อข้อมูลและความบันเทิง ไม่ใช่คำแนะนำในการเล่นพนัน และไม่มีโมเดลใดรับประกันผลการแข่งขันได้
 
-สถานะ: **Phase 1–7 เสร็จ** (Data Engine + Database + Odds History + Probability Engine + Candidate Generator + Publish + Settlement) — loop วิเคราะห์ → เผยแพร่ → จบเกม → ตัดสินผล → Performance ทำงานครบ
+สถานะ: **Phase 1–7 + 6b (AI shadow) เสร็จ** (Data Engine + Database + Odds History + Probability Engine + Candidate Generator + Publish + Settlement) — loop วิเคราะห์ → เผยแพร่ → จบเกม → ตัดสินผล → Performance ทำงานครบ
 
 ## โครงสร้าง
 
@@ -15,7 +15,8 @@ football-platform/
 │   ├── shared/               env (zod), logger, league ids, time utils
 │   ├── football/             API-Football client + typed endpoints + mappers + odds parser
 │   ├── database/             pg/Supabase access, upsert helpers, Repository, migrations runner
-│   └── analysis/             settlement rules, Dixon-Coles, Elo, market pricing, metrics, backtest
+│   ├── analysis/             settlement rules, Dixon-Coles, Elo, market pricing, metrics, backtest
+│   └── ai/                   AI shadow ranking: input จาก snapshot, prompt, Claude client, guards
 ├── workers/
 │   ├── football-sync/        leagues, teams, fixtures, details, lineups, injuries, predictions, standings, players
 │   ├── odds-sync/            odds snapshots -> odds_history
@@ -173,7 +174,24 @@ select * from analysis_performance;   -- win_rate, avg_clv, beat_closing_rate �
 - closing odds = median ราคาสุดท้ายก่อนเตะของแต่ละเจ้า (≥ 2 เจ้า) → `clv = odds_at_publish / closing − 1`
 - DB บังคับเอง: settle ได้ครั้งเดียว, หลังจบเกมเท่านั้น, `settled_at` ใช้นาฬิกา DB, เนื้อหาบทวิเคราะห์และ hash chain ไม่เปลี่ยน
 
+## AI Shadow Ranking (Phase 6b)
+
+```bash
+npm run model:publish
+npm run model:ai-shadow     # ต้องมี ANTHROPIC_API_KEY (ไม่มี = ข้าม)
+```
+```sql
+select * from ai_shadow_comparison;   -- กฎ vs AI บนคู่เดียวกัน: win_rate, avg_clv, agreement_rate
+```
+
+- **กฎเป็นคนเลือก 🧭** — AI จัดอันดับ candidate ชุดเดียวกันคู่ขนาน เก็บใน `ai_shadow_rankings` **ก่อนเตะ** และ**ไม่ถูก publish**
+- AI เห็นเฉพาะ snapshot ตอน publish (form, xG, ตัวเจ็บ, lineup, Player Impact, API prediction, ราคาโมเดล, candidates + เหตุผลที่กฎไม่รับ) — **ไม่เห็นว่ากฎเลือกตัวไหน** เพื่อให้เป็นความเห็นอิสระ
+- `claude-opus-5-5`, structured output, effort `medium`, server-side fallback เมื่อถูกปฏิเสธ — prompt version อยู่ในทุกแถว (`ai-shadow-v0.1`)
+- Guard: index ต้องมีจริง, **ทุกตัวเลขในข้อความไทยต้องมาจาก input** (AI สร้างตัวเลขเองไม่ได้), ห้ามคำพนัน → ผิดกฎ = `INVALID` (เก็บไว้พร้อมเหตุผล ไม่นับในการเทียบ)
+- `model:settle` ตัดสิน pick ของ AI ด้วยกฎเดียวกัน; DB บังคับ: insert ก่อนเตะเท่านั้น, เนื้อหาแก้ไม่ได้, settle ครั้งเดียว
+- ต้นทุนโดยประมาณ ~2 calls ต่อคู่ (EARLY + LINEUP)
+
 ## ลำดับถัดไป
 
-- **Phase 6b** AI layer: อธิบายภาษาไทย + มีสิทธิ์ลดเป็น 🌫️ เท่านั้น (ไม่สร้างตัวเลขเอง)
+- **Phase 6c** ใช้ `explanation_th` ที่ผ่าน guard เป็นคำอธิบายบนเว็บ/โซเชียล (หลังดูคุณภาพจาก shadow สักระยะ)
 - **Phase 8** Performance: หน้า /performance (streak, calendar, monthly report) จาก `analysis_performance` + `published_analysis`

@@ -6,6 +6,7 @@
  *
  * The DB trigger allows exactly one settlement per analysis and only after full time,
  * and sets settled_at with the DB clock. Closing odds + CLV are stored in the same update.
+ * The AI shadow pick (ai_shadow_rankings) is settled with the same rules, so rules vs AI compare fairly.
  * Run `sync:results` first so fixture scores are fresh.
  */
 import { closingLineValue, decideSettlement, SETTLEMENT_VERSION } from '@fp/analysis';
@@ -44,8 +45,23 @@ export function settleJob(ctx: JobContext, opts: { now?: Date } = {}) {
       summary.details.push({ publicId: p.publicId, action: d.action, status, score: resultScore, clv: closing?.clv ?? null });
     }
 
-    ctx.log.info('settlement', { pending: pending.length, settled: summary.settled, voided: summary.voided, waiting: summary.waiting });
+    // AI shadow picks: identical rules, never touches the published record
+    let shadowDone = 0;
+    for (const a of await ctx.repo.pendingShadowSettlements(now)) {
+      const d = decideSettlement(a, a.fixture, now);
+      if (d.action === 'WAIT') continue;
+      const closing = closingLineValue(a.odds, await ctx.repo.closingOdds(a.fixtureId, a.market, a.selection, a.line));
+      const ok = await ctx.repo.settleShadow(a.id, {
+        status: d.action === 'SETTLE' ? d.status : 'VOID',
+        resultScore: d.action === 'SETTLE' ? d.score : d.reason,
+        closingOdds: closing?.closingOdds ?? null,
+        clv: closing?.clv ?? null,
+      });
+      if (ok) shadowDone++;
+    }
+
+    ctx.log.info('settlement', { pending: pending.length, settled: summary.settled, voided: summary.voided, waiting: summary.waiting, aiShadowSettled: shadowDone });
     if (summary.details.length) console.table(summary.details);
-    return summary.settled + summary.voided;
+    return summary.settled + summary.voided + shadowDone;
   });
 }

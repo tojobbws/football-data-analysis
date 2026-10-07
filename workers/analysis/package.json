@@ -9,6 +9,7 @@
     "job": "tsx src/cli.ts"
   },
   "dependencies": {
+    "@fp/ai": "*",
     "@fp/analysis": "*",
     "@fp/database": "*",
     "@fp/shared": "*"

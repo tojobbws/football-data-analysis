@@ -51,6 +51,11 @@ function parseJson(v: unknown): Record<string, unknown> {
   return (v ?? {}) as Record<string, unknown>;
 }
 
+/** jsonb column as-is (arrays stay arrays, SQL null stays null). */
+function jsonOrNull(v: unknown): unknown {
+  return typeof v === 'string' ? JSON.parse(v) : (v ?? null);
+}
+
 /**
  * Data-access layer. Workers call these; no SQL elsewhere.
  * Writes are idempotent (safe to re-run any sync job).
@@ -523,6 +528,97 @@ export class Repository {
           set status = $2, result_score = $3,
               closing_odds = coalesce(closing_odds, $4::numeric), clv = coalesce(clv, $5::numeric)
         where id = $1 and status = 'PENDING'
+        returning id`,
+      [id, s.status, s.resultScore, s.closingOdds, s.clv],
+    );
+    return res.rows.length > 0;
+  }
+
+  // ---------- AI shadow ranking (Phase 6b) ----------
+
+  /** Published analyses still before kickoff (with a margin) that have no shadow ranking yet. */
+  async publishedAwaitingShadow(now: Date, marginMinutes = 5, limit = 50) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select p.id, p.fixture_id, p.publish_round, p.kind, p.market, p.selection, p.line,
+              s.form_snapshot, s.xg_snapshot, s.injury_snapshot, s.lineup_snapshot, s.api_prediction_snapshot,
+              s.model_snapshot, s.candidates_snapshot,
+              f.kickoff_at, f.home_team_id, f.away_team_id, th.name as home, ta.name as away, l.name as league
+         from analysis_predictions p
+         join analysis_snapshots s on s.analysis_prediction_id = p.id
+         join fixtures f on f.id = p.fixture_id
+         join teams th on th.id = f.home_team_id
+         join teams ta on ta.id = f.away_team_id
+         join leagues l on l.id = f.league_id
+        where p.kickoff_at > $1::timestamptz + make_interval(mins => $2)
+          and not exists (select 1 from ai_shadow_rankings a where a.analysis_prediction_id = p.id)
+        order by p.kickoff_at, p.id
+        limit $3`,
+      [now.toISOString(), marginMinutes, limit],
+    );
+    return res.rows.map((r) => ({
+      predictionId: Number(r.id),
+      publishRound: String(r.publish_round),
+      rules: { kind: String(r.kind), market: r.market == null ? null : String(r.market), selection: r.selection == null ? null : String(r.selection), line: r.line == null ? null : Number(r.line) },
+      fixture: {
+        home: String(r.home),
+        away: String(r.away),
+        league: String(r.league),
+        kickoffAt: new Date(r.kickoff_at as string),
+        homeTeamId: Number(r.home_team_id),
+        awayTeamId: Number(r.away_team_id),
+      },
+      snapshot: {
+        form_snapshot: jsonOrNull(r.form_snapshot),
+        xg_snapshot: jsonOrNull(r.xg_snapshot),
+        injury_snapshot: jsonOrNull(r.injury_snapshot),
+        lineup_snapshot: jsonOrNull(r.lineup_snapshot),
+        api_prediction_snapshot: jsonOrNull(r.api_prediction_snapshot),
+        model_snapshot: jsonOrNull(r.model_snapshot),
+        candidates_snapshot: jsonOrNull(r.candidates_snapshot),
+      },
+    }));
+  }
+
+  /** Insert-only; the DB trigger rejects it at/after kickoff. */
+  async insertShadowRanking(row: Row): Promise<number> {
+    return Number(await insertReturning(this.db, 'ai_shadow_rankings', row));
+  }
+
+  /** AI picks not settled yet whose kickoff has passed, with the fixture's current state. */
+  async pendingShadowSettlements(now: Date) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select a.id, a.fixture_id, a.pick_market, a.pick_selection, a.pick_line, a.pick_odds, a.kickoff_at,
+              f.status_short, f.kickoff_at as fixture_kickoff_at, f.synced_at,
+              coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga
+         from ai_shadow_rankings a join fixtures f on f.id = a.fixture_id
+        where a.ai_status is null and a.pick_market is not null and a.kickoff_at < $1
+        order by a.kickoff_at, a.id`,
+      [now.toISOString()],
+    );
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    return res.rows.map((r) => ({
+      id: Number(r.id),
+      fixtureId: Number(r.fixture_id),
+      market: String(r.pick_market),
+      selection: String(r.pick_selection),
+      line: num(r.pick_line),
+      odds: num(r.pick_odds),
+      kickoffAt: new Date(r.kickoff_at as string),
+      fixture: {
+        statusShort: String(r.status_short),
+        kickoffAt: new Date(r.fixture_kickoff_at as string),
+        home: num(r.gh),
+        away: num(r.ga),
+        syncedAt: new Date(r.synced_at as string),
+      },
+    }));
+  }
+
+  async settleShadow(id: number, s: { status: string; resultScore: string; closingOdds: number | null; clv: number | null }): Promise<boolean> {
+    const res = await this.db.query<{ id: string | number }>(
+      `update ai_shadow_rankings
+          set ai_status = $2, ai_result_score = $3, ai_closing_odds = $4::numeric, ai_clv = $5::numeric
+        where id = $1 and ai_status is null
         returning id`,
       [id, s.status, s.resultScore, s.closingOdds, s.clv],
     );

@@ -35,6 +35,8 @@ export const envSchema = z.object({
   ODDS_MARKETS: csvStrings.default('MATCH_WINNER,ASIAN_HANDICAP,OVER_UNDER'),
   ODDS_BOOKMAKERS: csvInts.default(''),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  /** Optional: without it the AI shadow ranking job skips (nothing else depends on it). */
+  ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
 });
 
 export type Env = z.infer<typeof envSchema>;

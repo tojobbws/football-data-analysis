@@ -33,6 +33,7 @@
     "model:candidates": "npm run job -w @fp/analysis-worker -- candidates",
     "model:impact": "npm run job -w @fp/analysis-worker -- impact",
     "model:publish": "npm run job -w @fp/analysis-worker -- publish",
+    "model:ai-shadow": "npm run job -w @fp/analysis-worker -- ai-shadow",
     "model:settle": "npm run job -w @fp/analysis-worker -- settle",
     "model:report": "npm run job -w @fp/analysis-worker -- report"
   },
