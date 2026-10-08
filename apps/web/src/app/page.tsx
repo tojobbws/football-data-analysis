@@ -1,14 +1,22 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { ArticleGrid, BandHeading, MoreLink, Rail, RailItem, ScoreTile, WeeklyWinRate } from '@/components/home';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { MatchList } from '@/components/match-list';
+import { SignalCard } from '@/components/signal-card';
 import { Empty, Section } from '@/components/ui';
-import { FINISHED, LIVE, odds, pct, selectionLabel } from '@/lib/labels';
+import { FINISHED, LIVE, pct } from '@/lib/labels';
 import { latestArticles, leagueWidgets, liveMatches, matchDayCounts, matchesOnDay, perfSummary, upcomingSignals, weeklyPerformance } from '@/lib/queries';
-import { addDaysStr, dayTH, thaiDate, timeTH } from '@/lib/time';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
+import { addDaysStr, dayTH, thaiDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = {
+  title: { absolute: `${SITE_NAME} — ${SITE_TAGLINE}` },
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: '/' },
+};
 
 const RESULTS_SHOWN = 8;
 
@@ -43,7 +51,9 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-5 sm:py-8">
-      <h1 className="sr-only">เข็มทิศเกม — วิเคราะห์ฟุตบอลด้วย Data, Model และ Market</h1>
+      <h1 className="sr-only">
+        {SITE_NAME} — วิเคราะห์บอลวันนี้ ผลบอล โปรแกรมแข่ง และบทวิเคราะห์ฟุตบอลด้วยข้อมูล
+      </h1>
       {live.length ? <AutoRefresh seconds={60} /> : null}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[auto_auto_1fr] lg:gap-x-6">
@@ -88,7 +98,7 @@ export default async function HomePage() {
           <div>
             <div className="mb-2 flex items-center justify-between gap-3">
               <h3 className="text-base font-semibold">{upcomingDay === today ? 'โปรแกรมแข่งวันนี้' : `โปรแกรมถัดไป · ${dayTH(`${upcomingDay}T12:00:00+07:00`)}`}</h3>
-              <MoreLink href={`/matches?date=${upcomingDay}`} label="ดูตามวัน" />
+              <MoreLink href="/today" label="วิเคราะห์บอลวันนี้" />
             </div>
             {upcoming.length ? <MatchList matches={upcoming} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
           </div>
@@ -103,23 +113,22 @@ export default async function HomePage() {
               <ul className="grid gap-3 sm:grid-cols-2">
                 {signals.map((s) => (
                   <li key={s.public_id}>
-                    <Link
-                      href={`/matches/${s.fixture_slug}`}
-                      className="block h-full rounded-xl border border-[var(--color-compass)]/25 bg-gradient-to-br from-[var(--color-compass-soft)] to-white p-4 transition-shadow duration-200 hover:shadow-md"
-                    >
-                      <p className="text-xs text-slate-600">
-                        {s.league_name} · {dayTH(s.kickoff_at)} {timeTH(s.kickoff_at)}
-                      </p>
-                      <p className="mt-1 text-sm font-medium">
-                        {s.home_team} vs {s.away_team}
-                      </p>
-                      <p className="mt-2 text-lg font-bold leading-snug text-[var(--color-compass)]">
-                        🧭 {selectionLabel(s.market!, s.selection!, s.line == null ? null : Number(s.line), s.home_team, s.away_team)}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        {s.signal_strength} · โมเดล {pct(s.model_probability)} vs ตลาด {pct(s.market_probability)} · ราคา {odds(s.odds_at_publish)}
-                      </p>
-                    </Link>
+                    <SignalCard
+                      s={{
+                        slug: s.fixture_slug,
+                        league: s.league_name,
+                        kickoff_at: s.kickoff_at,
+                        home: s.home_team,
+                        away: s.away_team,
+                        market: s.market!,
+                        selection: s.selection!,
+                        line: s.line,
+                        signal_strength: s.signal_strength,
+                        model_probability: s.model_probability,
+                        market_probability: s.market_probability,
+                        odds_at_publish: s.odds_at_publish,
+                      }}
+                    />
                   </li>
                 ))}
               </ul>

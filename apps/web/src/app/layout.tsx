@@ -5,15 +5,22 @@ import Link from 'next/link';
 import { IconShield, Logo } from '@/components/icons';
 import { SiteNav } from '@/components/site-nav';
 import { tickerMatches } from '@/lib/queries';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, siteUrl } from '@/lib/site';
 import { shortDayTH, thaiDate, timeTH } from '@/lib/time';
 import './globals.css';
 
 const thai = IBM_Plex_Sans_Thai({ subsets: ['thai', 'latin'], weight: ['400', '500', '600', '700'], variable: '--font-thai', display: 'swap' });
 
-export const metadata: Metadata = {
-  title: { default: '🧭 เข็มทิศเกม — Football Data & Analysis', template: '%s | เข็มทิศเกม' },
-  description: 'วิเคราะห์ฟุตบอลด้วย Data, Model และ Market — ทุกบทวิเคราะห์ถูกบันทึกก่อนเตะ และตรวจสอบผลงานย้อนหลังได้ทั้งหมด',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    metadataBase: new URL(await siteUrl()),
+    applicationName: SITE_NAME,
+    title: { default: `${SITE_NAME} — ${SITE_TAGLINE}`, template: `%s | ${SITE_NAME}` },
+    description: SITE_DESCRIPTION,
+    openGraph: { siteName: SITE_NAME, locale: 'th_TH', type: 'website' },
+    twitter: { card: 'summary_large_image' },
+  };
+}
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -23,7 +30,8 @@ export const viewport: Viewport = {
 };
 
 const footerLinks = [
-  { href: '/matches', label: 'แมตช์' },
+  { href: '/today', label: 'วิเคราะห์บอลวันนี้' },
+  { href: '/matches', label: 'โปรแกรมและผลบอล' },
   { href: '/analysis', label: 'บทวิเคราะห์' },
   { href: '/performance', label: 'ผลงานการวิเคราะห์' },
 ];
@@ -42,7 +50,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <div className="space-y-3">
               <Link href="/" className="inline-flex items-center gap-2 font-bold text-white">
                 <Logo size={28} />
-                เข็มทิศเกม
+                {SITE_NAME}
               </Link>
               <p className="flex max-w-xl gap-2 text-xs leading-relaxed">
                 <IconShield size={16} className="mt-0.5 shrink-0 text-[var(--color-pitch-bright)]" />

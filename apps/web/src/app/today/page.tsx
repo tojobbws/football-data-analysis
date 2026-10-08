@@ -1,0 +1,115 @@
+import type { Metadata } from 'next';
+import { ArticleGrid, MoreLink } from '@/components/home';
+import { MatchList } from '@/components/match-list';
+import { SignalCard } from '@/components/signal-card';
+import { Empty, Section } from '@/components/ui';
+import { FINISHED } from '@/lib/labels';
+import { latestArticles, matchDayCounts, matchesOnDay } from '@/lib/queries';
+import { SITE_NAME, siteUrl } from '@/lib/site';
+import { addDaysStr, dayTH, thaiDate } from '@/lib/time';
+
+export const dynamic = 'force-dynamic';
+
+const noon = (d: string) => `${d}T12:00:00+07:00`;
+
+export async function generateMetadata(): Promise<Metadata> {
+  const date = dayTH(noon(thaiDate()));
+  return {
+    title: `วิเคราะห์บอลวันนี้ ${date} ทุกคู่`,
+    description: `วิเคราะห์บอลวันนี้ ${date} — โปรแกรมแข่ง ผลบอล ฟอร์ม xG ตัวเจ็บ แรงตลาด และ 🧭 เข็มทิศเกม คู่น่าจับตา จาก${SITE_NAME} บันทึกก่อนเตะทุกคู่`,
+    alternates: { canonical: '/today' },
+  };
+}
+
+export default async function TodayPage() {
+  const today = thaiDate();
+  const [todays, counts, articles] = await Promise.all([matchesOnDay(today), matchDayCounts(addDaysStr(today, 1), 10), latestArticles(12)]);
+
+  // nothing today: show the next day that has matches, and say so
+  let day = today;
+  let matches = todays;
+  if (!matches.length) {
+    const next = [...counts.keys()].sort()[0];
+    if (next) {
+      day = next;
+      matches = await matchesOnDay(next);
+    }
+  }
+  const picks = matches.filter((m) => m.compass?.kind === 'SIGNAL' && !FINISHED.includes(m.status_short));
+  const leagues = [...new Set(matches.map((m) => m.league.name))];
+  const todaysArticles = articles.filter((a) => thaiDate(new Date(a.published_at)) === today);
+  const origin = await siteUrl();
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: `วิเคราะห์บอลวันนี้ ${dayTH(noon(today))}`,
+    itemListElement: matches.map((m, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: `${origin}/matches/${m.slug}`,
+      name: `${m.home.name} vs ${m.away.name}`,
+    })),
+  };
+
+  return (
+    <main className="mx-auto max-w-5xl space-y-5 px-4 py-5 sm:py-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+
+      <header>
+        <p className="text-sm font-semibold text-[var(--color-pitch)]">{dayTH(noon(today))}</p>
+        <h1 className="mt-1 text-2xl font-bold sm:text-3xl">วิเคราะห์บอลวันนี้</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
+          {day === today
+            ? `รวมการวิเคราะห์บอลวันนี้ ${matches.length} คู่`
+            : `วันนี้ไม่มีแมตช์ในลีกที่เราติดตาม — คู่ถัดไปคือ${dayTH(noon(day))} ${matches.length} คู่`}
+          {leagues.length ? ` จาก ${leagues.join(', ')}` : ''} ทุกคู่มีข้อมูลฟอร์ม 5 นัด, xG, ตัวเจ็บ, ตารางคะแนน และแรงตลาด
+          ส่วน 🧭 เข็มทิศเกม จะเลือกเพียง 1 ตัวเลือกที่ข้อมูลสนับสนุนมากที่สุด หรือบอกตรง ๆ ว่า 🌫️ หมอกข้อมูล และบันทึกไว้ก่อนเตะเสมอ
+        </p>
+      </header>
+
+      <Section title="🧭 เข็มทิศเกม คู่น่าจับตา" aside="ล็อกก่อนเตะ แก้ไขไม่ได้">
+        {picks.length ? (
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {picks.map((m) => (
+              <li key={m.id}>
+                <SignalCard
+                  s={{
+                    slug: m.slug,
+                    league: m.league.name,
+                    kickoff_at: m.kickoff_at,
+                    home: m.home.name,
+                    away: m.away.name,
+                    market: m.compass!.market!,
+                    selection: m.compass!.selection!,
+                    line: m.compass!.line,
+                    signal_strength: m.compass!.signal_strength,
+                    model_probability: m.compass!.model_probability,
+                    market_probability: m.compass!.market_probability,
+                    odds_at_publish: m.compass!.odds_at_publish,
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty>ยังไม่มีคู่ที่ผ่านเกณฑ์ — บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ</Empty>
+        )}
+      </Section>
+
+      <section aria-labelledby="today-fixtures">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h2 id="today-fixtures" className="text-lg font-bold">
+            {day === today ? 'โปรแกรมบอลและผลบอลวันนี้' : `โปรแกรมบอล ${dayTH(noon(day))}`}
+          </h2>
+          <MoreLink href={`/matches?date=${day}`} label="ดูตามวัน" />
+        </div>
+        {matches.length ? <MatchList matches={matches} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
+      </section>
+
+      <Section title="บทวิเคราะห์บอลวันนี้" aside={<MoreLink href="/analysis" label="ทั้งหมด" />}>
+        {todaysArticles.length ? <ArticleGrid articles={todaysArticles} /> : <Empty>ยังไม่มีบทความที่เผยแพร่วันนี้ — ดูข้อมูลวิเคราะห์ของแต่ละคู่ได้จากรายการด้านบน</Empty>}
+      </Section>
+    </main>
+  );
+}

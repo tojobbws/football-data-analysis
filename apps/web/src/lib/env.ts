@@ -6,6 +6,8 @@ export interface WebEnv {
   SUPABASE_ANON_KEY: string;
   /** league ids shown on the site (comma-separated) */
   leagues: number[];
+  /** public origin, e.g. https://www.example.com (canonical URLs, sitemap); optional */
+  SITE_URL: string;
 }
 
 /** Cloudflare bindings in production/preview, process.env in `next dev`. Server only. */
@@ -23,5 +25,5 @@ export function webEnv(): WebEnv {
     .split(',')
     .map((x) => Number(x.trim()))
     .filter(Number.isInteger);
-  return { SUPABASE_URL: url, SUPABASE_ANON_KEY: key, leagues };
+  return { SUPABASE_URL: url, SUPABASE_ANON_KEY: key, leagues, SITE_URL: String(src.SITE_URL ?? '') };
 }

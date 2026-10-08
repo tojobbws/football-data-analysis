@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { SITE_NAME } from '@/lib/brand';
 import type { TickerMatch } from '@/lib/queries';
 import { IconArticle, IconCalendar, IconChart, IconChevronRight, IconCompass, IconHome, Logo } from './icons';
 import { TeamLogo } from './primitives';
@@ -36,10 +37,10 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
 
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 md:h-16 md:gap-6">
-          <Link href="/" className="flex shrink-0 items-center gap-2.5 whitespace-nowrap" aria-label="เข็มทิศเกม หน้าแรก">
+          <Link href="/" className="flex shrink-0 items-center gap-2.5 whitespace-nowrap" aria-label={`${SITE_NAME} หน้าแรก`}>
             <Logo size={34} />
             <span className="leading-none">
-              <span className="block text-[17px] font-bold tracking-tight">เข็มทิศเกม</span>
+              <span className="block text-[17px] font-bold tracking-tight">{SITE_NAME}</span>
               <span className="mt-1 hidden text-xs text-slate-500 sm:block">Football Data &amp; Analysis</span>
             </span>
           </Link>
@@ -182,7 +183,7 @@ function AdminBar() {
       <div className="mx-auto flex h-14 max-w-6xl items-center px-4">
         <Link href="/" className="flex items-center gap-2.5 font-bold">
           <Logo size={30} />
-          เข็มทิศเกม
+          {SITE_NAME}
         </Link>
       </div>
     </header>
