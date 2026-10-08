@@ -21,7 +21,7 @@ export function webEnv(): WebEnv {
   const url = String(src.SUPABASE_URL ?? '');
   const key = String(src.SUPABASE_ANON_KEY ?? '');
   if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY must be set (see apps/web/.env.local.example)');
-  const leagues = String(src.WEB_LEAGUES ?? '39,140,135,78,61,296,5')
+  const leagues = String(src.WEB_LEAGUES ?? '39,140,135,78,61,296,5,2,3,848')
     .split(',')
     .map((x) => Number(x.trim()))
     .filter(Number.isInteger);
