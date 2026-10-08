@@ -59,6 +59,7 @@ jobs:
           npm run model:candidates -- --hours 36
           npm run model:publish
           npm run model:ai-shadow
+          npm run model:preview -- --hours 48
 
       - name: Daily
         if: github.event.schedule == '30 22 * * *'

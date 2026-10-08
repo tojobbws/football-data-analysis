@@ -217,6 +217,24 @@ select * from ai_shadow_comparison;   -- กฎ vs AI บนคู่เดี�
 - `model:settle` ตัดสิน pick ของ AI ด้วยกฎเดียวกัน; DB บังคับ: insert ก่อนเตะเท่านั้น, เนื้อหาแก้ไม่ได้, settle ครั้งเดียว
 - ต้นทุนโดยประมาณ ~2 calls ต่อคู่ (EARLY + LINEUP)
 
+## 🔎 วิเคราะห์เกม (match preview — ทุกคู่)
+
+```bash
+npm run model:probabilities -- --days 2
+npm run model:preview -- --hours 48      # มี ANTHROPIC_API_KEY = AI เรียบเรียง, ไม่มี = ข้อความจากตัวเลขล้วน
+```
+```sql
+select fixture_id, stage, text_source, ai_status, data_support, predicted_home, predicted_away from match_previews order by kickoff_at;
+select * from web_match_previews;    -- ที่เว็บแสดง: stage ล่าสุดต่อคู่
+```
+
+- **ทุกคู่** ในลีกที่ติดตามได้บทวิเคราะห์ — ไม่ใช่ pick, ไม่นับใน 🧭: ภาพรวม, มุมมองเจ้าบ้าน/ทีมเยือน, **สกอร์คาดการณ์** (scoreline ที่โมเดลให้โอกาสสูงสุด จาก score matrix เดียวกับ Probability Engine รวม cross-league blend) และหมายเหตุเรื่องข้อมูล
+- 2 stage ต่อคู่: **EARLY** (ภายใน 48 ชม.) และ **LINEUP** (หลังตัวจริงออก ≤ 80 นาทีก่อนเตะ); เขียนก่อนเตะเท่านั้น (DB trigger) และแก้ไม่ได้ — ผู้อ่านเห็นข้อความเดิมเสมอ
+- **Data support** ตัดสินโดยกฎ ไม่ใช่ AI (`assessDataSupport()` ใน `packages/analysis/src/preview.ts`): `GOOD` / `LIMITED` / `THIN` พร้อมเหตุผลภาษาไทย เช่น *บอลถ้วยที่ทีมมาจากคนละลีก นัดในถ้วยที่ใช้คำนวณมีเพียง N นัด*, ทีมมีข้อมูลน้อย, โมเดลยังไม่ผ่านการทดสอบ, ไม่มี xG, ไม่มีโมเดลสำหรับรายการนี้ — ช่องว่างเล็ก ๆ (ไม่มีราคา, ไม่มีรายงานตัวเจ็บ, ไม่มี H2H) บันทึกไว้แต่ไม่ลดระดับ
+- AI (`claude-opus-5-5`, prompt `preview-ai-v0.1`) เห็นเฉพาะ facts ใน `facts` และ**เขียนได้แค่ร้อยแก้ว**: ตัวเลขทุกตัวต้องมาจาก input, scoreline ต้องเป็นของโมเดล (หรือผล H2H), ห้ามคำพนัน → ไม่ผ่าน = เก็บเป็น `INVALID` พร้อมเหตุผล แล้วใช้**ข้อความ template** (`buildTemplateText()`) แทน — ไม่มี API key ก็ได้ template เช่นกัน ดังนั้น coverage ไม่ขึ้นกับ AI
+- หน้าแมตช์แสดงการ์ด "🔎 วิเคราะห์เกม" (ป้ายระดับข้อมูล + หมายเหตุ, ข้อความ, สกอร์คาดการณ์ + ผลจริงเมื่อจบ); หน้า /today และรายการแมตช์แสดงภาพรวม 2 บรรทัด
+- ต้นทุน ≈ 2 calls ต่อคู่ (EARLY + LINEUP) เหมือน shadow ranking
+
 ## ลำดับถัดไป
 
 - **Phase 6c** ใช้ `explanation_th` ที่ผ่าน guard เป็นคำอธิบายบนเว็บ/โซเชียล (หลังดูคุณภาพจาก shadow สักระยะ)

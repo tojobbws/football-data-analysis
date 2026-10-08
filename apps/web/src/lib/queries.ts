@@ -26,6 +26,44 @@ export interface MatchRow {
   home: Team;
   away: Team;
   compass: Compass | null;
+  /** 🔎 one-line teaser of the written preview (list pages) */
+  preview?: { overview_th: string; data_support: DataSupport } | null;
+}
+
+export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
+
+/** 🔎 วิเคราะห์เกม — written preview, latest stage per fixture, stored before kickoff and immutable. */
+export interface MatchPreview {
+  stage: 'EARLY' | 'LINEUP';
+  text_source: 'AI' | 'TEMPLATE';
+  ai_status: string;
+  data_support: DataSupport;
+  data_notes: string[];
+  predicted_home: number | null;
+  predicted_away: number | null;
+  predicted_p: number | null;
+  expected_home: number | null;
+  expected_away: number | null;
+  p_home: number | null;
+  p_draw: number | null;
+  p_away: number | null;
+  overview_th: string;
+  home_th: string;
+  away_th: string;
+  score_th: string;
+  created_at: string;
+}
+
+const PREVIEW_SELECT = `fixture_id, stage, text_source, ai_status, data_support, data_notes, predicted_home, predicted_away, predicted_p,
+  expected_home, expected_away, p_home, p_draw, p_away, overview_th, home_th, away_th, score_th, created_at`;
+
+async function previewsFor(fixtureIds: number[]): Promise<Map<number, MatchRow['preview']>> {
+  const out = new Map<number, MatchRow['preview']>();
+  if (!fixtureIds.length) return out;
+  const { data, error } = await db().from('web_match_previews').select('fixture_id, overview_th, data_support').in('fixture_id', fixtureIds);
+  if (error) fail('web_match_previews', error);
+  for (const r of data ?? []) out.set(Number(r.fixture_id), { overview_th: String(r.overview_th), data_support: r.data_support as DataSupport });
+  return out;
 }
 
 export interface Compass {
@@ -85,8 +123,9 @@ export async function matchesOnDay(date: string): Promise<MatchRow[]> {
     .order('id');
   if (error) fail('fixtures', error);
   const rows = (data ?? []) as unknown as Omit<MatchRow, 'compass'>[];
-  const compass = await compassFor(rows.map((r) => r.id));
-  return rows.map((r) => ({ ...r, compass: compass.get(r.id) ?? null }));
+  const ids = rows.map((r) => r.id);
+  const [compass, previews] = await Promise.all([compassFor(ids), previewsFor(ids)]);
+  return rows.map((r) => ({ ...r, compass: compass.get(r.id) ?? null, preview: previews.get(r.id) ?? null }));
 }
 
 /** Next days that have matches (for the date strip), starting at `date`. */
@@ -165,7 +204,7 @@ export async function matchBySlug(slug: string) {
   };
 
   const finished = FINISHED.includes(m.status_short);
-  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook] = await Promise.all([
+  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook, preview] = await Promise.all([
     sb.from('analysis_predictions').select(COMPASS_SELECT).eq('fixture_id', m.id).order('published_at'),
     sb
       .from('analysis_predictions')
@@ -195,8 +234,9 @@ export async function matchBySlug(slug: string) {
     finished ? sb.from('fixture_statistics').select('team_id, type, value_num, value_text').eq('fixture_id', m.id) : Promise.resolve({ data: [], error: null }),
     finished ? sb.from('fixture_events').select('elapsed, extra, team_id, player_name, type, detail').eq('fixture_id', m.id).order('seq') : Promise.resolve({ data: [], error: null }),
     sb.from('web_model_outlook').select('computed_at, p_home, p_draw, p_away, p_over25, sides_tested, totals_tested').eq('fixture_id', m.id).maybeSingle(),
+    sb.from('web_match_previews').select(PREVIEW_SELECT).eq('fixture_id', m.id).maybeSingle(),
   ]);
-  for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook })) if (r.error) fail(name, r.error);
+  for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook, preview })) if (r.error) fail(name, r.error);
 
   const snapRow = (snapshot.data?.[0] as { analysis_snapshots?: unknown } | undefined)?.analysis_snapshots;
   return {
@@ -216,6 +256,7 @@ export async function matchBySlug(slug: string) {
     stats: (stats.data ?? []) as Array<{ team_id: number; type: string; value_num: number | null; value_text: string | null }>,
     events: (events.data ?? []) as Array<{ elapsed: number | null; extra: number | null; team_id: number | null; player_name: string | null; type: string; detail: string | null }>,
     outlook: (outlook.data ?? null) as ModelOutlook | null,
+    preview: (preview.data ?? null) as MatchPreview | null,
   };
 }
 

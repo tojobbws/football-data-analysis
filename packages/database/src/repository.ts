@@ -722,14 +722,28 @@ export class Repository {
 
   async fixtureHeader(fixtureId: number) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select f.id, f.league_id, f.kickoff_at, f.home_team_id, f.away_team_id, th.name as home, ta.name as away, l.name as league
+      `select f.id, f.league_id, f.season, f.round, f.kickoff_at, f.home_team_id, f.away_team_id, th.name as home, ta.name as away,
+              l.name as league, l.type as league_type, l.country as league_country
          from fixtures f join teams th on th.id = f.home_team_id join teams ta on ta.id = f.away_team_id
          join leagues l on l.id = f.league_id where f.id = $1`,
       [fixtureId],
     );
     const r = res.rows[0];
     return r
-      ? { id: Number(r.id), leagueId: Number(r.league_id), kickoffAt: new Date(r.kickoff_at as string), homeTeamId: Number(r.home_team_id), awayTeamId: Number(r.away_team_id), home: String(r.home), away: String(r.away), league: String(r.league) }
+      ? {
+          id: Number(r.id),
+          leagueId: Number(r.league_id),
+          season: Number(r.season),
+          round: r.round == null ? null : String(r.round),
+          kickoffAt: new Date(r.kickoff_at as string),
+          homeTeamId: Number(r.home_team_id),
+          awayTeamId: Number(r.away_team_id),
+          home: String(r.home),
+          away: String(r.away),
+          league: String(r.league),
+          leagueType: r.league_type == null ? null : String(r.league_type),
+          leagueCountry: r.league_country == null ? null : String(r.league_country),
+        }
       : null;
   }
 
@@ -743,10 +757,12 @@ export class Repository {
   /** Last n finished results of a team before a date (for the snapshot). */
   async teamForm(teamId: number, before: Date, n = 5) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select f.id, f.kickoff_at, f.home_team_id, f.away_team_id,
+      `select f.id, f.kickoff_at, f.home_team_id, f.away_team_id, th.name as home_name, ta.name as away_name,
               coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga,
               xh.value_num as xg_home, xa.value_num as xg_away
          from fixtures f
+         join teams th on th.id = f.home_team_id
+         join teams ta on ta.id = f.away_team_id
          left join fixture_statistics xh on xh.fixture_id = f.id and xh.team_id = f.home_team_id and xh.type = 'expected_goals'
          left join fixture_statistics xa on xa.fixture_id = f.id and xa.team_id = f.away_team_id and xa.type = 'expected_goals'
         where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $2
@@ -763,6 +779,7 @@ export class Repository {
         fixtureId: Number(r.id),
         kickoffAt: new Date(r.kickoff_at as string).toISOString(),
         venue: home ? 'H' : 'A',
+        opponent: String(home ? r.away_name : r.home_name),
         goalsFor: gf,
         goalsAgainst: ga,
         result: gf > ga ? 'W' : gf < ga ? 'L' : 'D',
@@ -824,6 +841,46 @@ export class Repository {
       await insertRows(tx, 'analysis_snapshots', [{ ...snapshot, analysis_prediction_id: p.id }]);
       return { id: Number(p.id), publicId: p.public_id, recordHash: p.record_hash };
     });
+  }
+
+  // ---------- 🔎 match previews ----------
+
+  async standingsForTeams(leagueId: number, season: number, teamIds: number[]) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select team_id, rank, points, played, win, draw, lose, goals_for, goals_against
+         from standings where league_id = $1 and season = $2 and team_id = any($3::int[])`,
+      [leagueId, season, teamIds],
+    );
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    return new Map(
+      res.rows.map((r) => [
+        Number(r.team_id),
+        { rank: num(r.rank), points: num(r.points), played: num(r.played), win: num(r.win), draw: num(r.draw), lose: num(r.lose), goalsFor: num(r.goals_for), goalsAgainst: num(r.goals_against) },
+      ]),
+    );
+  }
+
+  /** Last n finished meetings of two teams before a date (any competition). */
+  async headToHead(teamA: number, teamB: number, before: Date, n = 5) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.kickoff_at, th.name as home, ta.name as away, coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga
+         from fixtures f join teams th on th.id = f.home_team_id join teams ta on ta.id = f.away_team_id
+        where ((f.home_team_id = $1 and f.away_team_id = $2) or (f.home_team_id = $2 and f.away_team_id = $1))
+          and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $3
+        order by f.kickoff_at desc limit $4`,
+      [teamA, teamB, before.toISOString(), n],
+    );
+    return res.rows.map((r) => ({ kickoffAt: new Date(r.kickoff_at as string).toISOString(), home: String(r.home), away: String(r.away), homeGoals: Number(r.gh), awayGoals: Number(r.ga) }));
+  }
+
+  async hasPreview(fixtureId: number, stage: string): Promise<boolean> {
+    const res = await this.db.query('select 1 from match_previews where fixture_id = $1 and stage = $2', [fixtureId, stage]);
+    return res.rows.length > 0;
+  }
+
+  /** Insert-only; the DB trigger rejects it at/after kickoff. */
+  async insertMatchPreview(row: Row): Promise<number> {
+    return Number(await insertReturning(this.db, 'match_previews', row));
   }
 
   // ---------- candidate generator ----------

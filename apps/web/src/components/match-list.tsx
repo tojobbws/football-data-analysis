@@ -65,8 +65,14 @@ function MatchItem({ m }: { m: MatchRow }) {
             </div>
           ))}
         </div>
+        {m.preview ? (
+          <p className="col-start-2 line-clamp-2 text-xs leading-relaxed text-slate-600 sm:col-span-2">
+            <span className="mr-1" aria-hidden>🔎</span>
+            {m.preview.overview_th}
+          </p>
+        ) : null}
         {c ? (
-          <div className="col-start-2 flex flex-wrap items-center gap-1.5 sm:col-start-3 sm:flex-col sm:items-end">
+          <div className="col-start-2 flex flex-wrap items-center gap-1.5 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end">
             {c.kind === 'SIGNAL' ? (
               <>
                 <span className="rounded-full bg-[var(--color-compass-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-compass)]">

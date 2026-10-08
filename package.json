@@ -37,6 +37,7 @@
     "model:impact": "npm run job -w @fp/analysis-worker -- impact",
     "model:publish": "npm run job -w @fp/analysis-worker -- publish",
     "model:ai-shadow": "npm run job -w @fp/analysis-worker -- ai-shadow",
+    "model:preview": "npm run job -w @fp/analysis-worker -- preview",
     "model:settle": "npm run job -w @fp/analysis-worker -- settle",
     "model:report": "npm run job -w @fp/analysis-worker -- report"
   },

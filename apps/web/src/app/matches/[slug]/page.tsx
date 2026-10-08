@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CompassCard } from '@/components/compass-card';
+import { MatchPreviewCard } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { Empty, FormPills, Section, TeamLogo, TextLink } from '@/components/ui';
 import { FINISHED, LIVE, odds, selectionLabel } from '@/lib/labels';
@@ -65,6 +66,14 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
           <Empty>{FINISHED.includes(m.status_short) ? 'แมตช์นี้ไม่มีบทวิเคราะห์ที่เผยแพร่' : 'บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ'}</Empty>
         </Section>
       )}
+
+      {d.preview ? (
+        <MatchPreviewCard p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} />
+      ) : !d.finished && !OFF[m.status_short] ? (
+        <Section title="🔎 วิเคราะห์เกม">
+          <Empty>บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</Empty>
+        </Section>
+      ) : null}
 
       {d.outlook ? <ModelOutlookCard o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
 
@@ -504,11 +513,17 @@ function H2HSection({ d }: { d: Data }) {
   );
 }
 
-/** 90-minute result of a finished match (what the model outlook is scored against). */
-function result90(d: Data): 'HOME' | 'DRAW' | 'AWAY' | null {
+/** 90-minute score of a finished match (what the preview's predicted score is compared with). */
+function score90(d: Data): { home: number; away: number } | null {
   if (!d.finished) return null;
   const h = d.match.ft_home ?? d.match.goals_home;
   const a = d.match.ft_away ?? d.match.goals_away;
-  if (h == null || a == null) return null;
-  return h > a ? 'HOME' : h < a ? 'AWAY' : 'DRAW';
+  return h == null || a == null ? null : { home: h, away: a };
+}
+
+/** 90-minute result of a finished match (what the model outlook is scored against). */
+function result90(d: Data): 'HOME' | 'DRAW' | 'AWAY' | null {
+  const s = score90(d);
+  if (!s) return null;
+  return s.home > s.away ? 'HOME' : s.home < s.away ? 'AWAY' : 'DRAW';
 }
