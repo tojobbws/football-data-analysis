@@ -176,3 +176,17 @@ export function syncPlayers(ctx: JobContext, opts: { maxPages?: number } = {}) {
     return n;
   });
 }
+
+/** Drop raw API audit rows older than N days (default 14); --vacuum also returns the space to the OS. */
+export function pruneRawResponses(ctx: JobContext, opts: { days?: number; vacuum?: boolean } = {}) {
+  const days = opts.days ?? 14;
+  return runJob(ctx, 'prune', { days, vacuum: !!opts.vacuum }, async () => {
+    const before = await ctx.repo.databaseSizeBytes();
+    const n = await ctx.repo.pruneRawResponses(days);
+    if (opts.vacuum) await ctx.repo.vacuumRawResponses();
+    const after = await ctx.repo.databaseSizeBytes();
+    const mb = (b: number) => Math.round(b / 1048576);
+    ctx.log.info('raw responses pruned', { deleted: n, dbSizeMbBefore: mb(before), dbSizeMbAfter: mb(after) });
+    return n;
+  });
+}

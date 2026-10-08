@@ -78,6 +78,33 @@ export class Repository {
     return Number(id);
   }
 
+  /** Delete raw audit rows older than N days (FKs unlink via on delete set null). Batched to keep locks short. */
+  async pruneRawResponses(olderThanDays: number, batchSize = 500): Promise<number> {
+    let total = 0;
+    for (;;) {
+      const { rows } = await this.db.query<{ n: string | number }>(
+        `with doomed as (
+           select id from api_raw_responses where fetched_at < now() - make_interval(days => $1) limit $2
+         ), gone as (delete from api_raw_responses r using doomed d where r.id = d.id returning 1)
+         select count(*) as n from gone`,
+        [olderThanDays, batchSize],
+      );
+      const n = Number(rows[0]?.n ?? 0);
+      total += n;
+      if (n < batchSize) return total;
+    }
+  }
+
+  /** Give the freed space back to the OS (plain DELETE only marks it reusable). Locks the table briefly. */
+  async vacuumRawResponses(): Promise<void> {
+    await this.db.exec('vacuum full api_raw_responses');
+  }
+
+  async databaseSizeBytes(): Promise<number> {
+    const { rows } = await this.db.query<{ b: string | number }>(`select pg_database_size(current_database()) as b`);
+    return Number(rows[0]?.b ?? 0);
+  }
+
   async startSyncRun(job: string, params: Record<string, unknown>): Promise<number> {
     return Number(await insertReturning<string | number>(this.db, 'sync_runs', { job, params }));
   }

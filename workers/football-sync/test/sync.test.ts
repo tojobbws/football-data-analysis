@@ -7,7 +7,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import detail from '../../../packages/football/test/fixtures/fixture-detail.json' with { type: 'json' };
-import { syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncResults, syncTeams } from '../src/jobs.js';
+import { pruneRawResponses, syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncResults, syncTeams } from '../src/jobs.js';
 import { syncOdds } from '../../odds-sync/src/jobs.js';
 
 const future = new Date(Date.now() + 2 * 86_400_000).toISOString();
@@ -156,5 +156,20 @@ describe('sync pipeline', () => {
     expect(Number(runs.n)).toBeGreaterThan(5);
     expect(Number(runs.bad)).toBe(0);
     expect(Number((await one(`select count(*) n from api_raw_responses`)).n)).toBe(ctx.client.requestCount);
+  });
+
+  it('prune: drops old raw responses, keeps recent ones and the data that referenced them', async () => {
+    const total = Number((await one(`select count(*) n from api_raw_responses`)).n);
+    const odds = Number((await one(`select count(*) n from odds_history`)).n);
+    // age every raw row that odds_history points at, plus one more
+    await db.query(`update api_raw_responses set fetched_at = now() - interval '30 days'
+                    where id in (select raw_response_id from odds_history) or id = (select min(id) from api_raw_responses)`);
+    const old = Number((await one(`select count(*) n from api_raw_responses where fetched_at < now() - interval '14 days'`)).n);
+
+    expect(await pruneRawResponses(ctx, { days: 14, vacuum: true })).toBe(old);
+    expect(Number((await one(`select count(*) n from api_raw_responses`)).n)).toBe(total - old);
+    expect(Number((await one(`select count(*) n from odds_history`)).n)).toBe(odds);
+    expect(Number((await one(`select count(*) n from odds_history where raw_response_id is not null`)).n)).toBe(0);
+    expect(await pruneRawResponses(ctx, { days: 14 })).toBe(0);
   });
 });

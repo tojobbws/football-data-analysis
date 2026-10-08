@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:prune": "npm run job -w @fp/football-sync -- prune",
     "sync:leagues": "npm run job -w @fp/football-sync -- leagues",
     "sync:teams": "npm run job -w @fp/football-sync -- teams",
     "sync:fixtures": "npm run job -w @fp/football-sync -- fixtures",

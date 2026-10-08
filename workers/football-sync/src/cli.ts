@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import { createJobContext } from '@fp/database';
 import { loadDotEnvFile } from '@fp/shared';
 import {
+  pruneRawResponses,
   syncApiPredictions,
   syncFinishedDetails,
   syncFixtures,
@@ -27,7 +28,8 @@ jobs:
   predictions [--hours N]         API-Football predictions for next N hours (default 48)
   standings
   players  [--max-pages N]        player season stats (heavy, weekly)
-  bootstrap                       leagues -> teams -> fixtures -> standings`;
+  bootstrap                       leagues -> teams -> fixtures -> standings
+  prune    [--days N] [--vacuum]  delete raw API responses older than N days (default 14); --vacuum frees the disk space`;
 
 async function main() {
   loadDotEnvFile();
@@ -43,6 +45,7 @@ async function main() {
       days: { type: 'string' },
       hours: { type: 'string' },
       'max-pages': { type: 'string' },
+      vacuum: { type: 'boolean' },
     },
   });
   const job = positionals[0];
@@ -84,6 +87,9 @@ async function main() {
         break;
       case 'players':
         await syncPlayers(ctx, { maxPages: num(values['max-pages']) });
+        break;
+      case 'prune':
+        await pruneRawResponses(ctx, { days: num(values.days), vacuum: values.vacuum });
         break;
       case 'bootstrap':
         await syncLeagues(ctx);
