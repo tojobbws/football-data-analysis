@@ -2,18 +2,57 @@
 
 @theme {
   --font-sans: var(--font-thai), ui-sans-serif, system-ui, sans-serif;
-  --color-ink: #0f172a;
-  --color-pitch: #0f766e;
+
+  /* surfaces */
+  --color-ink: #0b1324; /* text + dark chrome (navbar, scoreboard) */
+  --color-ink-2: #15203a; /* raised surface on ink */
+  --color-canvas: #f3f5f8; /* page background */
+
+  /* brand */
+  --color-pitch: #0f766e; /* primary: links, active nav, data bars (5.4:1 on white) */
+  --color-pitch-bright: #2dd4bf; /* pitch on dark chrome */
   --color-pitch-soft: #ccfbf1;
-  --color-compass: #b45309;
+  --color-compass: #b45309; /* 🧭 signals only (5.0:1 on white) */
   --color-compass-soft: #fef3c7;
+  --color-live: #e11d48;
+
+  /* layout */
+  --spacing-tabbar: 4rem; /* mobile bottom tab bar height (without safe area) */
 }
 
 html {
   font-feature-settings: 'tnum' 1; /* tabular numbers: odds and % line up */
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 5rem; /* anchors clear the sticky header */
 }
 
 body {
-  background: #f6f7f9;
+  background: var(--color-canvas);
   color: var(--color-ink);
+}
+
+/* visible keyboard focus everywhere (never removed) */
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-pitch);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* horizontal card rails on mobile: hide the scrollbar, keep it scrollable */
+.rail {
+  scrollbar-width: none;
+}
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

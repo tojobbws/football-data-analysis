@@ -7,7 +7,7 @@ import { StatusBadge } from './ui';
 export function CompassCard({ c, home, away }: { c: Compass; home: string; away: string }) {
   if (c.kind === 'NO_CLEAR_SIGNAL') {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-500">🧭 เข็มทิศเกม</p>
@@ -23,11 +23,11 @@ export function CompassCard({ c, home, away }: { c: Compass; home: string; away:
   }
   const label = selectionLabel(c.market!, c.selection!, c.line == null ? null : Number(c.line), home, away);
   return (
-    <div className="rounded-2xl border-2 border-[var(--color-compass)]/30 bg-gradient-to-br from-[var(--color-compass-soft)] to-white p-5">
+    <div className="rounded-2xl border-2 border-[var(--color-compass)]/30 bg-gradient-to-br from-[var(--color-compass-soft)] to-white p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-[var(--color-compass)]">🧭 เข็มทิศเกม · {MARKET[c.market!] ?? c.market}</p>
-          <p className="mt-1 text-3xl font-bold tracking-tight">{label}</p>
+          <p className="mt-1 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">{label}</p>
         </div>
         <StatusBadge status={c.status} />
       </div>
@@ -47,7 +47,7 @@ export function CompassCard({ c, home, away }: { c: Compass; home: string; away:
 function Stat({ k, v }: { k: string; v: string }) {
   return (
     <div className="rounded-xl bg-white/80 px-3 py-2 ring-1 ring-slate-200/70">
-      <dt className="text-[11px] text-slate-500">{k}</dt>
+      <dt className="text-xs text-slate-600">{k}</dt>
       <dd className="text-lg font-semibold tabular-nums">{v}</dd>
     </div>
   );
@@ -55,12 +55,16 @@ function Stat({ k, v }: { k: string; v: string }) {
 
 function Footer({ c }: { c: Compass }) {
   return (
-    <p className="mt-4 text-xs text-slate-500">
-      วิเคราะห์เมื่อ {dateTimeTH(c.published_at)} · {ROUND[c.publish_round] ?? c.publish_round} · {c.public_id} ·{' '}
-      <span title={c.record_hash} className="font-mono">
-        hash {c.record_hash.slice(0, 12)}…
-      </span>
-      {c.settled_at ? <> · ตัดสินผล {dateTimeTH(c.settled_at)}</> : null}
-    </p>
+    <div className="mt-4 text-xs text-slate-600">
+      <p>
+        วิเคราะห์เมื่อ {dateTimeTH(c.published_at)} · {ROUND[c.publish_round] ?? c.publish_round} · {c.public_id}
+        {c.settled_at ? <> · ตัดสินผล {dateTimeTH(c.settled_at)}</> : null}
+      </p>
+      {/* tap to reveal + select the full hash (a hover tooltip never shows on touch screens) */}
+      <details className="mt-1">
+        <summary className="inline-flex min-h-8 cursor-pointer items-center font-mono">hash {c.record_hash.slice(0, 12)}… แตะเพื่อดูทั้งหมด</summary>
+        <p className="mt-1 select-all break-all rounded-lg bg-white/80 p-2 font-mono ring-1 ring-slate-200">{c.record_hash}</p>
+      </details>
+    </div>
   );
 }

@@ -21,9 +21,9 @@ export default async function PerformancePage() {
   const streak = streaks(signals);
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5 px-4 py-6">
+    <main className="mx-auto max-w-5xl space-y-4 px-4 py-5 sm:space-y-5 sm:py-8">
       <div>
-        <h1 className="text-2xl font-bold">📊 ผลงานการวิเคราะห์</h1>
+        <h1 className="text-2xl font-bold sm:text-3xl">ผลงานการวิเคราะห์</h1>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
           เราไม่ได้บอกว่าถูกทุกคู่ แต่เปิดให้เห็นว่าก่อนแข่งเราวิเคราะห์อะไร เลือกอะไร และผลออกมาอย่างไร — แสดง<b>ทุกรายการ</b> ไม่ลบผลแพ้ ไม่แก้หลังรู้ผล
         </p>
@@ -74,7 +74,7 @@ export default async function PerformancePage() {
                       <Link href={`/matches/${r.fixture_slug}`} className="hover:underline">
                         {r.home_team} vs {r.away_team}
                       </Link>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-500">
                         {shortDayTH(r.kickoff_at)} · {r.league_name} · {r.public_id} · เผยแพร่ {dateTimeTH(r.published_at)}
                       </p>
                     </td>
@@ -82,7 +82,7 @@ export default async function PerformancePage() {
                       {r.kind === 'SIGNAL' ? (
                         <>
                           {selectionLabel(r.market!, r.selection!, r.line == null ? null : Number(r.line), r.home_team, r.away_team)}
-                          <p className="text-xs text-slate-400">
+                          <p className="text-xs text-slate-500">
                             {r.signal_strength} · {r.publish_round === 'LINEUP' ? 'หลังตัวจริง' : 'รอบแรก'}
                           </p>
                         </>
@@ -119,10 +119,10 @@ export default async function PerformancePage() {
 
 function Kpi({ k, v, sub }: { k: string; v: string; sub?: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
       <p className="text-xs text-slate-500">{k}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums">{v}</p>
-      {sub ? <p className="mt-0.5 text-[11px] text-slate-400">{sub}</p> : null}
+      <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">{v}</p>
+      {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
     </div>
   );
 }
@@ -165,7 +165,8 @@ function Breakdown({ title, rows, name }: { title: string; rows: PerfBucket[]; n
   return (
     <Section title={title}>
       {rows.length ? (
-        <table className="w-full text-sm">
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <table className="w-full min-w-[24rem] text-sm">
           <thead>
             <tr className="text-xs text-slate-500">
               <th className="pb-2 text-left font-normal" />
@@ -195,6 +196,7 @@ function Breakdown({ title, rows, name }: { title: string; rows: PerfBucket[]; n
             ))}
           </tbody>
         </table>
+        </div>
       ) : (
         <Empty>ยังไม่มีข้อมูล</Empty>
       )}

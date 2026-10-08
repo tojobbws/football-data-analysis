@@ -43,7 +43,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   };
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5 px-4 py-6">
+    <main className="mx-auto max-w-5xl space-y-4 px-4 py-5 sm:space-y-5 sm:py-8">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Header d={d} />
 
@@ -51,9 +51,9 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
         <div className="space-y-2">
           <CompassCard c={latest} home={m.home.name} away={m.away.name} />
           {earlier.map((c) => (
-            <details key={c.public_id} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm">
-              <summary className="cursor-pointer text-slate-600">บทวิเคราะห์รอบก่อนหน้า ({c.public_id}) — ยังอยู่ใน track record</summary>
-              <div className="mt-3">
+            <details key={c.public_id} className="rounded-xl border border-slate-200 bg-white px-4 text-sm">
+              <summary className="flex min-h-11 cursor-pointer items-center text-slate-600">บทวิเคราะห์รอบก่อนหน้า ({c.public_id}) — ยังอยู่ใน track record</summary>
+              <div className="pb-3">
                 <CompassCard c={c} home={m.home.name} away={m.away.name} />
               </div>
             </details>
@@ -85,45 +85,80 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   );
 }
 
+const OFF: Record<string, string> = { PST: 'เลื่อนการแข่งขัน', CANC: 'ยกเลิก', ABD: 'ยุติการแข่งขัน' };
+
 function Header({ d }: { d: Data }) {
   const m = d.match;
   const live = LIVE.includes(m.status_short);
   const showScore = d.finished || live;
+  const photo = m.venue?.image_url;
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white px-5 py-6">
-      <p className="text-center text-xs text-slate-500">
-        {m.league.name}
-        {m.round ? ` · ${m.round}` : ''} · {dayTH(m.kickoff_at)} {timeTH(m.kickoff_at)}
-        {m.venue?.name ? ` · ${m.venue.name}` : ''}
-      </p>
-      <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <Team t={m.home} />
-        <div className="text-center">
-          {showScore ? (
-            <>
-              <p className="text-4xl font-bold tabular-nums">
-                {m.goals_home} – {m.goals_away}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {live ? <span className="font-semibold text-rose-600">{m.elapsed}′ LIVE</span> : 'จบการแข่งขัน'}
-                {m.ht_home != null ? ` · HT ${m.ht_home}-${m.ht_away}` : ''}
-              </p>
-            </>
-          ) : (
-            <p className="text-2xl font-semibold tabular-nums">{['PST', 'CANC', 'ABD'].includes(m.status_short) ? m.status_short : timeTH(m.kickoff_at)}</p>
-          )}
+    <section className="relative -mx-4 overflow-hidden bg-[var(--color-ink)] px-4 py-6 text-white sm:mx-0 sm:rounded-3xl sm:px-6 sm:py-8">
+      {photo ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={photo} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-ink)]/60 to-[var(--color-ink)]" aria-hidden />
+        </>
+      ) : null}
+      <div className="relative">
+        <p className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-center text-xs text-slate-300">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="flex h-4 w-4 items-center justify-center rounded bg-white">
+              <TeamLogo src={m.league.logo_url} alt="" size={12} />
+            </span>
+            {m.league.name}
+          </span>
+          {m.round ? <span>· {m.round}</span> : null}
+          <span>· {dayTH(m.kickoff_at)}</span>
+          {m.venue?.name ? <span>· {m.venue.name}</span> : null}
+        </p>
+        <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-6">
+          <Team t={m.home} side="เจ้าบ้าน" />
+          <div className="text-center">
+            {showScore ? (
+              <>
+                <p className="text-4xl font-bold tabular-nums sm:text-5xl">
+                  {m.goals_home}
+                  <span className="mx-1.5 text-slate-500">–</span>
+                  {m.goals_away}
+                </p>
+                <p className="mt-1.5 text-xs text-slate-300">
+                  {live ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-live)] px-2 py-0.5 font-semibold text-white">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white motion-safe:animate-pulse" aria-hidden />
+                      สด {m.status_short === 'HT' ? 'พักครึ่ง' : `${m.elapsed}′`}
+                    </span>
+                  ) : (
+                    'จบการแข่งขัน'
+                  )}
+                  {m.ht_home != null ? <span className="block pt-1">ครึ่งแรก {m.ht_home}-{m.ht_away}</span> : null}
+                </p>
+              </>
+            ) : OFF[m.status_short] ? (
+              <p className="text-base font-semibold text-rose-300">{OFF[m.status_short]}</p>
+            ) : (
+              <>
+                <p className="text-3xl font-bold tabular-nums sm:text-4xl">{timeTH(m.kickoff_at)}</p>
+                <p className="mt-1 text-xs text-slate-300">เวลาไทย</p>
+              </>
+            )}
+          </div>
+          <Team t={m.away} side="ทีมเยือน" />
         </div>
-        <Team t={m.away} />
       </div>
     </section>
   );
 }
 
-function Team({ t }: { t: Data['match']['home'] }) {
+function Team({ t, side }: { t: Data['match']['home']; side: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 text-center">
-      <TeamLogo src={t.logo_url} alt={t.name} size={56} />
-      <p className="text-sm font-semibold sm:text-base">{t.name}</p>
+    <div className="flex min-w-0 flex-col items-center gap-2 text-center">
+      <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-2 sm:h-20 sm:w-20">
+        <TeamLogo src={t.logo_url} alt="" size={56} />
+      </span>
+      <p className="line-clamp-2 text-sm font-semibold leading-tight sm:text-base">{t.name}</p>
+      <p className="text-xs text-slate-400">{side}</p>
     </div>
   );
 }
@@ -176,7 +211,8 @@ function MarketSection({ d }: { d: Data }) {
     <Section title="📈 แรงตลาด" aside={last ? `อัปเดต ${dateTimeTH(last)}` : undefined}>
       {rows.length ? (
         <>
-          <table className="w-full text-sm">
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <table className="w-full min-w-[20rem] text-sm">
             <thead>
               <tr className="text-left text-xs text-slate-500">
                 <th className="pb-2 font-normal">ตัวเลือก</th>
@@ -192,18 +228,24 @@ function MarketSection({ d }: { d: Data }) {
                 const move = o && c ? (c - o) / o : 0;
                 return (
                   <tr key={label}>
-                    <td className="py-1.5">{label}</td>
-                    <td className="py-1.5 text-right tabular-nums text-slate-500">{odds(r!.opening_odds)}</td>
-                    <td className="py-1.5 text-right font-semibold tabular-nums">
+                    <td className="py-2 pr-2">{label}</td>
+                    <td className="py-2 text-right tabular-nums text-slate-600">{odds(r!.opening_odds)}</td>
+                    <td className="py-2 text-right font-semibold tabular-nums">
                       {odds(r!.current_odds)}
-                      {Math.abs(move) >= 0.03 ? <span className={`ml-1 text-xs ${move < 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{move < 0 ? '▼' : '▲'}</span> : null}
+                      {Math.abs(move) >= 0.03 ? (
+                        <span className={`ml-1 text-xs ${move < 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          <span aria-hidden>{move < 0 ? '▼' : '▲'}</span>
+                          <span className="sr-only">{move < 0 ? 'ราคาลง' : 'ราคาขึ้น'}</span>
+                        </span>
+                      ) : null}
                     </td>
-                    <td className="py-1.5 text-right text-xs text-slate-400">{r!.bookmakers}</td>
+                    <td className="py-2 text-right text-xs text-slate-500">{r!.bookmakers}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
           <p className="mt-3 text-xs text-slate-500">ค่ากลาง (median) ของราคาจากหลายเจ้ามือ ก่อนเตะ · ▼ ราคาลง = ตลาดให้น้ำหนักฝั่งนั้นมากขึ้น</p>
         </>
       ) : (
@@ -235,12 +277,12 @@ function FormTeam({ name, rows }: { name: string; rows: FormRow[] }) {
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold">{name}</span>
+        <span className="min-w-0 truncate text-sm font-semibold">{name}</span>
         <FormPills results={[...rows].reverse().map((r) => r.result)} />
       </div>
       {rows.length ? (
         <>
-          <ul className="space-y-0.5 text-xs text-slate-600">
+          <ul className="space-y-1 text-sm text-slate-700">
             {rows.map((r) => (
               <li key={r.slug} className="flex justify-between gap-2">
                 <span className="truncate">
@@ -248,7 +290,7 @@ function FormTeam({ name, rows }: { name: string; rows: FormRow[] }) {
                 </span>
                 <span className="shrink-0 tabular-nums">
                   {r.gf}-{r.ga}
-                  {r.xgFor != null ? <span className="ml-2 text-slate-400">xG {r.xgFor.toFixed(2)}-{r.xgAgainst?.toFixed(2) ?? '–'}</span> : null}
+                  {r.xgFor != null ? <span className="ml-2 text-xs text-slate-500">xG {r.xgFor.toFixed(2)}-{r.xgAgainst?.toFixed(2) ?? '–'}</span> : null}
                 </span>
               </li>
             ))}
@@ -286,7 +328,17 @@ function StatsSection({ d }: { d: Data }) {
   const goals = d.events.filter((e) => e.type === 'Goal');
   return (
     <Section title="สถิติหลังเกม">
-      <div className="space-y-2">
+      <div className="mb-3 flex justify-between gap-3 text-xs font-semibold">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-[var(--color-pitch)]" aria-hidden />
+          <span className="truncate">{m.home.name}</span>
+        </span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{m.away.name}</span>
+          <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-slate-500" aria-hidden />
+        </span>
+      </div>
+      <div className="space-y-3">
         {Object.entries(STAT_LABEL).map(([type, label]) => {
           const h = val(m.home.id, type);
           const a = val(m.away.id, type);
@@ -297,20 +349,21 @@ function StatsSection({ d }: { d: Data }) {
           const show = (x?: { value_num: number | null; value_text: string | null }) => x?.value_text ?? (x?.value_num ?? '–');
           return (
             <div key={type}>
-              <div className="flex justify-between text-xs">
+              <div className="flex justify-between text-sm">
                 <span className="font-semibold tabular-nums">{show(h)}</span>
                 <span className="text-slate-500">{label}</span>
                 <span className="font-semibold tabular-nums">{show(a)}</span>
               </div>
-              <div className="mt-1 flex h-1.5 overflow-hidden rounded-full bg-slate-200">
-                <div className="bg-[var(--color-pitch)]" style={{ width: `${share}%` }} />
+              <div className="mt-1 flex h-2 gap-0.5" aria-hidden>
+                <div className="rounded-l-full bg-[var(--color-pitch)]" style={{ width: `${share}%` }} />
+                <div className="flex-1 rounded-r-full bg-slate-500" />
               </div>
             </div>
           );
         })}
       </div>
       {goals.length ? (
-        <ul className="mt-4 space-y-0.5 border-t border-slate-100 pt-3 text-xs text-slate-600">
+        <ul className="mt-4 space-y-1 border-t border-slate-100 pt-3 text-sm text-slate-700">
           {goals.map((g, i) => (
             <li key={i} className={g.team_id === m.away.id ? 'text-right' : ''}>
               ⚽ {g.elapsed}
@@ -342,7 +395,7 @@ function InjurySection({ d }: { d: Data }) {
                   .filter((i) => i.team_id === t.id)
                   .map((i, k) => (
                     <li key={k}>
-                      {i.player_name} <span className="text-xs text-slate-400">· {i.type === 'Missing Fixture' ? 'ไม่ได้ลงเล่น' : i.type === 'Questionable' ? 'ไม่แน่นอน' : i.type} ({i.reason})</span>
+                      {i.player_name} <span className="text-xs text-slate-500">· {i.type === 'Missing Fixture' ? 'ไม่ได้ลงเล่น' : i.type === 'Questionable' ? 'ไม่แน่นอน' : i.type} ({i.reason})</span>
                     </li>
                   ))}
               </ul>
@@ -370,7 +423,7 @@ function LineupSection({ d }: { d: Data }) {
                 .filter((p) => p.team_id === t.id)
                 .map((p, k) => (
                   <li key={k} className="flex gap-2">
-                    <span className="w-6 text-right text-xs tabular-nums text-slate-400">{p.number}</span>
+                    <span className="w-6 shrink-0 text-right text-xs tabular-nums text-slate-500">{p.number}</span>
                     {p.player_name}
                   </li>
                 ))}
@@ -390,7 +443,8 @@ function StandingsSection({ d }: { d: Data }) {
   return (
     <Section title="ตารางคะแนน">
       {rows.length ? (
-        <table className="w-full text-sm">
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <table className="w-full min-w-[22rem] text-sm">
           <thead>
             <tr className="text-xs text-slate-500">
               <th className="pb-2 text-left font-normal">ทีม</th>
@@ -404,7 +458,7 @@ function StandingsSection({ d }: { d: Data }) {
           <tbody className="text-center tabular-nums">
             {rows.map(({ t, s }) => (
               <tr key={t.id}>
-                <td className="py-1 text-left">{t.name}</td>
+                <td className="max-w-[9rem] truncate py-2 pr-2 text-left">{t.name}</td>
                 <td>{s!.rank}</td>
                 <td>{s!.played}</td>
                 <td>
@@ -418,6 +472,7 @@ function StandingsSection({ d }: { d: Data }) {
             ))}
           </tbody>
         </table>
+        </div>
       ) : (
         <Empty>ยังไม่มีตารางคะแนน</Empty>
       )}
@@ -431,7 +486,7 @@ function H2HSection({ d }: { d: Data }) {
       {d.h2h.length ? (
         <ul className="space-y-1 text-sm">
           {d.h2h.map((h) => (
-            <li key={h.slug} className="flex justify-between gap-2">
+            <li key={h.slug} className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
               <span className="text-xs text-slate-500">{shortDayTH(h.kickoff_at)}</span>
               <TextLink href={`/matches/${h.slug}`}>
                 {h.home.name} {h.ft_home ?? h.goals_home}-{h.ft_away ?? h.goals_away} {h.away.name}

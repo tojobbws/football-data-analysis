@@ -1,8 +1,8 @@
 import 'server-only';
 import { webEnv } from './env';
 import { db } from './supabase';
-import { FINISHED, type Status } from './labels';
-import { thaiDayRange } from './time';
+import { FINISHED, LIVE, type Status } from './labels';
+import { addDaysStr, thaiDate, thaiDayRange } from './time';
 
 // ---------------------------------------------------------------------------
 // Types (what the pages render)
@@ -145,7 +145,7 @@ export async function matchBySlug(slug: string) {
   const { data: f, error } = await sb
     .from('fixtures')
     .select(`${MATCH_SELECT}, season, round, referee, league_id, home_team_id, away_team_id, ht_home, ht_away, ft_home, ft_away,
-      venue:venues!fixtures_venue_id_fkey(name, city)`)
+      venue:venues!fixtures_venue_id_fkey(name, city, image_url)`)
     .eq('slug', slug)
     .maybeSingle();
   if (error) fail('fixture', error);
@@ -161,7 +161,7 @@ export async function matchBySlug(slug: string) {
     ht_away: number | null;
     ft_home: number | null;
     ft_away: number | null;
-    venue: { name: string | null; city: string | null } | null;
+    venue: { name: string | null; city: string | null; image_url: string | null } | null;
   };
 
   const finished = FINISHED.includes(m.status_short);
@@ -322,4 +322,192 @@ export async function performance() {
     }>,
     leagueNames: new Map((leagues.data ?? []).map((l) => [String(l.id), String(l.name)])),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Home page
+// ---------------------------------------------------------------------------
+
+/** Matches in play right now (tracked leagues). */
+export async function liveMatches(): Promise<MatchRow[]> {
+  const { data, error } = await db()
+    .from('fixtures')
+    .select(MATCH_SELECT)
+    .in('league_id', webEnv().leagues)
+    .in('status_short', LIVE)
+    .order('kickoff_at')
+    .order('id');
+  if (error) fail('fixtures', error);
+  const rows = (data ?? []) as unknown as Omit<MatchRow, 'compass'>[];
+  const compass = await compassFor(rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, compass: compass.get(r.id) ?? null }));
+}
+
+export interface WeekPerf {
+  /** Monday of the week (YYYY-MM-DD, Thai time) */
+  week: string;
+  settled: number;
+  win_rate: number | null;
+}
+
+/**
+ * Win rate per week (by kickoff, Thai time) for settled 🧭 signals, oldest first.
+ * Same formula as analysis_performance: HALF counts half, PUSH/VOID excluded.
+ */
+export async function weeklyPerformance(weeks = 8): Promise<WeekPerf[]> {
+  const thisMonday = mondayOf(thaiDate());
+  const firstMonday = addDaysStr(thisMonday, -7 * (weeks - 1));
+  const { data, error } = await db()
+    .from('published_analysis')
+    .select('kickoff_at, status')
+    .eq('kind', 'SIGNAL')
+    .neq('status', 'PENDING')
+    .gte('kickoff_at', thaiDayRange(firstMonday).from);
+  if (error) fail('published_analysis', error);
+  const out = Array.from({ length: weeks }, (_, i) => ({ week: addDaysStr(firstMonday, 7 * i), w: 0, l: 0, settled: 0 }));
+  const weight: Partial<Record<Status, [number, number]>> = { WIN: [1, 0], LOSS: [0, 1], HALF_WIN: [0.5, 0], HALF_LOSS: [0, 0.5] };
+  for (const r of data ?? []) {
+    const b = out.find((x) => x.week === mondayOf(thaiDate(new Date(r.kickoff_at as string))));
+    if (!b) continue;
+    b.settled++;
+    const [w, l] = weight[r.status as Status] ?? [0, 0];
+    b.w += w;
+    b.l += l;
+  }
+  return out.map((b) => ({ week: b.week, settled: b.settled, win_rate: b.w + b.l > 0 ? b.w / (b.w + b.l) : null }));
+}
+
+function mondayOf(date: string): string {
+  const dow = new Date(`${date}T12:00:00+07:00`).getUTCDay();
+  return addDaysStr(date, -((dow + 6) % 7));
+}
+
+/** The 'all' row of analysis_performance. */
+export async function perfSummary(): Promise<PerfBucket | null> {
+  const { data, error } = await db().from('analysis_performance').select('*').eq('dimension', 'all').maybeSingle();
+  if (error) fail('analysis_performance', error);
+  if (!data) return null;
+  const x: Record<string, unknown> = { ...data };
+  for (const k of ['total_signals', 'no_signal', 'pending', 'win', 'half_win', 'loss', 'half_loss', 'push', 'void']) x[k] = Number(data[k] ?? 0);
+  for (const k of ['win_rate', 'avg_clv', 'beat_closing_rate']) x[k] = data[k] == null ? null : Number(data[k]);
+  return x as unknown as PerfBucket;
+}
+
+export interface ArticleCard {
+  slug: string;
+  title: string;
+  description: string | null;
+  og_image_url: string | null;
+  published_at: string;
+  fixture_id: number | null;
+  category: { slug: string; name: string } | null;
+}
+
+/** Latest published articles (anon only sees PUBLISHED via RLS). */
+export async function latestArticles(limit = 6): Promise<ArticleCard[]> {
+  const { data, error } = await db()
+    .from('articles')
+    .select('slug, title, description, og_image_url, published_at, fixture_id, category:article_categories(slug, name)')
+    .eq('status', 'PUBLISHED')
+    .order('published_at', { ascending: false })
+    .limit(limit);
+  if (error) fail('articles', error);
+  return (data ?? []) as unknown as ArticleCard[];
+}
+
+export interface LeagueInfo {
+  id: number;
+  name: string;
+  logo_url: string | null;
+  country: string | null;
+}
+
+export interface StandingRow {
+  rank: number;
+  team: Team;
+  played: number;
+  goals_diff: number;
+  points: number;
+}
+
+export interface ScorerRow {
+  player: string;
+  photo_url: string | null;
+  team: Team;
+  goals: number;
+  assists: number;
+}
+
+export interface LeagueWidget {
+  league: LeagueInfo;
+  standings: StandingRow[];
+  scorers: ScorerRow[];
+}
+
+/**
+ * Per tracked league (current season): standings and top scorers.
+ * Leagues played in groups (e.g. Nations League) get no standings here.
+ */
+export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
+  const sb = db();
+  const ids = webEnv().leagues;
+  const [leagues, seasons] = await Promise.all([
+    sb.from('leagues').select('id, name, logo_url, country').in('id', ids),
+    sb.from('league_seasons').select('league_id, season').eq('is_current', true).in('league_id', ids),
+  ]);
+  for (const [name, r] of Object.entries({ leagues, seasons })) if (r.error) fail(name, r.error);
+  const season = new Map((seasons.data ?? []).map((s) => [Number(s.league_id), Number(s.season)]));
+  const years = [...new Set(season.values())];
+  const current = (r: { league_id: unknown; season: unknown }) => season.get(Number(r.league_id)) === Number(r.season);
+
+  const [st, ps] = await Promise.all([
+    sb.from('standings').select('league_id, season, group_name, team_id, rank, played, goals_diff, points').in('league_id', ids).in('season', years),
+    sb
+      .from('player_season_stats')
+      .select('player_id, team_id, league_id, season, goals, assists, player:players(name, photo_url)')
+      .in('league_id', ids)
+      .in('season', years)
+      .gt('goals', 0),
+  ]);
+  for (const [name, r] of Object.entries({ st, ps })) if (r.error) fail(name, r.error);
+  const stRows = (st.data ?? []).filter(current);
+  const psRows = (
+    (ps.data ?? []) as unknown as Array<{ player_id: number; team_id: number; league_id: number; season: number; goals: number; assists: number | null; player: { name: string; photo_url: string | null } | null }>
+  ).filter(current);
+
+  const teamIds = [...new Set([...stRows.map((r) => Number(r.team_id)), ...psRows.map((r) => Number(r.team_id))])];
+  const teams = new Map<number, Team>();
+  if (teamIds.length) {
+    const { data, error } = await sb.from('teams').select('id, name, logo_url').in('id', teamIds);
+    if (error) fail('teams', error);
+    for (const t of data ?? []) teams.set(Number(t.id), t as Team);
+  }
+  const team = (id: number): Team => teams.get(id) ?? { id, name: `#${id}`, logo_url: null };
+
+  const order = new Map(ids.map((id, i) => [id, i]));
+  return ((leagues.data ?? []) as LeagueInfo[])
+    .sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99))
+    .map((league) => {
+      const rows = stRows.filter((r) => Number(r.league_id) === league.id);
+      const standings =
+        new Set(rows.map((r) => r.group_name)).size === 1
+          ? rows
+              .map((r) => ({ rank: Number(r.rank), team: team(Number(r.team_id)), played: Number(r.played ?? 0), goals_diff: Number(r.goals_diff ?? 0), points: Number(r.points ?? 0) }))
+              .sort((a, b) => a.rank - b.rank)
+          : [];
+      // a player who moved clubs mid-season has one row per team: sum them, show the latest club
+      const byPlayer = new Map<number, Omit<ScorerRow, 'team'> & { teamId: number }>();
+      for (const r of psRows.filter((x) => Number(x.league_id) === league.id)) {
+        const p = byPlayer.get(r.player_id) ?? { player: r.player?.name ?? `#${r.player_id}`, photo_url: r.player?.photo_url ?? null, goals: 0, assists: 0, teamId: r.team_id };
+        p.goals += Number(r.goals ?? 0);
+        p.assists += Number(r.assists ?? 0);
+        p.teamId = r.team_id;
+        byPlayer.set(r.player_id, p);
+      }
+      const top = [...byPlayer.values()]
+        .sort((a, b) => b.goals - a.goals || b.assists - a.assists)
+        .slice(0, scorers)
+        .map(({ teamId, ...p }) => ({ ...p, team: team(teamId) }));
+      return { league, standings, scorers: top };
+    });
 }

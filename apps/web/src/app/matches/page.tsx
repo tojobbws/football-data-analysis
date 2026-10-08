@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { MatchList } from '@/components/match-list';
+import { IconChevronLeft, IconChevronRight } from '@/components/icons';
+import { ScrollToCurrent } from '@/components/scroll-to-current';
 import { Empty } from '@/components/ui';
 import { matchDayCounts, matchesOnDay } from '@/lib/queries';
 import { addDaysStr, dayTH, isValidDate, shortDayTH, thaiDate } from '@/lib/time';
@@ -17,24 +19,30 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
   const strip = Array.from({ length: 7 }, (_, i) => addDaysStr(start, i));
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5 px-4 py-6">
-      <h1 className="text-xl font-bold">🔎 แมตช์ · {dayTH(`${date}T12:00:00+07:00`)}</h1>
-      <nav className="flex gap-2 overflow-x-auto pb-1" aria-label="เลือกวัน">
-        <Link href={`/matches?date=${addDaysStr(date, -7)}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" aria-label="สัปดาห์ก่อน">
-          ‹
+    <main className="mx-auto max-w-5xl space-y-4 px-4 py-5 sm:py-8">
+      <h1 className="text-xl font-bold sm:text-2xl">
+        แมตช์ <span className="font-normal text-slate-600">· {dayTH(`${date}T12:00:00+07:00`)}</span>
+      </h1>
+      {/* arrows stay put; only the days scroll (and the selected day is centred on load) */}
+      <nav className="flex items-stretch gap-2" aria-label="เลือกวัน">
+        <Link href={`/matches?date=${addDaysStr(date, -7)}`} className="flex min-h-14 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" aria-label="สัปดาห์ก่อน">
+          <IconChevronLeft size={18} />
         </Link>
-        {strip.map((d) => (
-          <Link
-            key={d}
-            href={`/matches?date=${d}`}
-            className={`min-w-[4.75rem] rounded-xl border px-3 py-2 text-center text-sm ${d === date ? 'border-[var(--color-ink)] bg-[var(--color-ink)] text-white' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
-          >
-            <span className="block whitespace-nowrap">{d === today ? 'วันนี้' : shortDayTH(`${d}T12:00:00+07:00`)}</span>
-            <span className={`text-xs ${d === date ? 'text-slate-300' : 'text-slate-400'}`}>{counts.get(d) ?? 0} นัด</span>
-          </Link>
-        ))}
-        <Link href={`/matches?date=${addDaysStr(date, 7)}`} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" aria-label="สัปดาห์ถัดไป">
-          ›
+        <ScrollToCurrent className="rail flex min-w-0 flex-1 snap-x gap-2 overflow-x-auto">
+          {strip.map((d) => (
+            <Link
+              key={d}
+              href={`/matches?date=${d}`}
+              aria-current={d === date ? 'date' : undefined}
+              className={`flex min-h-14 min-w-[4.75rem] flex-1 shrink-0 snap-center flex-col items-center justify-center rounded-xl border px-3 py-2 text-center text-sm transition-colors ${d === date ? 'border-[var(--color-ink)] bg-[var(--color-ink)] text-white' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+            >
+              <span className="block whitespace-nowrap">{d === today ? 'วันนี้' : shortDayTH(`${d}T12:00:00+07:00`)}</span>
+              <span className={`text-xs ${d === date ? 'text-slate-300' : 'text-slate-500'}`}>{counts.get(d) ?? 0} นัด</span>
+            </Link>
+          ))}
+        </ScrollToCurrent>
+        <Link href={`/matches?date=${addDaysStr(date, 7)}`} className="flex min-h-14 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50" aria-label="สัปดาห์ถัดไป">
+          <IconChevronRight size={18} />
         </Link>
       </nav>
       {matches.length ? <MatchList matches={matches} /> : <Empty>ไม่มีแมตช์ในวันนี้ในลีกที่ติดตาม</Empty>}

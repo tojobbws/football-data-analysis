@@ -51,16 +51,21 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
     image: a.og_image_url ?? undefined,
   };
   return (
-    <main className="mx-auto max-w-3xl px-4 py-6">
+    <main className="mx-auto max-w-3xl px-4 py-5 sm:py-8">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <article className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8">
+      <article className="-mx-4 overflow-hidden bg-white sm:mx-0 sm:rounded-2xl sm:border sm:border-slate-200">
+        {a.og_image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={a.og_image_url} alt="" width={1200} height={630} className="aspect-[1.91/1] w-full object-cover" />
+        ) : null}
+        <div className="p-4 sm:p-8">
         <p className="text-xs text-slate-500">
           {a.category?.name ?? 'บทวิเคราะห์'} · เผยแพร่ {dateTimeTH(a.published_at)}
         </p>
         <h1 className="mt-2 text-2xl font-bold leading-snug sm:text-3xl">{a.title}</h1>
         {a.description ? <p className="mt-2 text-slate-600">{a.description}</p> : null}
         <div
-          className="mt-6 space-y-4 leading-relaxed [&_a]:text-[var(--color-pitch)] [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-200 [&_blockquote]:pl-4 [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:font-semibold [&_img]:rounded-xl [&_li]:ml-5 [&_ol]:list-decimal [&_table]:w-full [&_td]:border-b [&_td]:py-1 [&_ul]:list-disc"
+          className="mt-6 space-y-4 leading-relaxed [&_a]:text-[var(--color-pitch)] [&_a]:underline [&_blockquote]:border-l-4 [&_blockquote]:border-slate-200 [&_blockquote]:pl-4 [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:font-semibold [&_img]:rounded-xl [&_li]:ml-5 [&_ol]:list-decimal [&_table]:block [&_table]:overflow-x-auto [&_table]:w-full [&_td]:border-b [&_td]:py-1 [&_ul]:list-disc"
           dangerouslySetInnerHTML={{ __html: renderMarkdown(a.body_md) }}
         />
         {a.fixture ? (
@@ -71,6 +76,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         <p className="mt-8 border-t border-slate-100 pt-4 text-xs text-slate-500">
           บทวิเคราะห์จัดทำขึ้นเพื่อข้อมูลและความบันเทิง ไม่ใช่คำแนะนำในการเล่นพนัน และไม่มีโมเดลใดรับประกันผลการแข่งขันได้
         </p>
+        </div>
       </article>
     </main>
   );
