@@ -13,6 +13,7 @@ export const KNOWN_LEAGUES = {
   2: { name: 'UEFA Champions League', country: 'World' },
   3: { name: 'UEFA Europa League', country: 'World' },
   848: { name: 'UEFA Europa Conference League', country: 'World' },
+  1129: { name: 'ASEAN Club Championship', country: 'World' },
 } as const satisfies Record<number, { name: string; country: string }>;
 
 /** Fixture status codes from API-Football */
