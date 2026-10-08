@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Empty, Section, StatusBadge } from '@/components/ui';
 import { MARKET, ROUND, odds, pct, selectionLabel, type Status } from '@/lib/labels';
-import { performance, type PerfBucket } from '@/lib/queries';
+import { modelOutlookPerformance, performance, type ModelOutlookScore, type PerfBucket } from '@/lib/queries';
 import { dateTimeTH, shortDayTH } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const MONTH = new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' });
 
 export default async function PerformancePage() {
-  const { buckets, recent, leagueNames } = await performance();
+  const [{ buckets, recent, leagueNames }, outlook] = await Promise.all([performance(), modelOutlookPerformance()]);
   const all = buckets.find((b) => b.dimension === 'all');
   const by = (dim: string) => buckets.filter((b) => b.dimension === dim).sort((a, b) => b.total_signals - a.total_signals);
   const signals = recent.filter((r) => r.kind === 'SIGNAL');
@@ -105,12 +105,15 @@ export default async function PerformancePage() {
         )}
       </Section>
 
+      <OutlookSection rows={outlook} />
+
       <Section title="ตรวจสอบได้อย่างไร">
         <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-slate-600">
           <li>ทุกบทวิเคราะห์ถูกบันทึก <b>ก่อนเตะ</b> ด้วยเวลาของฐานข้อมูล และฐานข้อมูลปฏิเสธการแก้ไขหรือลบทุกกรณี</li>
           <li>แต่ละรายการมี hash ที่ต่อกันเป็นสาย (hash chain) — ถ้าแก้รายการใดย้อนหลัง hash ของทุกรายการถัดไปจะไม่ตรง</li>
           <li>ผลตัดสินด้วยสกอร์ 90 นาทีอัตโนมัติ และตัดสินได้ครั้งเดียว · HALF WIN / HALF LOSS แสดงแยก ไม่รวมกับ WIN / LOSS</li>
           <li>🌫️ หมอกข้อมูล ก็ถูกบันทึก เพื่อให้เห็นว่าเราเลือกไม่ออกความเห็นบ่อยแค่ไหน</li>
+          <li>📊 มุมมองโมเดล ใช้ค่าสุดท้ายที่คำนวณ<b>ก่อนเตะ</b> (บันทึกแบบแก้ไม่ได้) และวัดผลแยกจาก 🧭 ไม่นับรวมกัน</li>
         </ul>
       </Section>
     </main>
@@ -216,4 +219,46 @@ function streaks(rows: Array<{ kickoff_at: string; status: Status; publish_round
     best = Math.max(best, run);
   }
   return { current: run > 0 ? `ชนะ ${run}` : run < 0 ? `แพ้ ${-run}` : '–', best };
+}
+
+/** 📊 มุมมองโมเดล — scored on its own, never mixed into 🧭 stats. */
+function OutlookSection({ rows }: { rows: ModelOutlookScore[] }) {
+  const total = rows.reduce((n, r) => n + r.matches, 0);
+  return (
+    <Section title="📊 มุมมองโมเดล (วัดแยกจาก 🧭)" aside={total ? `${total} นัดที่จบแล้ว` : undefined}>
+      <p className="mb-3 text-sm leading-relaxed text-slate-600">
+        ตัวเลขโอกาสบนหน้าแมตช์ ไม่ใช่การชี้ แต่เราก็วัดผลให้ดู: <b>ทายผลถูก</b> = ผลที่โมเดลให้โอกาสสูงสุดเกิดจริงกี่ % เทียบกับ <b>ที่โมเดลคาด</b> (ค่าเฉลี่ยของโอกาสนั้น) — สองค่ายิ่งใกล้กัน แปลว่าตัวเลข % เชื่อถือได้
+      </p>
+      {total ? (
+        <div className="-mx-4 overflow-x-auto sm:mx-0">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-slate-500">
+                <th className="px-4 pb-2 font-normal sm:px-0">กลุ่มลีก</th>
+                <th className="pb-2 text-right font-normal">นัด</th>
+                <th className="pb-2 text-right font-normal">ผลแพ้ชนะ: ทายถูก / ที่คาด</th>
+                <th className="pb-2 pr-4 text-right font-normal sm:pr-0">สูง/ต่ำ 2.5: ทายถูก / ที่คาด</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rows.map((r) => (
+                <tr key={String(r.tested)}>
+                  <td className="px-4 py-2 sm:px-0">{r.tested ? 'ผ่านการทดสอบ' : '⚠️ ยังไม่ผ่านการทดสอบ'}</td>
+                  <td className="py-2 text-right tabular-nums">{r.matches}</td>
+                  <td className="py-2 text-right tabular-nums">
+                    {pct(r.correct / Math.max(1, r.matches), 0)} / {pct(r.expected_rate, 0)}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums sm:pr-0">
+                    {r.ou_matches ? `${pct(r.ou_correct / r.ou_matches, 0)} / ${pct(r.ou_expected_rate, 0)}` : '–'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Empty>ยังไม่มีนัดที่จบพร้อมมุมมองโมเดลก่อนเตะ</Empty>
+      )}
+    </Section>
+  );
 }

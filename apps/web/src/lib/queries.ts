@@ -165,7 +165,7 @@ export async function matchBySlug(slug: string) {
   };
 
   const finished = FINISHED.includes(m.status_short);
-  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events] = await Promise.all([
+  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook] = await Promise.all([
     sb.from('analysis_predictions').select(COMPASS_SELECT).eq('fixture_id', m.id).order('published_at'),
     sb
       .from('analysis_predictions')
@@ -194,8 +194,9 @@ export async function matchBySlug(slug: string) {
     sb.from('web_market_consensus').select('market, selection, line, bookmakers, opening_odds, current_odds, last_quote_at').eq('fixture_id', m.id),
     finished ? sb.from('fixture_statistics').select('team_id, type, value_num, value_text').eq('fixture_id', m.id) : Promise.resolve({ data: [], error: null }),
     finished ? sb.from('fixture_events').select('elapsed, extra, team_id, player_name, type, detail').eq('fixture_id', m.id).order('seq') : Promise.resolve({ data: [], error: null }),
+    sb.from('web_model_outlook').select('computed_at, p_home, p_draw, p_away, p_over25, sides_tested, totals_tested').eq('fixture_id', m.id).maybeSingle(),
   ]);
-  for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events })) if (r.error) fail(name, r.error);
+  for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook })) if (r.error) fail(name, r.error);
 
   const snapRow = (snapshot.data?.[0] as { analysis_snapshots?: unknown } | undefined)?.analysis_snapshots;
   return {
@@ -214,7 +215,37 @@ export async function matchBySlug(slug: string) {
     market: (market.data ?? []) as Array<{ market: string; selection: string; line: number | null; bookmakers: number; opening_odds: number | null; current_odds: number | null; last_quote_at: string }>,
     stats: (stats.data ?? []) as Array<{ team_id: number; type: string; value_num: number | null; value_text: string | null }>,
     events: (events.data ?? []) as Array<{ elapsed: number | null; extra: number | null; team_id: number | null; player_name: string | null; type: string; detail: string | null }>,
+    outlook: (outlook.data ?? null) as ModelOutlook | null,
   };
+}
+
+/** 📊 มุมมองโมเดล: last model probabilities computed before kickoff (information, not a 🧭 pick). */
+export interface ModelOutlook {
+  computed_at: string;
+  p_home: number | null;
+  p_draw: number | null;
+  p_away: number | null;
+  p_over25: number | null;
+  /** the league's model passed `model:tune` for this market */
+  sides_tested: boolean;
+  totals_tested: boolean;
+}
+
+export interface ModelOutlookScore {
+  tested: boolean;
+  matches: number;
+  correct: number;
+  expected_rate: number | null;
+  ou_matches: number;
+  ou_correct: number;
+  ou_expected_rate: number | null;
+}
+
+/** How the model outlook did on finished matches, split by tested / not tested leagues. */
+export async function modelOutlookPerformance(): Promise<ModelOutlookScore[]> {
+  const { data, error } = await db().from('web_model_outlook_performance').select('*');
+  if (error) fail('model outlook performance', error);
+  return ((data ?? []) as ModelOutlookScore[]).sort((a, b) => Number(b.tested) - Number(a.tested));
 }
 
 /** Last 5 finished matches of a team before `before`, with xG when available. */

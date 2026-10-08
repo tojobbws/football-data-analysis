@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { CompassCard } from '@/components/compass-card';
+import { ModelOutlookCard } from '@/components/model-outlook';
 import { Empty, FormPills, Section, TeamLogo, TextLink } from '@/components/ui';
 import { FINISHED, LIVE, odds, selectionLabel } from '@/lib/labels';
 import { matchBySlug, type FormRow } from '@/lib/queries';
@@ -64,6 +65,8 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
           <Empty>{FINISHED.includes(m.status_short) ? 'แมตช์นี้ไม่มีบทวิเคราะห์ที่เผยแพร่' : 'บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ'}</Empty>
         </Section>
       )}
+
+      {d.outlook ? <ModelOutlookCard o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
 
       <div className="grid gap-5 lg:grid-cols-2">
         <MarketSection d={d} />
@@ -499,4 +502,13 @@ function H2HSection({ d }: { d: Data }) {
       )}
     </Section>
   );
+}
+
+/** 90-minute result of a finished match (what the model outlook is scored against). */
+function result90(d: Data): 'HOME' | 'DRAW' | 'AWAY' | null {
+  if (!d.finished) return null;
+  const h = d.match.ft_home ?? d.match.goals_home;
+  const a = d.match.ft_away ?? d.match.goals_away;
+  if (h == null || a == null) return null;
+  return h > a ? 'HOME' : h < a ? 'AWAY' : 'DRAW';
 }
