@@ -4,6 +4,8 @@ import { IBM_Plex_Sans_Thai } from 'next/font/google';
 import Link from 'next/link';
 import { IconShield, Logo } from '@/components/icons';
 import { SiteNav } from '@/components/site-nav';
+import { tickerMatches } from '@/lib/queries';
+import { shortDayTH, thaiDate, timeTH } from '@/lib/time';
 import './globals.css';
 
 const thai = IBM_Plex_Sans_Thai({ subsets: ['thai', 'latin'], weight: ['400', '500', '600', '700'], variable: '--font-thai', display: 'swap' });
@@ -26,11 +28,14 @@ const footerLinks = [
   { href: '/performance', label: 'ผลงานการวิเคราะห์' },
 ];
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const ticker = await tickerMatches();
+  const tickerLabel = ticker.day === thaiDate() ? 'วันนี้' : ticker.day ? shortDayTH(`${ticker.day}T12:00:00+07:00`) : '';
+  const tickerRows = ticker.matches.map((m) => ({ ...m, clock: timeTH(m.kickoff_at) }));
   return (
     <html lang="th" className={thai.variable}>
       <body className="min-h-screen pb-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom))] font-sans antialiased md:pb-0">
-        <SiteNav />
+        <SiteNav ticker={tickerRows} tickerLabel={tickerLabel} />
         {children}
         <footer className="mt-12 bg-[var(--color-ink)] text-slate-300">
           <div className="mx-auto grid max-w-5xl gap-6 px-4 py-10 text-sm sm:grid-cols-[1fr_auto]">

@@ -95,7 +95,7 @@ export default async function HomePage() {
         </section>
 
         {/* ---------------- 2: compass ---------------- */}
-        <section className="space-y-4" aria-label="เข็มทิศเกม">
+        <section id="compass" className="scroll-mt-20 space-y-4" aria-label="เข็มทิศเกม">
           <BandHeading kicker="เข็มทิศเกม" title="คู่น่าจับตาและผลงานการวิเคราะห์" href="/performance" linkLabel="ผลงานทั้งหมด" />
 
           <Section title="🧭 คู่น่าจับตา" aside="ล็อกก่อนเตะ แก้ไขไม่ได้">

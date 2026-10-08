@@ -328,6 +328,50 @@ export async function performance() {
 // Home page
 // ---------------------------------------------------------------------------
 
+export interface TickerMatch {
+  slug: string;
+  kickoff_at: string;
+  status_short: string;
+  elapsed: number | null;
+  goals_home: number | null;
+  goals_away: number | null;
+  home: Team;
+  away: Team;
+}
+
+/**
+ * Score strip in the site header: live matches first, then today's (Thai time) fixtures in kickoff order;
+ * when today has none, the next day that does. Never throws: the header must not take the page down.
+ */
+export async function tickerMatches(limit = 24): Promise<{ day: string | null; matches: TickerMatch[] }> {
+  try {
+    const sel = `slug, kickoff_at, status_short, elapsed, goals_home, goals_away,
+      home:teams!fixtures_home_team_id_fkey(id, name, logo_url),
+      away:teams!fixtures_away_team_id_fkey(id, name, logo_url)`;
+    const sb = db();
+    const leagues = webEnv().leagues;
+    const today = thaiDate();
+    const { from, to } = thaiDayRange(today);
+    const [live, day] = await Promise.all([
+      sb.from('fixtures').select(sel).in('league_id', leagues).in('status_short', LIVE).order('kickoff_at'),
+      sb.from('fixtures').select(sel).in('league_id', leagues).gte('kickoff_at', from).lt('kickoff_at', to).order('kickoff_at').limit(limit),
+    ]);
+    let rows = (day.data ?? []) as unknown as TickerMatch[];
+    let shown: string | null = today;
+    if (!rows.length) {
+      const next = await sb.from('fixtures').select(sel).in('league_id', leagues).gte('kickoff_at', to).order('kickoff_at').limit(limit);
+      rows = (next.data ?? []) as unknown as TickerMatch[];
+      shown = rows[0] ? thaiDate(new Date(rows[0].kickoff_at)) : null;
+      rows = rows.filter((r) => thaiDate(new Date(r.kickoff_at)) === shown);
+    }
+    const liveRows = (live.data ?? []) as unknown as TickerMatch[];
+    const seen = new Set(liveRows.map((r) => r.slug));
+    return { day: shown, matches: [...liveRows, ...rows.filter((r) => !seen.has(r.slug))].slice(0, limit) };
+  } catch {
+    return { day: null, matches: [] };
+  }
+}
+
 /** Matches in play right now (tracked leagues). */
 export async function liveMatches(): Promise<MatchRow[]> {
   const { data, error } = await db()
