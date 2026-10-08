@@ -4,8 +4,8 @@ name: data-sync
 on:
   schedule:
     - cron: '5 * * * *'     # hourly: odds + lineups + results + settlement + finished-match details
-    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings
-    - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats
+    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings, prune raw responses
+    - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats, prune + reclaim disk (vacuum full)
   workflow_dispatch:
     inputs:
       job:
@@ -71,9 +71,11 @@ jobs:
           npm run sync:predictions -- --hours 48
           npm run sync:standings
           npm run model:probabilities -- --days 7
+          npm run db:prune
 
       - name: Weekly
         if: github.event.schedule == '0 20 * * 1'
         run: |
           npm run sync:players
           npm run model:tune
+          npm run db:prune -- --vacuum
