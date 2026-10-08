@@ -1,0 +1,16 @@
+{
+  "name": "@fp/live-score",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@fp/database": "*",
+    "@fp/football-sync": "*",
+    "@fp/shared": "*"
+  }
+}

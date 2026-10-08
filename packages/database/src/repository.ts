@@ -1,4 +1,5 @@
 import type { OddsRow, RawResponseRecord } from '@fp/football';
+import { LIVE_STATUSES } from '@fp/shared';
 import type { Db, Queryable } from './db.js';
 import { insertReturning, insertRows, toParam, writeRows, type Row } from './upsert.js';
 
@@ -491,6 +492,25 @@ export class Repository {
    * Fixtures whose result we still need: kicked off > 105 min ago, not final/void yet,
    * within the last `days` — plus any fixture that still has a PENDING analysis.
    */
+  /**
+   * Live-score gate: matches in play, or kicking off within a minute (status still NS until the
+   * API flips it). Pure DB check, so polling it costs no API requests while nothing is on.
+   */
+  async liveWindowFixtureIds(leagueIds: number[], now: Date, limit = 100): Promise<number[]> {
+    const res = await this.db.query<{ id: string | number }>(
+      `select id from fixtures f
+        where f.league_id = any($1::int[])
+          and f.status_short not in ('FT','AET','PEN','PST','CANC','ABD','AWD','WO')
+          and f.kickoff_at <= $2::timestamptz + interval '1 minute'
+          and (f.kickoff_at > $2::timestamptz - interval '3 hours'
+               or (f.status_short = any($3::text[]) and f.kickoff_at > $2::timestamptz - interval '6 hours'))
+        order by f.kickoff_at, f.id
+        limit $4`,
+      [leagueIds, now.toISOString(), [...LIVE_STATUSES], limit],
+    );
+    return res.rows.map((r) => Number(r.id));
+  }
+
   async fixturesAwaitingResult(leagueIds: number[], now: Date, days = 14, limit = 400): Promise<number[]> {
     const res = await this.db.query<{ id: string | number }>(
       `select id from fixtures f

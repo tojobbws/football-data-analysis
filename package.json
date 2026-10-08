@@ -21,6 +21,7 @@
     "sync:fixtures": "npm run job -w @fp/football-sync -- fixtures",
     "sync:details": "npm run job -w @fp/football-sync -- details",
     "sync:results": "npm run job -w @fp/football-sync -- results",
+    "sync:live": "npm run job -w @fp/football-sync -- live",
     "sync:lineups": "npm run job -w @fp/football-sync -- lineups",
     "sync:injuries": "npm run job -w @fp/football-sync -- injuries",
     "sync:predictions": "npm run job -w @fp/football-sync -- predictions",

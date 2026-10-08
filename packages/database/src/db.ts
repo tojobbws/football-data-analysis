@@ -13,12 +13,13 @@ export interface Db extends Queryable {
 }
 
 /** Postgres / Supabase connection used by workers (service-level access, bypasses RLS). */
-export function createPgDb(connectionString: string, opts: { max?: number } = {}): Db {
+/** `ssl: false` for Cloudflare Hyperdrive (it does TLS to the database itself). */
+export function createPgDb(connectionString: string, opts: { max?: number; ssl?: boolean } = {}): Db {
   const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
   const pool = new pg.Pool({
     connectionString,
     max: opts.max ?? 5,
-    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+    ssl: isLocal || opts.ssl === false ? undefined : { rejectUnauthorized: false },
   });
 
   const query: Queryable['query'] = async <R>(text: string, params?: unknown[]) => {

@@ -94,6 +94,25 @@ export function syncResults(ctx: JobContext, opts: { days?: number; now?: Date }
   });
 }
 
+/**
+ * Live scores: refresh matches in play (or kicking off within a minute), 20 per request, with
+ * events/stats/lineups. The DB is checked first: nothing on -> no API request and no sync_runs row.
+ */
+export async function syncLive(ctx: JobContext, opts: { now?: Date } = {}): Promise<number> {
+  const leagues = ctx.env.TRACKED_LEAGUES;
+  const ids = await ctx.repo.liveWindowFixtureIds(leagues, opts.now ?? new Date());
+  if (!ids.length) return 0;
+  return runJob(ctx, 'live', { leagues, fixtures: ids.length }, async () => {
+    let n = 0;
+    for (const batch of chunk(ids, MAX_FIXTURE_IDS_PER_CALL)) {
+      const { data } = await ctx.api.fixturesByIds(batch);
+      n += await persistFixtures(ctx.repo, data, { withDetails: true });
+      await ctx.repo.markFixtureDetailsSynced(data.filter((f) => ['FT', 'AET', 'PEN'].includes(f.fixture.status.short)).map((f) => f.fixture.id));
+    }
+    return n;
+  });
+}
+
 /** Fixtures kicking off soon: refresh status + confirmed lineups (released ~20-40 min before KO). */
 export function syncPrematchLineups(ctx: JobContext, opts: { withinMinutes?: number } = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;

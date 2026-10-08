@@ -8,6 +8,7 @@ import {
   syncFixtures,
   syncInjuries,
   syncLeagues,
+  syncLive,
   syncPlayers,
   syncPrematchLineups,
   syncResults,
@@ -23,6 +24,7 @@ jobs:
   fixtures [--from D --to D] [--season Y]  fixtures (whole season, or YYYY-MM-DD window; --season for history)
   details  [--limit N] [--league IDS] [--season YEARS]   events/stats/xG/lineups/players of finished matches (IDS/YEARS comma-separated)
   results  [--days N]             scores/status of matches that kicked off (last N days, default 14) + pending analyses
+  live                            live scores of matches in play (no API call when none on; prod: workers/live-score cron)
   lineups  [--minutes N]          confirmed lineups for matches starting soon (default 90)
   injuries [--days N]             injuries for the next N days (default 3)
   predictions [--hours N]         API-Football predictions for next N hours (default 48)
@@ -72,6 +74,9 @@ async function main() {
         break;
       case 'results':
         await syncResults(ctx, { days: num(values.days) });
+        break;
+      case 'live':
+        await syncLive(ctx);
         break;
       case 'lineups':
         await syncPrematchLineups(ctx, { withinMinutes: num(values.minutes) });

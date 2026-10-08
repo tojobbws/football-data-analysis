@@ -20,6 +20,7 @@ football-platform/
 ├── workers/
 │   ├── football-sync/        leagues, teams, fixtures, details, lineups, injuries, predictions, standings, players
 │   ├── odds-sync/            odds snapshots -> odds_history
+│   ├── live-score/           Cloudflare Worker: cron ทุกนาที -> sync:live (สกอร์สด)
 │   └── analysis/             probabilities -> probability_predictions, backtest
 ├── supabase/migrations/      SQL schema (ใช้กับ Supabase CLI ได้ตรง ๆ)
 ├── scripts/migrate.ts        apply migrations ไปที่ DATABASE_URL
@@ -55,6 +56,7 @@ Layer แยกกันชัด: **API logic อยู่ใน `packages/foot
 | `sync:fixtures [--from --to]` | ตารางแข่ง/ผล | วันละครั้ง (+ ชั่วโมงละครั้งช่วงแข่ง) |
 | `sync:details` | events, stats, **xG**, lineups, player stats ของนัดที่จบ (20 นัด/request) | ชั่วโมงละครั้ง |
 | `sync:results [--days]` | สกอร์/สถานะนัดที่เตะไปแล้วแต่ยังไม่จบใน DB + ทุกนัดที่มีบทวิเคราะห์ PENDING (20 นัด/request) | ชั่วโมงละครั้ง |
+| `sync:live` | สกอร์สด + events/stats ของนัดที่กำลังเตะ (20 นัด/request) — เช็ก DB ก่อน ไม่มีนัดเตะ = ไม่ยิง API | ทุก 30 วิ ผ่าน `workers/live-score` |
 | `sync:lineups [--minutes]` | ตัวจริงก่อนเตะ | ทุก 15–60 นาที |
 | `sync:injuries [--days]` | ตัวเจ็บ | วันละครั้ง |
 | `sync:predictions [--hours]` | API Prediction (เก็บเป็น snapshot, เป็นแค่ 1 input) | วันละครั้ง |
@@ -62,8 +64,23 @@ Layer แยกกันชัด: **API logic อยู่ใน `packages/foot
 | `sync:players` | สถิตินักเตะทั้ง season (หลาย page) | สัปดาห์ละครั้ง |
 | `sync:odds` | odds → `odds_history` (append-only) | ชั่วโมงละครั้ง / ถี่ขึ้นใกล้เตะ |
 
-ทุก job บันทึก `sync_runs` (จำนวน request ที่ใช้ = ต้นทุน API) และทุก response ถูกเก็บดิบใน `api_raw_responses` ก่อน process เสมอ
+ทุก job บันทึก `sync_runs` (จำนวน request ที่ใช้ = ต้นทุน API) และทุก response ถูกเก็บดิบใน `api_raw_responses` ก่อน process เสมอ (ยกเว้น `live`: ยิงถี่เกินจะทำ DB บวม — ผลสุดท้ายยังถูกเก็บดิบโดย `sync:results`)
 **Free plan ของ API-Football มี quota ต่อวันจำกัด** — พอสำหรับพัฒนา แต่ถ้ารัน odds ทุกชั่วโมงจริงต้องใช้ plan แบบจ่ายเงิน (ดู request ที่ใช้จริงได้จาก `select job, sum(requests_used) from sync_runs group by 1`)
+
+## Live scores (`workers/live-score`)
+
+Cloudflare Worker cron ทุก 1 นาที แต่ละรอบ: query DB ว่ามีนัดที่กำลังเตะ / กำลังจะเตะใน 1 นาทีไหม → ไม่มี = จบ (0 request) → มี = `fixtures?ids=` (20 นัด/request) ทุก `LIVE_POLL_SECONDS` (default 30) จนครบนาที
+ค่าใช้ API ≈ 120 request ต่อชั่วโมงที่มีบอลเตะ (ไม่ขึ้นกับจำนวนนัด ถ้าไม่เกิน 20 นัดพร้อมกัน)
+
+ต่อ DB ผ่าน **Hyperdrive** (socket ของ Workers verify cert ของ Supabase pooler ไม่ผ่าน เพราะเป็น CA ของ Supabase เอง) — ตั้งครั้งแรก:
+```bash
+cd workers/live-score
+npx wrangler hyperdrive create football-db --connection-string="<DATABASE_URL>" --caching-disabled
+#   -> ใส่ id ที่ได้ใน wrangler.jsonc (id ที่ได้จาก `hyperdrive create`)
+npx wrangler secret put API_FOOTBALL_KEY
+npx wrangler deploy
+```
+`TRACKED_LEAGUES` ใน `wrangler.jsonc` ต้องตรงกับ `.env` / GitHub variable. ทดสอบ logic บนเครื่องได้ด้วย `npm run sync:live`
 
 ## สิ่งที่ Database บังคับเอง (ไม่ใช่แค่ code)
 

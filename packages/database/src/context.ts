@@ -14,9 +14,12 @@ export interface JobContext {
 
 /**
  * Wires env -> DB -> API client. Every API response is stored in api_raw_responses
- * BEFORE it is processed (source + timestamp + raw data, always).
+ * BEFORE it is processed (source + timestamp + raw data, always) — except with
+ * `storeRawResponses: false` (live-score polling: the final state is still stored by `results`).
  */
-export function createJobContext(overrides: Partial<Pick<JobContext, 'db'>> & { env?: Env } = {}): JobContext {
+export function createJobContext(
+  overrides: Partial<Pick<JobContext, 'db'>> & { env?: Env; storeRawResponses?: boolean } = {},
+): JobContext {
   const env = overrides.env ?? loadEnv();
   const log = createLogger(env.LOG_LEVEL);
   const db = overrides.db ?? createPgDb(env.DATABASE_URL);
@@ -25,7 +28,7 @@ export function createJobContext(overrides: Partial<Pick<JobContext, 'db'>> & { 
     apiKey: env.API_FOOTBALL_KEY,
     baseUrl: env.API_FOOTBALL_BASE_URL,
     requestsPerMinute: env.API_FOOTBALL_RPM,
-    onRawResponse: (rec) => repo.insertRawResponse(rec),
+    onRawResponse: overrides.storeRawResponses === false ? undefined : (rec) => repo.insertRawResponse(rec),
     onRequest: (endpoint, params) => log.debug('api request', { endpoint, params }),
   });
   return { env, db, repo, api: new ApiFootball(client), client, log };
