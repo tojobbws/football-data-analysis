@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { PreviewText } from '@fp/analysis';
 import { allowedNumbers, BANNED_WORDS, inventedNumbers } from './guards.js';
 
-export const PREVIEW_PROMPT_VERSION = 'preview-ai-v0.1';
+export const PREVIEW_PROMPT_VERSION = 'preview-ai-v0.2';
 
 /** Kept byte-stable (no dates, no per-request values) so it caches across fixtures. */
 export const PREVIEW_SYSTEM_PROMPT = `You are the analyst of a Thai football data & analysis brand. You receive one upcoming match as JSON and write a short Thai preview a football fan enjoys reading.
@@ -78,13 +78,12 @@ export function validatePreviewOutput(raw: unknown, input: Record<string, unknow
   const allowed = allowedNumbers(input);
   for (const t of texts) for (const n of inventedNumbers(t, allowed)) violations.push(`number not in input: ${n}`);
 
-  const model = (input.model ?? null) as { scorelines?: Array<{ home: number; away: number }> } | null;
-  const listed = new Set((model?.scorelines ?? []).map((s) => `${s.home}-${s.away}`));
+  const listed = knownScorelines(input);
   for (const t of texts) {
     for (const m of t.matchAll(/(?<![\d.])(\d)\s*[-–]\s*(\d)(?![\d.])/g)) {
       const s = `${m[1]}-${m[2]}`;
-      // "2-1" style scorelines must be the model's; W-D-L counts like "ชนะ 3 เสมอ 1" don't match this shape
-      if (!listed.has(s) && !h2hScore(input, s)) violations.push(`scoreline not in input: ${s}`);
+      // "2-1" style scorelines must be the model's or a result in the input; W-D-L counts like "ชนะ 3 เสมอ 1" don't match this shape
+      if (!listed.has(s)) violations.push(`scoreline not in input: ${s}`);
     }
   }
 
@@ -92,7 +91,20 @@ export function validatePreviewOutput(raw: unknown, input: Record<string, unknow
   return { ok: unique.length === 0, violations: unique, text: unique.length ? null : out };
 }
 
-function h2hScore(input: Record<string, unknown>, s: string): boolean {
-  const h2h = (input.h2h ?? []) as Array<{ homeGoals?: number; awayGoals?: number }>;
-  return h2h.some((h) => `${h.homeGoals}-${h.awayGoals}` === s || `${h.awayGoals}-${h.homeGoals}` === s);
+/** Scorelines the text may quote: the model's, H2H results, and each team's recent results (either order). */
+function knownScorelines(input: Record<string, unknown>): Set<string> {
+  const out = new Set<string>();
+  const both = (a: unknown, b: unknown) => {
+    if (a == null || b == null) return;
+    out.add(`${a}-${b}`);
+    out.add(`${b}-${a}`);
+  };
+  const model = (input.model ?? null) as { scorelines?: Array<{ home: number; away: number }> } | null;
+  for (const s of model?.scorelines ?? []) both(s.home, s.away);
+  for (const h of (input.h2h ?? []) as Array<{ homeGoals?: number; awayGoals?: number }>) both(h.homeGoals, h.awayGoals);
+  for (const side of ['home', 'away'] as const) {
+    const form = ((input[side] as { form?: Array<{ goalsFor?: number; goalsAgainst?: number }> } | undefined)?.form ?? []);
+    for (const r of form) both(r.goalsFor, r.goalsAgainst);
+  }
+  return out;
 }

@@ -19,6 +19,7 @@ const team = (name: string, over: Partial<PreviewTeam> = {}): PreviewTeam => ({
     { venue: 'A', result: 'W', goalsFor: 3, goalsAgainst: 1, xgFor: 2.2, xgAgainst: 0.8 },
     { venue: 'H', result: 'W', goalsFor: 1, goalsAgainst: 0, xgFor: 1.5, xgAgainst: 0.5 },
   ],
+  formSummary: null, // the template derives it from `form` when the job did not fill it
   standing: { rank: 3, played: 8, points: 17, win: 5, draw: 2, lose: 1, goalsFor: 14, goalsAgainst: 6 },
   injuries: [{ player: 'A. Player', type: 'Missing Fixture', reason: 'Knee Injury' }],
   starters: null,
@@ -40,7 +41,7 @@ const facts = (over: Partial<PreviewFacts> = {}): PreviewFacts => ({
       { home: 2, away: 0, p: 0.1 },
       { home: 1, away: 1, p: 0.09 },
     ],
-    pOver25: 0.55,
+    overUnder: { line: 2.5, pOver: 0.55 },
     tested: true,
     matchesUsed: 400,
     xgShare: 0.95,
@@ -154,7 +155,7 @@ describe('buildTemplateText', () => {
     expect(t.home_th).toContain('อันดับ 3');
     expect(t.home_th).toContain('A. Player');
     expect(t.score_th).toContain('Arsenal 1-0 Chelsea (12%)');
-    expect(t.score_th).toContain('ประตูคาดหวัง 1.70 ต่อ 1.00');
+    expect(t.score_th).toContain('ประตูคาดหวัง 1.70 ต่อ 1.00 โอกาสเกิน 2.5 ประตู 55%');
 
     const thin = facts({ model: null });
     const tt = buildTemplateText(thin, assessDataSupport(thin));

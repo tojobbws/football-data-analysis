@@ -11,7 +11,7 @@
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.1';
+export const PREVIEW_VERSION = 'preview-v0.2';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -28,12 +28,42 @@ export interface PreviewFormRow {
 export interface PreviewTeam {
   name: string;
   form: PreviewFormRow[];
+  /** totals over `form` — stated as facts so the text may quote them without doing arithmetic */
+  formSummary: FormSummary | null;
   standing: { rank: number | null; played: number | null; points: number | null; win: number | null; draw: number | null; lose: number | null; goalsFor: number | null; goalsAgainst: number | null } | null;
   injuries: Array<{ player: string | null; type: string | null; reason: string | null }>;
   /** confirmed starting XI (names), null before the lineup is out */
   starters: string[] | null;
   /** time-weighted matches the model has for this team (Dixon-Coles `teamMatches`) */
   modelMatches: number | null;
+}
+
+export interface FormSummary {
+  matches: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  /** averages over the matches that have xG */
+  xgFor: number | null;
+  xgAgainst: number | null;
+}
+
+export function formSummary(form: readonly PreviewFormRow[]): FormSummary | null {
+  if (!form.length) return null;
+  const xg = form.filter((r) => r.xgFor != null);
+  const avg = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100;
+  return {
+    matches: form.length,
+    won: form.filter((r) => r.result === 'W').length,
+    drawn: form.filter((r) => r.result === 'D').length,
+    lost: form.filter((r) => r.result === 'L').length,
+    goalsFor: form.reduce((a, r) => a + r.goalsFor, 0),
+    goalsAgainst: form.reduce((a, r) => a + r.goalsAgainst, 0),
+    xgFor: xg.length ? avg(xg.map((r) => r.xgFor!)) : null,
+    xgAgainst: xg.length ? avg(xg.map((r) => r.xgAgainst ?? 0)) : null,
+  };
 }
 
 export interface PreviewModel {
@@ -43,7 +73,8 @@ export interface PreviewModel {
   expectedGoals: { home: number; away: number };
   /** most likely scorelines, best first */
   scorelines: Array<{ home: number; away: number; p: number }>;
-  pOver25: number | null;
+  /** totals at the main line (the line is a fact of the input too, so the text may quote it) */
+  overUnder: { line: number; pOver: number } | null;
   /** the league's 1X2 model passed `model:tune` */
   tested: boolean;
   matchesUsed: number;
@@ -231,7 +262,7 @@ export function buildTemplateText(f: PreviewFacts, support: { level: DataSupport
         let s = `สกอร์ที่โมเดลให้โอกาสสูงสุดคือ ${home} ${best.home}-${best.away} ${away} (${pct(best.p)})`;
         if (rest.length) s += ` รองลงมา ${rest.map((r) => `${r.home}-${r.away} (${pct(r.p)})`).join(' และ ')}`;
         s += ` ประตูคาดหวัง ${n2(m.expectedGoals.home)} ต่อ ${n2(m.expectedGoals.away)}`;
-        if (m.pOver25 != null) s += ` โอกาสเกิน 2.5 ประตู ${pct(m.pOver25)}`;
+        if (m.overUnder) s += ` โอกาสเกิน ${m.overUnder.line} ประตู ${pct(m.overUnder.pOver)}`;
         return s;
       })()
     : 'ยังไม่มีสกอร์คาดการณ์ เพราะโมเดลไม่มีข้อมูลพอสำหรับรายการนี้';
@@ -241,18 +272,10 @@ export function buildTemplateText(f: PreviewFacts, support: { level: DataSupport
 
 function teamText(t: PreviewTeam): string {
   const parts: string[] = [];
-  if (t.form.length) {
-    const w = t.form.filter((r) => r.result === 'W').length;
-    const d = t.form.filter((r) => r.result === 'D').length;
-    const l = t.form.filter((r) => r.result === 'L').length;
-    const gf = t.form.reduce((a, r) => a + r.goalsFor, 0);
-    const ga = t.form.reduce((a, r) => a + r.goalsAgainst, 0);
-    parts.push(`${t.form.length} นัดล่าสุด ชนะ ${w} เสมอ ${d} แพ้ ${l} ยิงได้ ${gf} เสีย ${ga}`);
-    const xg = t.form.filter((r) => r.xgFor != null);
-    if (xg.length) {
-      const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-      parts.push(`xG เฉลี่ย ${n2(avg(xg.map((r) => r.xgFor!)))} เสีย ${n2(avg(xg.map((r) => r.xgAgainst ?? 0)))}`);
-    }
+  const s = t.formSummary ?? formSummary(t.form);
+  if (s) {
+    parts.push(`${s.matches} นัดล่าสุด ชนะ ${s.won} เสมอ ${s.drawn} แพ้ ${s.lost} ยิงได้ ${s.goalsFor} เสีย ${s.goalsAgainst}`);
+    if (s.xgFor != null) parts.push(`xG เฉลี่ย ${n2(s.xgFor)} เสีย ${n2(s.xgAgainst ?? 0)}`);
   } else {
     parts.push('ไม่มีผลการแข่งขันล่าสุดในระบบ');
   }

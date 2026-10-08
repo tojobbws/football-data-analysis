@@ -18,6 +18,7 @@ import {
   assessDataSupport,
   buildTemplateText,
   DIXON_COLES_VERSION,
+  formSummary,
   matrixExpectedGoals,
   PREVIEW_VERSION,
   previewScoreMatrix,
@@ -41,6 +42,9 @@ export interface PreviewJobOptions {
   limit?: number;
 }
 
+/** attempts per (fixture, stage): the first, plus one retry when the AI attempt was INVALID / REFUSED */
+export const MAX_ATTEMPTS_PER_STAGE = 2;
+
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
@@ -60,7 +64,11 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
       const lineups = await ctx.repo.lineupsForFixture(f.id);
       const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
       const stage = previewStageFor(f.kickoffAt, now, hasLineups, { hoursAhead: hours });
-      if (!stage || (await ctx.repo.hasPreview(f.id, stage))) continue;
+      if (!stage) continue;
+      // one preview per stage; a failed AI attempt (guard / refusal) may be retried once — rows are
+      // append-only and the site shows the latest, so the first text stays on record
+      const prev = await ctx.repo.previewAttempts(f.id, stage);
+      if (prev.aiOk || (!writer && prev.attempts > 0) || prev.attempts >= MAX_ATTEMPTS_PER_STAGE) continue;
 
       const facts = await collectFacts(ctx, f, stage);
       const support = assessDataSupport(facts);
@@ -191,7 +199,7 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
       p: { home: r4(p('HOME')), draw: r4(p('DRAW')), away: r4(p('AWAY')) },
       expectedGoals: { home: r2(eg.home), away: r2(eg.away) },
       scorelines: topScorelines(matrix, 3).map((s) => ({ ...s, p: r4(s.p) })),
-      pOver25: over ? r4(over.probability) : null,
+      overUnder: over ? { line: 2.5, pOver: r4(over.probability) } : null,
       tested,
       matchesUsed: Number(inputs.matchesUsed ?? 0),
       xgShare: Number(inputs.xgShare ?? 0),
@@ -201,19 +209,21 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
 
   const team = (id: number, name: string, form: Awaited<ReturnType<JobContext['repo']['teamForm']>>, weighted: number | undefined): PreviewTeam => {
     const starters = lineup.filter((p) => Number(p.team_id) === id && p.is_starter).map((p) => String(p.player_name));
+    const rows = form.map(
+      (x): PreviewFormRow => ({
+        venue: x.venue as 'H' | 'A',
+        result: x.result as 'W' | 'D' | 'L',
+        goalsFor: x.goalsFor,
+        goalsAgainst: x.goalsAgainst,
+        xgFor: x.xgFor == null ? null : r2(x.xgFor),
+        xgAgainst: x.xgAgainst == null ? null : r2(x.xgAgainst),
+        opponent: x.opponent,
+      }),
+    );
     return {
       name,
-      form: form.map(
-        (x): PreviewFormRow => ({
-          venue: x.venue as 'H' | 'A',
-          result: x.result as 'W' | 'D' | 'L',
-          goalsFor: x.goalsFor,
-          goalsAgainst: x.goalsAgainst,
-          xgFor: x.xgFor == null ? null : r2(x.xgFor),
-          xgAgainst: x.xgAgainst == null ? null : r2(x.xgAgainst),
-          opponent: x.opponent,
-        }),
-      ),
+      form: rows,
+      formSummary: formSummary(rows),
       standing: standings.get(id) ?? null,
       injuries: injuries.filter((i) => Number(i.team_id) === id).map((i) => ({ player: i.player_name == null ? null : String(i.player_name), type: i.type == null ? null : String(i.type), reason: i.reason == null ? null : String(i.reason) })),
       starters: starters.length ? starters : null,

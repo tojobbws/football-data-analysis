@@ -873,9 +873,13 @@ export class Repository {
     return res.rows.map((r) => ({ kickoffAt: new Date(r.kickoff_at as string).toISOString(), home: String(r.home), away: String(r.away), homeGoals: Number(r.gh), awayGoals: Number(r.ga) }));
   }
 
-  async hasPreview(fixtureId: number, stage: string): Promise<boolean> {
-    const res = await this.db.query('select 1 from match_previews where fixture_id = $1 and stage = $2', [fixtureId, stage]);
-    return res.rows.length > 0;
+  /** How many previews exist for a stage and whether one of them carries AI text that passed the guards. */
+  async previewAttempts(fixtureId: number, stage: string): Promise<{ attempts: number; aiOk: boolean }> {
+    const res = await this.db.query<{ attempts: string; ai_ok: boolean }>(
+      `select count(*) as attempts, coalesce(bool_or(ai_status = 'OK'), false) as ai_ok from match_previews where fixture_id = $1 and stage = $2`,
+      [fixtureId, stage],
+    );
+    return { attempts: Number(res.rows[0]?.attempts ?? 0), aiOk: Boolean(res.rows[0]?.ai_ok) };
   }
 
   /** Insert-only; the DB trigger rejects it at/after kickoff. */

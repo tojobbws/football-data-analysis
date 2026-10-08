@@ -133,7 +133,7 @@ describe('matchPreviewJob', () => {
     expect(writer.calls).toBe(3);
 
     const a = await one(`select * from match_previews where fixture_id = 101`);
-    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: 'preview-ai-v0.1', version: 'preview-v0.1', predicted_home: 1, predicted_away: 0 });
+    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: 'preview-ai-v0.2', version: 'preview-v0.2', predicted_home: 1, predicted_away: 0 });
     expect(a.overview_th).toContain('50%');
     expect(Number(a.p_home)).toBe(0.5); // ensemble, like 📊 มุมมองโมเดล
     expect(Number(a.expected_home)).toBeCloseTo(1.6, 1);
@@ -165,9 +165,34 @@ describe('matchPreviewJob', () => {
     expect((await one(`select count(*) n from match_previews where fixture_id = 104`)).n).toBe(0);
   });
 
+  it('retries a failed AI attempt once per stage (append-only), never a passed one', async () => {
+    // API down: 102 (INVALID) and 103 (REFUSED) are retried, 101 (OK) is not; nothing stored
+    const down = fakeWriter({});
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: down })).toBe(0);
+    expect(down.calls).toBe(2);
+
+    const second = fakeWriter({
+      'Home B': prose({ overview_th: 'บอลถ้วยข้ามลีก ข้อมูลเทียบกันได้น้อย โมเดลเอียงไปทางเจ้าบ้านเล็กน้อยเท่านั้น', score_th: 'สกอร์ของโมเดลสูสี ข้อมูลยังบางมาก' }),
+      'Home C': prose({ overview_th: 'โมเดลให้ 99% แน่นอน' }),
+    });
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: second })).toBe(2);
+    const b = (await db.query<Record<string, unknown>>(`select text_source, ai_status from match_previews where fixture_id = 102 order by id`)).rows;
+    expect(b).toEqual([
+      { text_source: 'TEMPLATE', ai_status: 'INVALID' },
+      { text_source: 'AI', ai_status: 'OK' },
+    ]);
+    expect((await one(`select text_source from web_match_previews where fixture_id = 102`)).text_source).toBe('AI');
+
+    // two attempts is the limit, even when both failed (103); without a writer nothing is retried
+    const third = fakeWriter({ 'Home C': prose() });
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: third })).toBe(0);
+    expect(third.calls).toBe(0);
+    expect(Number((await one(`select count(*) n from match_previews where fixture_id = 103`)).n)).toBe(2);
+  });
+
   it('is idempotent per stage; a LINEUP stage is added once the XIs are confirmed', async () => {
     const writer = fakeWriter({});
-    expect(await matchPreviewJob(ctx, { now: NOW, writer })).toBe(0);
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: null })).toBe(0);
     expect(writer.calls).toBe(0);
 
     await db.query(`insert into fixture_lineups (fixture_id, team_id, formation) values (101, 1, '4-3-3'), (101, 2, '4-4-2')`);
