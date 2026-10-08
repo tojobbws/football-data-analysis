@@ -16,6 +16,17 @@ export const KNOWN_LEAGUES = {
   1129: { name: 'ASEAN Club Championship', country: 'World' },
 } as const satisfies Record<number, { name: string; country: string }>;
 
+/**
+ * Club cups whose teams come from different domestic leagues -> those domestic leagues.
+ * computeProbabilities blends in the cross-league model (packages/analysis/cross-league.ts) for these;
+ * `sync:support` keeps results of the domestic leagues that are not in TRACKED_LEAGUES fresh
+ * (results only, never shown on the site). Brunei has no league in API-Football.
+ */
+export const CROSS_LEAGUE_CUPS: Readonly<Record<number, readonly number[]>> = {
+  // ASEAN Club Championship: TH, MY, SG, VN, ID, MM, KH, LA, PH
+  1129: [296, 278, 368, 340, 274, 588, 410, 647, 765],
+};
+
 /** Fixture status codes from API-Football */
 export const FIXTURE_STATUS = {
   NOT_STARTED: ['TBD', 'NS'],

@@ -13,6 +13,7 @@ import {
   syncPrematchLineups,
   syncResults,
   syncStandings,
+  syncSupportLeagues,
   syncTeams,
 } from './jobs.js';
 
@@ -29,6 +30,7 @@ jobs:
   injuries [--days N]             injuries for the next N days (default 3)
   predictions [--hours N]         API-Football predictions for next N hours (default 48)
   standings
+  support  [--last N]             results of untracked domestic leagues behind cross-league cups (last N per league, default 30)
   players  [--max-pages N]        player season stats (heavy, weekly)
   bootstrap                       leagues -> teams -> fixtures -> standings
   prune    [--days N] [--vacuum]  delete raw API responses older than N days (default 14); --vacuum frees the disk space`;
@@ -48,6 +50,7 @@ async function main() {
       hours: { type: 'string' },
       'max-pages': { type: 'string' },
       vacuum: { type: 'boolean' },
+      last: { type: 'string' },
     },
   });
   const job = positionals[0];
@@ -86,6 +89,9 @@ async function main() {
         break;
       case 'predictions':
         await syncApiPredictions(ctx, { hours: num(values.hours) });
+        break;
+      case 'support':
+        await syncSupportLeagues(ctx, { last: num(values.last) });
         break;
       case 'standings':
         await syncStandings(ctx);

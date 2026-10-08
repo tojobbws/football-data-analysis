@@ -70,6 +70,7 @@ jobs:
           npm run sync:details -- --limit 400
           npm run sync:predictions -- --hours 48
           npm run sync:standings
+          npm run sync:support
           npm run model:probabilities -- --days 7
           npm run db:prune
 

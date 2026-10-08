@@ -10,7 +10,7 @@ import {
   toTeamRow,
   toVenueRow,
 } from '@fp/football';
-import { addDays, addHours, chunk, toDateString } from '@fp/shared';
+import { addDays, addHours, chunk, CROSS_LEAGUE_CUPS, toDateString } from '@fp/shared';
 import { persistFixtures } from './persist.js';
 
 /** Leagues + seasons (+ coverage flags: tells us if xG/odds/predictions exist for a league). */
@@ -53,6 +53,25 @@ export function syncFixtures(ctx: JobContext, opts: { from?: string; to?: string
     let n = 0;
     for (const league of leagues) {
       const { data } = await ctx.api.fixtures({ league, season, from: opts.from, to: opts.to });
+      n += await persistFixtures(ctx.repo, data, { withDetails: false });
+    }
+    return n;
+  });
+}
+
+/**
+ * Support leagues: domestic leagues behind a tracked cross-league cup (CROSS_LEAGUE_CUPS) that are not
+ * tracked themselves. Results only (the cross-league model needs scores, nothing else), never shown on the
+ * site. `last` N played per league = 1 request each, and works across season boundaries.
+ */
+export function syncSupportLeagues(ctx: JobContext, opts: { last?: number } = {}) {
+  const tracked = new Set(ctx.env.TRACKED_LEAGUES);
+  const leagues = [...new Set(ctx.env.TRACKED_LEAGUES.flatMap((l) => CROSS_LEAGUE_CUPS[l] ?? []))].filter((l) => !tracked.has(l));
+  const last = opts.last ?? 30;
+  return runJob(ctx, 'support', { leagues, last }, async () => {
+    let n = 0;
+    for (const league of leagues) {
+      const { data } = await ctx.api.fixtures({ league, last });
       n += await persistFixtures(ctx.repo, data, { withDetails: false });
     }
     return n;

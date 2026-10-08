@@ -7,7 +7,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import detail from '../../../packages/football/test/fixtures/fixture-detail.json' with { type: 'json' };
-import { syncLive } from '../src/jobs.js';
+import { syncLive, syncSupportLeagues } from '../src/jobs.js';
 
 const now = new Date('2026-10-14T19:30:00Z');
 const at = (minutes: number) => new Date(now.getTime() + minutes * 60_000).toISOString();
@@ -82,5 +82,24 @@ describe('syncLive', () => {
     const rows = (await db.query<{ id: number; status_short: string; goals_home: number }>(`select id, status_short, goals_home from fixtures where id in (10, 11, 12) order by id`)).rows;
     expect(rows.map((r) => [Number(r.id), r.status_short, r.goals_home])).toEqual([[10, '2H', 2], [11, '2H', 2], [12, '2H', 2]]);
     expect(Number((await db.query<{ n: number }>(`select count(*) n from fixture_events where fixture_id = 10`)).rows[0]!.n)).toBeGreaterThan(0);
+  });
+});
+
+describe('syncSupportLeagues', () => {
+  it('fetches the last N results of untracked domestic leagues behind a tracked cross-league cup', async () => {
+    const seen: string[] = [];
+    const client = new ApiFootballClient({
+      apiKey: 'test',
+      requestsPerMinute: 1000,
+      fetchImpl: (async (input: URL | RequestInfo) => {
+        const u = new URL(String(input));
+        seen.push(`${u.searchParams.get('league')}:${u.searchParams.get('last')}`);
+        return new Response(JSON.stringify({ errors: [], results: 0, paging: { current: 1, total: 1 }, response: [] }));
+      }) as typeof fetch,
+    });
+    const c2 = { ...ctx, client, api: new ApiFootball(client), env: { ...ctx.env, TRACKED_LEAGUES: [39, 1129, 296] } };
+    await syncSupportLeagues(c2, { last: 25 });
+    // 296 is tracked itself -> not fetched again; 39 is not a cross-league cup
+    expect(seen.sort()).toEqual(['274:25', '278:25', '340:25', '368:25', '410:25', '588:25', '647:25', '765:25']);
   });
 });

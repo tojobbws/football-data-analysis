@@ -61,6 +61,7 @@ Layer แยกกันชัด: **API logic อยู่ใน `packages/foot
 | `sync:injuries [--days]` | ตัวเจ็บ | วันละครั้ง |
 | `sync:predictions [--hours]` | API Prediction (เก็บเป็น snapshot, เป็นแค่ 1 input) | วันละครั้ง |
 | `sync:standings` | ตารางคะแนน | วันละครั้ง |
+| `sync:support [--last N]` | ผลการแข่งของลีกในประเทศที่อยู่เบื้องหลังบอลถ้วยข้ามลีก (`CROSS_LEAGUE_CUPS`) แต่ไม่ได้ติดตาม — ผลอย่างเดียว ไม่ขึ้นเว็บ | วันละครั้ง |
 | `sync:players` | สถิตินักเตะทั้ง season (หลาย page) | สัปดาห์ละครั้ง |
 | `sync:odds` | odds → `odds_history` (append-only) | ชั่วโมงละครั้ง / ถี่ขึ้นใกล้เตะ |
 
@@ -81,6 +82,14 @@ npx wrangler secret put API_FOOTBALL_KEY
 npx wrangler deploy
 ```
 `TRACKED_LEAGUES` ใน `wrangler.jsonc` ต้องตรงกับ `.env` / GitHub variable. ทดสอบ logic บนเครื่องได้ด้วย `npm run sync:live`
+
+## Cross-league cups (เช่น ASEAN Club Championship)
+
+ทีมในบอลถ้วยมาจากหลายลีก แต่นัดในถ้วยมีน้อย → `computeProbabilities` ผสม (50/50 ที่ score matrix, เฉพาะ sides) model ถ้วยอย่างเดียวกับ **cross-league model 2 ชั้น** (`packages/analysis/src/cross-league.ts`):
+ความแข็งของทีม *ในลีกตัวเอง* (Dixon-Coles ต่อลีกในประเทศ) × ความแข็งของ *ลีก* (fit จากนัดถ้วย ซึ่งเป็นข้อมูลเดียวที่เทียบลีกกันได้). ค่าที่ใช้บันทึกใน `inputs.crossLeague`
+ตั้งค่าคู่ ถ้วย → ลีกในประเทศ ที่ `CROSS_LEAGUE_CUPS` (`packages/shared/src/leagues.ts`); ทดสอบซ้ำได้ด้วย `npx tsx scripts/backtest-pooled.ts`
+ผล backtest ASEAN (67 นัด, log loss 1X2): ฐาน 1.034 · ถ้วยอย่างเดียว 0.954 · รวมทุกนัดเป็น model เดียว 1.051 (แย่ลง) · **ผสม 0.926** (ดีกว่าฐาน z 2.7, ดีกว่าถ้วยอย่างเดียว z 1.4)
+ยัง **ไม่เปิด pick** — ลีกที่ยังไม่ผ่าน tune ถูก gate เป็น 🌫️ เสมอ; ต้องพิสูจน์กับราคาตลาด (odds ก่อนเตะ) ก่อน
 
 ## สิ่งที่ Database บังคับเอง (ไม่ใช่แค่ code)
 

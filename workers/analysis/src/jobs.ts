@@ -3,7 +3,11 @@ import {
   baseRates,
   calibrateImpact,
   computeElo,
+  crossLeagueExpectedGoals,
+  CROSS_LEAGUE_VERSION,
   dcWalkForward,
+  fitCrossLeague,
+  mixScoreMatrices,
   IMPACT_VERSION,
   matchContexts,
   sortByTime,
@@ -23,9 +27,16 @@ import {
   type TuneResult,
 } from '@fp/analysis';
 import { runJob, type JobContext, type ModelConfig, type Row } from '@fp/database';
-import { addDays } from '@fp/shared';
+import { addDays, CROSS_LEAGUE_CUPS } from '@fp/shared';
 
 export const ENSEMBLE_VERSION = 'ensemble-v0.1';
+
+/**
+ * Cross-league cups: share of the cup-only Dixon-Coles in the sides score matrix (rest = cross-league model).
+ * 0.5 was the setting validated in scripts/backtest-pooled.ts (beat cup-only and base rates on 1X2).
+ */
+export const CROSS_LEAGUE_BLEND = 0.5;
+export const CROSS_LEAGUE_PRIOR = 4;
 
 /** Model needs at least this many finished league matches to say anything. */
 export const MIN_MATCHES_TO_MODEL = 30;
@@ -238,6 +249,15 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
 
       const sides = fitDixonColes(history, now, sidesP);
       const totals = sameParams(sidesP, totalsP) ? sides : fitDixonColes(history, now, totalsP);
+      // cups between leagues: also learn from the teams' domestic leagues (sides only; totals unchanged)
+      const domesticLeagues = CROSS_LEAGUE_CUPS[league];
+      let cross: ReturnType<typeof fitCrossLeague> | null = null;
+      if (domesticLeagues) {
+        const domestic = new Map<number, MatchRecord[]>();
+        for (const l of domesticLeagues) domestic.set(l, await ctx.repo.finishedMatches(l));
+        cross = fitCrossLeague(history, domestic, now, { dixonColes: sidesP, leaguePrior: CROSS_LEAGUE_PRIOR });
+        log.info('cross-league model', { domesticMatches: [...domestic.values()].reduce((n, ms) => n + ms.length, 0), cupMatches: cross.cupMatchesUsed });
+      }
       const elo = computeElo(history, now, eloP);
       const drawRate = baseRates(history).p[1];
 
@@ -262,7 +282,9 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
         const computedAt = now.toISOString();
 
         const gs = expectedGoals(sides, f.homeTeamId, f.awayTeamId);
-        const sidesMatrix = scoreMatrix(gs.lambda, gs.mu, sides.rho);
+        const gx = cross ? crossLeagueExpectedGoals(cross, f.homeTeamId, f.awayTeamId) : null;
+        const cupOnly = scoreMatrix(gs.lambda, gs.mu, sides.rho);
+        const sidesMatrix = gx ? mixScoreMatrices(cupOnly, scoreMatrix(gx.lambda, gx.mu, sides.rho), CROSS_LEAGUE_BLEND) : cupOnly;
         const gt = adjustTotals(expectedGoals(totals, f.homeTeamId, f.awayTeamId), totals.leagueMeanTotal, totalsShrink);
         const totalsMatrix = scoreMatrix(gt.lambda, gt.mu, totals.rho);
 
@@ -288,6 +310,21 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
           xgShare: round(xgShareOf(history), 3),
           trainedUntil: now.toISOString(),
           linesFromMarket: offered.ou.length + offered.ahHome.length > 0,
+          ...(gx && cross
+            ? {
+                crossLeague: {
+                  version: CROSS_LEAGUE_VERSION,
+                  weightCupOnly: CROSS_LEAGUE_BLEND,
+                  lambda: round(gx.lambda, 4),
+                  mu: round(gx.mu, 4),
+                  homeLeague: gx.homeLeague,
+                  awayLeague: gx.awayLeague,
+                  leagueAttack: Object.fromEntries([...cross.leagueAttack].map(([l, v]) => [l, round(v, 4)])),
+                  leagueDefence: Object.fromEntries([...cross.leagueDefence].map(([l, v]) => [l, round(v, 4)])),
+                  cupMatchesUsed: cross.cupMatchesUsed,
+                },
+              }
+            : {}),
         };
 
         const rows: Row[] = priced.map((p, i) => ({

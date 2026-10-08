@@ -32,8 +32,8 @@ export class ApiFootball {
     return this.client.get<TeamItem[]>('/teams', params);
   }
 
-  /** Fixtures of a league season, or a date range (`from`/`to` = YYYY-MM-DD). */
-  fixtures(params: { league?: number; season?: number; from?: string; to?: string; date?: string; status?: string; timezone?: string }) {
+  /** Fixtures of a league season, a date range (`from`/`to` = YYYY-MM-DD), or the `last` N played of a league. */
+  fixtures(params: { league?: number; season?: number; from?: string; to?: string; date?: string; status?: string; timezone?: string; last?: number }) {
     return this.client.get<FixtureItem[]>('/fixtures', { timezone: 'UTC', ...params });
   }
 
