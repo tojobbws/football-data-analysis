@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { MatchRow } from '@/lib/queries';
 import { FINISHED, LIVE, selectionLabel } from '@/lib/labels';
 import { timeTH } from '@/lib/time';
-import { IconCompass } from './icons';
+import { CompassMark } from './icons';
 import { StatusBadge, TeamLogo } from './ui';
 
 const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย' };
@@ -96,21 +96,17 @@ function MatchItem({ m, compact }: { m: MatchRow; compact: boolean }) {
                 <StatusBadge status={c.status} />
               ) : (
                 <>
-                  <span className="hidden max-w-[11rem] truncate rounded-full bg-[var(--color-compass-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-compass)] sm:inline-block" title={pick}>
-                    🧭 {pick}
+                  <span className="hidden max-w-[12rem] items-center gap-1.5 rounded-full bg-[var(--color-compass-soft)] py-0.5 pl-0.5 pr-2.5 text-xs font-semibold text-[var(--color-compass)] sm:inline-flex" title={pick}>
+                    <CompassMark size={22} />
+                    <span className="truncate">{pick}</span>
                   </span>
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-compass-soft)] text-[var(--color-compass)] sm:hidden" title={`🧭 ${pick}`}>
-                    <IconCompass size={16} />
+                  <span className="inline-flex h-8 w-8 items-center justify-center sm:hidden" title={`🧭 ${pick}`}>
+                    <CompassMark size={28} />
                     <span className="sr-only">🧭 เข็มทิศเกม: {pick}</span>
                   </span>
                 </>
               )
-            ) : (
-              <span className="text-xs text-slate-400" title="🌫️ หมอกข้อมูล — ไม่มีตลาดที่ข้อมูลสนับสนุนพอ">
-                <span aria-hidden>🌫️</span>
-                <span className="sr-only">หมอกข้อมูล</span>
-              </span>
-            )
+            ) : null
           ) : null}
         </div>
 

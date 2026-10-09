@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { ArticleGrid, MoreLink, Rail, RailItem } from '@/components/home';
-import { IconChevronRight, IconCompass, IconLock } from '@/components/icons';
+import { IconChevronRight, CompassMark, IconLock } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { SignalCard } from '@/components/signal-card';
@@ -84,10 +84,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <section id="compass" className="mx-auto max-w-5xl scroll-mt-28 px-4 pb-6 pt-6" aria-labelledby="compass-h">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div className="min-w-0">
-              <h2 id="compass-h" className="flex items-center gap-2 text-lg font-bold leading-tight">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[var(--color-ink)] text-[var(--color-compass-bright)]">
-                  <IconCompass size={16} />
-                </span>
+              <h2 id="compass-h" className="flex items-center gap-2.5 text-lg font-bold leading-tight">
+                <CompassMark size={40} />
                 เข็มทิศเกม คู่น่าจับตา
               </h2>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">1 ตัวเลือกที่ข้อมูลสนับสนุนมากที่สุดต่อคู่ ล็อกก่อนเตะ</p>
@@ -122,7 +120,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
               <p className="text-sm font-semibold">ตอนนี้ยังไม่มีคู่ที่ข้อมูลชี้ชัด</p>
               <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-600">
-                เราไม่บังคับเลือกทุกคู่ — คู่ที่สัญญาณไม่พอจะเป็น 🌫️ หมอกข้อมูล บทวิเคราะห์เผยแพร่ภายใน 24 ชม. ก่อนเตะ
+                เราเลือกเฉพาะคู่ที่ข้อมูลสนับสนุนพอ ไม่บังคับเลือกทุกคู่ — บทวิเคราะห์เผยแพร่ภายใน 24 ชม. ก่อนเตะ
               </p>
             </div>
           )}
