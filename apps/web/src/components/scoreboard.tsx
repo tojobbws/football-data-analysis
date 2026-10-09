@@ -4,7 +4,7 @@ import type { MatchRow } from '@/lib/queries';
 import { FINISHED, LIVE, STATUS, selectionLabel } from '@/lib/labels';
 import { addDaysStr, dayMonthTH, thaiDate, timeTH, weekdayShortTH } from '@/lib/time';
 import { DatePickerButton } from './date-picker-button';
-import { IconCompass } from './icons';
+import { CompassMark } from './icons';
 import { TeamLogo } from './primitives';
 
 // Dark, livescore-style scoreboard: date strip → league header → one card per match.
@@ -203,8 +203,8 @@ function MatchCard({ m }: { m: MatchRow }) {
               </span>
             </span>
           ) : (
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-compass-soft)] text-[var(--color-compass)]" title={`🧭 ${pick}`}>
-              <IconCompass size={15} />
+            <span className="flex h-7 w-7 items-center justify-center" title={`🧭 ${pick}`}>
+              <CompassMark size={26} />
               <span className="sr-only">🧭 เข็มทิศเกม: {pick}</span>
             </span>
           )

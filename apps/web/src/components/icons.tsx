@@ -67,17 +67,17 @@ export const IconCompass = (p: P) => (
   </Svg>
 );
 
-/** Brand mark: compass needle on a pitch-green tile. */
-export function Logo({ size = 32 }: { size?: number }) {
+/** The 🧭 emblem (compass over a pitch and ball). Decorative: pair it with visible or sr-only text. */
+export function CompassMark({ size = 20, className = '' }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden focusable="false">
-      <rect width="32" height="32" rx="9" fill="var(--color-pitch)" />
-      <circle cx="16" cy="16" r="10" fill="none" stroke="#fff" strokeOpacity=".35" strokeWidth="1.5" />
-      <path d="M16 6.5 19 16h-6z" fill="#fbbf24" />
-      <path d="M16 25.5 13 16h6z" fill="#fff" />
-      <circle cx="16" cy="16" r="1.6" fill="var(--color-pitch)" />
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/brand/compass-mark.webp" width={size} height={size} alt="" aria-hidden decoding="async" className={`shrink-0 select-none ${className}`} draggable={false} />
   );
+}
+
+/** Brand mark = the compass emblem. */
+export function Logo({ size = 32 }: { size?: number }) {
+  return <CompassMark size={size} />;
 }
 
 export const IconLock = (p: P) => (

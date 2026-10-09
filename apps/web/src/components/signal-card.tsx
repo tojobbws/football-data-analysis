@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { odds, pct, selectionLabel } from '@/lib/labels';
 import { footballDate, shortDayTH, timeTH } from '@/lib/time';
-import { IconCompass, IconLock } from './icons';
+import { CompassMark, IconLock } from './icons';
 
 export interface SignalCardData {
   slug: string;
@@ -69,7 +69,7 @@ export function SignalCard({ s }: { s: SignalCardData }) {
 
       <div className="mt-4">
         <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-compass-bright)]">
-          <IconCompass size={14} />
+          <CompassMark size={20} />
           {MARKET_SHORT[s.market] ?? s.market}
         </p>
         <p className="mt-1 text-2xl font-bold leading-tight tracking-tight text-balance">{label}</p>
