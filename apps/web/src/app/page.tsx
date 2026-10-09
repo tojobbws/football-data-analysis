@@ -74,7 +74,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </section>
 
         {onToday ? (
-          <section aria-labelledby="yesterday-h" className="mt-4 border-t border-white/10 pt-2">
+          <section aria-labelledby="yesterday-h" className="mt-4 border-t border-slate-200 pt-2">
             <BandTitle id="yesterday-h" title="ผลบอลเมื่อวาน" sub={`${dayTH(noon(yesterday))} · ${played.length} คู่`} aside={<BandLink href={`/?date=${yesterday}`} label="ดูวันนั้น" />} />
             {played.length ? <ScoreboardList matches={played} date={yesterday} /> : <BandEmpty>เมื่อวานไม่มีแมตช์ในลีกที่ติดตาม</BandEmpty>}
           </section>
@@ -158,7 +158,7 @@ function DayHeading({ id, kicker, title, href, linkLabel = 'ทั้งหม�
 
 function BandLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-lg px-2 text-sm font-medium text-[var(--color-pitch-bright)] transition-colors hover:bg-white/10">
+    <Link href={href} className="inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-lg px-2 text-sm font-medium text-[var(--color-pitch)] transition-colors hover:bg-[var(--color-pitch-soft)]/60">
       {label}
       <IconChevronRight size={16} />
     </Link>

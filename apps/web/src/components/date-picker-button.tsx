@@ -22,7 +22,7 @@ export function DatePickerButton({ value, base }: { value: string; base: string 
             el.click();
           }
         }}
-        className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-slate-100 transition-colors duration-150 hover:bg-white/15"
+        className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-[var(--color-ink)] transition-colors duration-150 hover:bg-slate-200"
         aria-label="เลือกวันที่จากปฏิทิน"
       >
         <IconCalendar size={20} />

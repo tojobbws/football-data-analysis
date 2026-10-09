@@ -22,7 +22,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
   const title = liveView ? 'กำลังแข่งขัน' : date === today ? 'แมตช์วันนี้' : date! < today ? 'ผลการแข่งขัน' : 'โปรแกรมแข่ง';
 
   return (
-    <main className="min-h-[70vh] bg-[var(--color-ink)]">
+    <main className="min-h-[70vh] bg-white">
       {live.length || matches.some((m) => LIVE.includes(m.status_short)) ? <AutoRefresh seconds={60} /> : null}
       <ScoreboardBand>
         <DateStrip base="/matches" selected={date} today={today} liveCount={live.length} />
