@@ -106,7 +106,7 @@ export default async function AdminAnalyses() {
                     </p>
                     <p className="mt-1 text-sm">
                       📏 {r.kind === 'SIGNAL' ? `🧭 ${selectionLabel(r.market!, r.selection!, r.line == null ? null : Number(r.line), h, a)} · ${r.signal_strength} · ${pct(r.model_probability)}` : '🌫️ หมอกข้อมูล'}{' '}
-                      <StatusBadge status={r.status} /> {r.result_score ?? ''}
+                      <StatusBadge admin status={r.status} /> {r.result_score ?? ''}
                     </p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-3 text-sm">
@@ -122,7 +122,7 @@ export default async function AdminAnalyses() {
                             selectionLabel(ai.pick_market!, ai.pick_selection!, ai.pick_line == null ? null : Number(ai.pick_line), h, a)
                           )}{' '}
                           {ai.agrees_with_rules === true ? <span className="text-xs text-emerald-700">🤝 ตรงกับกฎ</span> : ai.agrees_with_rules === false ? <span className="text-xs text-amber-700">เห็นต่าง</span> : null}{' '}
-                          {ai.ai_status ? <StatusBadge status={ai.ai_status} /> : null}
+                          {ai.ai_status ? <StatusBadge admin status={ai.ai_status} /> : null}
                         </p>
                         {ai.explanation_th ? <p className="mt-1 text-xs leading-relaxed text-slate-600">{ai.explanation_th}</p> : null}
                         {ai.guard_violations?.length ? <p className="mt-1 text-xs text-rose-600">guard: {ai.guard_violations.join(' · ')}</p> : null}

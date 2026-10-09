@@ -1,15 +1,15 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { STATUS, type Status } from '@/lib/labels';
+import { ADMIN_STATUS_LABEL, STATUS, type Status } from '@/lib/labels';
 
 export { Empty, Section, TeamLogo } from './primitives';
 
-export function StatusBadge({ status }: { status: Status }) {
+export function StatusBadge({ status, admin = false }: { status: Status; admin?: boolean }) {
   const s = STATUS[status] ?? STATUS.PENDING;
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${s.tone}`}>
       <span aria-hidden>{s.icon}</span>
-      {s.label}
+      {admin ? (ADMIN_STATUS_LABEL[status] ?? s.label) : s.label}
     </span>
   );
 }

@@ -58,12 +58,12 @@ export function Badge({ children, variant = 'outline' }: { children: ReactNode; 
 /** Settlement status as a plain-text badge. HALF results stay separate from WIN / LOSS. */
 const STATUS_BADGE: Record<Status, { label: string; variant: keyof typeof BADGE }> = {
   PENDING: { label: 'รอผล', variant: 'secondary' },
-  WIN: { label: 'WIN', variant: 'good' },
-  HALF_WIN: { label: 'HALF WIN', variant: 'good' },
-  LOSS: { label: 'LOSS', variant: 'bad' },
-  HALF_LOSS: { label: 'HALF LOSS', variant: 'half' },
-  PUSH: { label: 'PUSH', variant: 'outline' },
-  VOID: { label: 'VOID', variant: 'outline' },
+  WIN: { label: 'ถูก', variant: 'good' },
+  HALF_WIN: { label: 'ถูกครึ่ง', variant: 'good' },
+  LOSS: { label: 'ผิด', variant: 'bad' },
+  HALF_LOSS: { label: 'ผิดครึ่ง', variant: 'half' },
+  PUSH: { label: 'เสมอตัว', variant: 'outline' },
+  VOID: { label: 'โมฆะ', variant: 'outline' },
   NO_SIGNAL: { label: 'ไม่มีตัวเลือก', variant: 'outline' },
 };
 

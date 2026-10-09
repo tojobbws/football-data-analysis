@@ -1,4 +1,5 @@
 import 'server-only';
+import type { OutcomeDistribution } from '@fp/analysis';
 import { webEnv } from './env';
 import { db } from './supabase';
 import { FINISHED, LIVE, type Status } from './labels';
@@ -83,6 +84,8 @@ export interface Compass {
   result_score: string | null;
   settled_at: string | null;
   record_hash: string;
+  /** model's chance of each outcome (null on fog rounds) */
+  model_distribution: OutcomeDistribution | null;
 }
 
 const MATCH_SELECT = `id, slug, kickoff_at, status_short, elapsed, goals_home, goals_away,
@@ -91,7 +94,7 @@ const MATCH_SELECT = `id, slug, kickoff_at, status_short, elapsed, goals_home, g
   away:teams!fixtures_away_team_id_fkey(id, name, logo_url)`;
 
 const COMPASS_SELECT = `fixture_id, public_id, publish_round, kind, market, selection, line, odds_at_publish, model_probability,
-  market_probability, signal_strength, reason, published_at, status, result_score, settled_at, record_hash`;
+  market_probability, signal_strength, reason, published_at, status, result_score, settled_at, record_hash, model_distribution`;
 
 function fail(what: string, error: { message: string } | null): never {
   throw new Error(`${what}: ${error?.message ?? 'unknown error'}`);

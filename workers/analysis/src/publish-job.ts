@@ -10,7 +10,7 @@
  *   LINEUP — 15–80 min before kickoff, after confirmed lineups (Player Impact uses real lineups)
  * 🌫️ NO_CLEAR_SIGNAL is published too: coverage and honesty count as much as hits.
  */
-import { buildReason, DEFAULT_RULES, IMPACT_VERSION, publishRoundFor, selectionLabel, type MissingPlayer, type PublishRound } from '@fp/analysis';
+import { buildReason, DEFAULT_RULES, IMPACT_VERSION, publishRoundFor, selectionLabel, type MissingPlayer, type OutcomeDistribution, type PublishRound } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours } from '@fp/shared';
 
@@ -71,7 +71,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
 
       const move = pick ? await ctx.repo.selectionMovement(f.id, pick.market, pick.selection, pick.line) : null;
       const label = pick ? selectionLabel(pick.market, pick.selection, pick.line, header.home, header.away) : null;
-      const factors = (pick?.factors ?? {}) as { strength?: string | null; agreement?: boolean | null; gateZ?: number | null; nBookmakers?: number; modelSource?: string };
+      const factors = (pick?.factors ?? {}) as { strength?: string | null; agreement?: boolean | null; gateZ?: number | null; nBookmakers?: number; modelSource?: string; distribution?: OutcomeDistribution | null };
 
       const reason = buildReason({
         kind: pick ? 'SIGNAL' : 'NO_CLEAR_SIGNAL',
@@ -109,6 +109,8 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
         model_probability: pick ? round5(pick.modelProbability) : null,
         market_probability: pick?.marketProbability != null ? round5(pick.marketProbability) : null,
         signal_strength: pick ? (factors.strength ?? 'LEAN') : null,
+        // frozen with the record but not hashed (docs/adr/0001)
+        model_distribution: pick ? (factors.distribution ?? null) : null,
         reason,
         model_version_id: summary.modelSource === 'DC+IMPACT' ? IMPACT_VERSION : (run.modelVersionId ?? null),
         decision_rule_version: run.rulesVersion,
