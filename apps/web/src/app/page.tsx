@@ -10,7 +10,7 @@ import { Empty } from '@/components/ui';
 import { FINISHED, LIVE, pct } from '@/lib/labels';
 import { latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, perfSummary, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
-import { addDaysStr, dayTH, footballDate, isValidDate } from '@/lib/time';
+import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -26,20 +26,18 @@ const phase = (m: MatchRow) => (isLive(m) ? 0 : FINISHED.includes(m.status_short
 const byPhase = (a: MatchRow, b: MatchRow) => phase(a) - phase(b) || Date.parse(a.kickoff_at) - Date.parse(b.kickoff_at);
 
 /**
- * Home = the scoreboard: pick a day (default today) → matches by league; on today, yesterday's results follow.
+ * Home = the scoreboard: pick a day (default today) → matches by league.
  * Then 🧭 picks, articles and league widgets on the light page below.
  */
 export default async function HomePage({ searchParams }: { searchParams: Promise<{ date?: string; live?: string }> }) {
   const q = await searchParams;
   const today = footballDate();
-  const yesterday = addDaysStr(today, -1);
   const liveView = q.live === '1';
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, played, live, signals, perf, articles, leagues] = await Promise.all([
+  const [shown, live, signals, perf, articles, leagues] = await Promise.all([
     date ? matchesOnFootballDay(date) : liveMatches(),
-    onToday ? matchesOnFootballDay(yesterday) : Promise.resolve([] as MatchRow[]),
     liveMatches(),
     upcomingSignals(4),
     perfSummary(),
@@ -73,12 +71,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           )}
         </section>
 
-        {onToday ? (
-          <section aria-labelledby="yesterday-h" className="mt-4 border-t border-slate-200 pt-2">
-            <BandTitle id="yesterday-h" title="ผลบอลเมื่อวาน" sub={`${dayTH(noon(yesterday))} · ${played.length} คู่`} aside={<BandLink href={`/?date=${yesterday}`} label="ดูวันนั้น" />} />
-            {played.length ? <ScoreboardList matches={played} date={yesterday} /> : <BandEmpty>เมื่อวานไม่มีแมตช์ในลีกที่ติดตาม</BandEmpty>}
-          </section>
-        ) : null}
       </ScoreboardBand>
 
       <div className="mx-auto mt-8 grid max-w-5xl grid-cols-1 gap-8 px-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-x-6">
