@@ -9,6 +9,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { matchPreviewJob } from '../src/preview-job.js';
+import { PREVIEW_VERSION } from '@fp/analysis';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -214,6 +215,20 @@ describe('matchPreviewJob', () => {
     expect((await db.query(`select fixture_id from web_match_previews order by fixture_id`)).rows.map((r: Record<string, unknown>) => Number(r.fixture_id))).toEqual([101, 102, 103]);
     await expect(db.query(`update match_previews set overview_th = 'x' where fixture_id = 101`)).rejects.toThrow();
     await expect(db.query(`delete from match_previews where fixture_id = 101`)).rejects.toThrow();
+  });
+
+  it('--refresh rewrites a stage written by an older version, once', async () => {
+    await db.query(`update fixtures set kickoff_at = $1 where id = 104`, [KO.toISOString()]);
+    await db.query(
+      `insert into match_previews (fixture_id, stage, kickoff_at, version, text_source, ai_status, data_support, overview_th, home_th, away_th, score_th, facts)
+       values (104, 'EARLY', $1, 'preview-v0.0', 'AI', 'OK', 'GOOD', 'a', 'b', 'c', 'd', '{}')`,
+      [KO.toISOString()],
+    );
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: null })).toBe(0);
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: null, refresh: true })).toBe(1);
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: null, refresh: true })).toBe(0);
+    const rows = (await db.query<Record<string, unknown>>(`select version from match_previews where fixture_id = 104 order by id`)).rows;
+    expect(rows.map((r) => r.version)).toEqual(['preview-v0.0', PREVIEW_VERSION]);
   });
 
   it('refuses rows at/after kickoff', async () => {

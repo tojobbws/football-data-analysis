@@ -874,10 +874,12 @@ export class Repository {
   }
 
   /** How many previews exist for a stage and whether one of them carries AI text that passed the guards. */
-  async previewAttempts(fixtureId: number, stage: string): Promise<{ attempts: number; aiOk: boolean }> {
+  /** Attempts so far for (fixture, stage); with `version`, only rows written by that version count. */
+  async previewAttempts(fixtureId: number, stage: string, version?: string): Promise<{ attempts: number; aiOk: boolean }> {
     const res = await this.db.query<{ attempts: string; ai_ok: boolean }>(
-      `select count(*) as attempts, coalesce(bool_or(ai_status = 'OK'), false) as ai_ok from match_previews where fixture_id = $1 and stage = $2`,
-      [fixtureId, stage],
+      `select count(*) as attempts, coalesce(bool_or(ai_status = 'OK'), false) as ai_ok from match_previews
+        where fixture_id = $1 and stage = $2 and ($3::text is null or version = $3)`,
+      [fixtureId, stage, version ?? null],
     );
     return { attempts: Number(res.rows[0]?.attempts ?? 0), aiOk: Boolean(res.rows[0]?.ai_ok) };
   }

@@ -40,6 +40,8 @@ export interface PreviewJobOptions {
   hours?: number;
   writer?: PreviewWriter | null;
   limit?: number;
+  /** rewrite a stage whose rows all came from an older PREVIEW_VERSION (once per version, still before kickoff only) */
+  refresh?: boolean;
 }
 
 /** attempts per (fixture, stage): the first, plus one retry when the AI attempt was INVALID / REFUSED */
@@ -51,7 +53,7 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;
   const hours = opts.hours ?? 48;
-  return runJob(ctx, 'preview', { leagues, hours, version: PREVIEW_VERSION }, async () => {
+  return runJob(ctx, 'preview', { leagues, hours, version: PREVIEW_VERSION, refresh: Boolean(opts.refresh) }, async () => {
     const now = opts.now ?? new Date();
     const writer = opts.writer === undefined ? (ctx.env.ANTHROPIC_API_KEY ? createClaudePreviewWriter({ apiKey: ctx.env.ANTHROPIC_API_KEY }) : null) : opts.writer;
     if (!writer) ctx.log.warn('ANTHROPIC_API_KEY not set — previews use the template text');
@@ -67,7 +69,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
       if (!stage) continue;
       // one preview per stage; a failed AI attempt (guard / refusal) may be retried once — rows are
       // append-only and the site shows the latest, so the first text stays on record
-      const prev = await ctx.repo.previewAttempts(f.id, stage);
+      const prev = await ctx.repo.previewAttempts(f.id, stage, opts.refresh ? PREVIEW_VERSION : undefined);
       if (prev.aiOk || (!writer && prev.attempts > 0) || prev.attempts >= MAX_ATTEMPTS_PER_STAGE) continue;
 
       const facts = await collectFacts(ctx, f, stage);
