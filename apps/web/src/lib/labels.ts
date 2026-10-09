@@ -29,5 +29,33 @@ export const ROUND: Record<string, string> = { EARLY: 'รอบแรก (ก�
 export const FINISHED = ['FT', 'AET', 'PEN'];
 export const LIVE = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INT', 'SUSP'];
 
+/**
+ * Fan-facing badge for an unsettled pick, described by the match phase (never a bare "รอผล").
+ * null = show no badge: not kicked off yet, or the fixture data hasn't caught up with kickoff.
+ */
+export function unsettledPhaseLabel(statusShort: string): string | null {
+  if (FINISHED.includes(statusShort)) return 'จบเกม · กำลังสรุปผล';
+  switch (statusShort) {
+    case '1H':
+    case '2H':
+    case 'LIVE':
+      return 'กำลังแข่ง';
+    case 'HT':
+      return 'พักครึ่ง';
+    case 'ET':
+    case 'BT':
+      return 'ต่อเวลาพิเศษ';
+    case 'P':
+      return 'ดวลจุดโทษ';
+    case 'SUSP':
+    case 'INT':
+      return 'หยุดการแข่งขันชั่วคราว';
+    case 'PST':
+      return 'เลื่อนการแข่งขัน';
+    default:
+      return null;
+  }
+}
+
 export const pct = (p: number | null | undefined, d = 0) => (p == null ? '–' : `${(Number(p) * 100).toFixed(d)}%`);
 export const odds = (o: number | null | undefined) => (o == null ? '–' : Number(o).toFixed(2));

@@ -88,7 +88,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
 
         <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0 space-y-6">
-            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} /> : null}
+            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} matchStatus={m.status_short} /> : null}
             {earlierPicks.length ? (
               <div id={pick ? undefined : 'pick'} className="scroll-mt-24 space-y-2">
                 {earlierPicks.map((c) => (
@@ -101,7 +101,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
                       <span className="hidden text-xs text-zinc-500 group-open:inline">ซ่อน</span>
                     </summary>
                     <div className="pt-3">
-                      <CompassCard c={c} home={m.home.name} away={m.away.name} />
+                      <CompassCard c={c} home={m.home.name} away={m.away.name} matchStatus={m.status_short} />
                     </div>
                   </details>
                 ))}

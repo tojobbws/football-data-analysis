@@ -1,5 +1,5 @@
 import type { Compass } from '@/lib/queries';
-import { odds, pct, selectionLabel } from '@/lib/labels';
+import { odds, pct, selectionLabel, unsettledPhaseLabel } from '@/lib/labels';
 import { dateTimeTH } from '@/lib/time';
 import { Badge, Card, StatStrip, StatusPill, plainLine } from './sheet';
 
@@ -13,17 +13,20 @@ const ROUND_TH: Record<string, string> = { EARLY: 'รอบแรก ก่อ�
  * เข็มทิศเกม — the one pick for this match (SIGNAL rounds only; fog is not shown on the match page).
  * The stored reason is shown line by line with leading emoji stripped for display.
  */
-export function CompassCard({ c, home, away, id }: { c: Compass; home: string; away: string; id?: string }) {
+export function CompassCard({ c, home, away, matchStatus, id }: { c: Compass; home: string; away: string; matchStatus: string; id?: string }) {
   const label = selectionLabel(c.market!, c.selection!, c.line == null ? null : Number(c.line), home, away);
   // the first line repeats the pick and the strength line repeats the strip: keep the rest
   const reasons = (c.reason ?? '')
     .split('\n')
     .map(plainLine)
     .filter((l) => l && !REPEATS.some((p) => l.startsWith(p)));
-  const edge = c.model_probability != null && c.market_probability != null ? Math.round((Number(c.model_probability) - Number(c.market_probability)) * 1000) / 10 : null;
+  // an unsettled pick is described by where the match stands; settled picks show their result
+  const phase = c.status === 'PENDING' ? unsettledPhaseLabel(matchStatus) : null;
+  const badge = c.status !== 'PENDING' ? <StatusPill status={c.status} /> : phase ? <Badge variant="secondary">{phase}</Badge> : null;
+  const edge =c.model_probability != null && c.market_probability != null ? Math.round((Number(c.model_probability) - Number(c.market_probability)) * 1000) / 10 : null;
 
   return (
-    <Card id={id} title="เข็มทิศเกม" description={`${ROUND_TH[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้`} action={<StatusPill status={c.status} />} tone="pick">
+    <Card id={id} title="เข็มทิศเกม" description={`${ROUND_TH[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้`} action={badge} tone="pick">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="compass">{MARKET_TH[c.market!] ?? c.market}</Badge>
         {c.signal_strength ? <Badge>สัญญาณ{STRENGTH_TH[c.signal_strength] ?? c.signal_strength}</Badge> : null}
