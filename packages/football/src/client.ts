@@ -94,7 +94,8 @@ export class ApiFootballClient {
     this.rpm = opts.requestsPerMinute ?? 10;
     this.maxRetries = opts.maxRetries ?? 4;
     this.timeoutMs = opts.timeoutMs ?? 30_000;
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    // wrap the global: Workers throw "Illegal invocation" when fetch is called as this.fetchImpl(...)
+    this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
     this.sleep = opts.sleep ?? defaultSleep;
     this.now = opts.now ?? Date.now;
   }

@@ -39,6 +39,21 @@ describe('ApiFootballClient', () => {
     expect(raws[0]).toMatchObject({ endpoint: '/fixtures', params: { league: '39', season: '2026' }, httpStatus: 200 });
   });
 
+  it('calls the global fetch unbound (Workers throw "Illegal invocation" when `this` is the client)', async () => {
+    const workersFetch = vi.fn(function (this: unknown) {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation: function called with incorrect 'this' reference");
+      return Promise.resolve(jsonResponse(ok(['live'])));
+    });
+    vi.stubGlobal('fetch', workersFetch);
+    try {
+      const client = new ApiFootballClient({ apiKey: 'K', sleep: async () => {} });
+      const res = await client.get<string[]>('/fixtures', { live: 'all' });
+      expect(res.data).toEqual(['live']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('turns HTTP-200 `errors` objects into typed errors (not retried)', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ ...ok([]), errors: { requests: 'You have reached the request limit for the day' } }));
     const client = new ApiFootballClient({ apiKey: 'K', fetchImpl: fetchImpl as unknown as typeof fetch, sleep: async () => {} });
