@@ -134,7 +134,7 @@ describe('matchPreviewJob', () => {
     expect(writer.calls).toBe(3);
 
     const a = await one(`select * from match_previews where fixture_id = 101`);
-    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: 'preview-ai-v0.3', version: 'preview-v0.3', predicted_home: 1, predicted_away: 0 });
+    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: 'preview-ai-v0.4', version: 'preview-v0.4', predicted_home: 1, predicted_away: 0 });
     expect(a.overview_th).toContain('50%');
     expect(Number(a.p_home)).toBe(0.5); // ensemble, like 📊 มุมมองโมเดล
     expect(Number(a.expected_home)).toBeCloseTo(1.6, 1);

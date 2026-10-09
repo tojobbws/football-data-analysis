@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { PreviewText } from '@fp/analysis';
 import { allowedNumbers, BANNED_WORDS, inventedNumbers } from './guards.js';
 
-export const PREVIEW_PROMPT_VERSION = 'preview-ai-v0.3';
+export const PREVIEW_PROMPT_VERSION = 'preview-ai-v0.4';
 
 /** Kept byte-stable (no dates, no per-request values) so it caches across fixtures. */
 export const PREVIEW_SYSTEM_PROMPT = `You are the analyst of a Thai football data & analysis brand. You receive one upcoming match as JSON and write a short Thai preview a football fan enjoys reading.
@@ -29,7 +29,7 @@ Write (all Thai, short sentences, no headings or bullet characters):
 
 Hard rules:
 - Never create a probability, percentage, odds value, xG, goal count, rank, points or any other number. You may only repeat numbers that appear in the input (a probability like 0.634 may be written as 63%). If you are unsure whether a number is in the input, leave it out.
-- The predicted scoreline is the model's, not yours: only quote scorelines listed in model.scorelines.
+- Scorelines are the model's, not yours: only quote scorelines listed in model.scorelines. The first one is the single most likely score (สกอร์ที่เป็นไปได้มากที่สุด), one of many possible scores: never present it as a prediction of the result (no "คาดว่าจะจบ", no "สกอร์คาดการณ์").
 - Do not write dates, kickoff times, player names or results that are not in the input. Use only facts present in the input; no outside knowledge about these teams or players.
 - When model is null, say the model has no numbers for this match and base the text on the football facts only.
 - This is data analysis, not gambling advice. Never use these words: ทีเด็ด, แทง, แทงบอล, กำไร, ตามคู่นี้, การันตี. Prefer: ข้อมูล, สัญญาณ, โมเดล, ความน่าจะเป็น, ตลาด.

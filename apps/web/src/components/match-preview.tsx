@@ -1,5 +1,6 @@
 import type { DataSupport, MatchPreview } from '@/lib/queries';
-import { pct } from '@/lib/labels';
+import { STATUS, pct, settle, type Status } from '@/lib/labels';
+import type { MarketSelection } from '@fp/analysis';
 import { dateTimeTH } from '@/lib/time';
 import { Badge, Card, Note } from './sheet';
 
@@ -16,13 +17,15 @@ const STAGE: Record<MatchPreview['stage'], string> = { EARLY: 'ก่อนป�
 
 /**
  * วิเคราะห์เกม — the written preview. Reading material, not a pick: no compass colour, never in pick stats.
- * Numbers (probabilities, predicted score) are the model's; the prose is AI or template text, stored before kickoff.
+ * Numbers (probabilities, most likely score) are the model's; the prose is AI or template text, stored before kickoff.
+ * With a pick on the page, the most likely score is tied back to it ("ถ้าจบ 2–0 … = เสมอตัว") so the two never read as rivals.
  */
-export function MatchPreviewCard({ p, home, away, result, modelTested, id }: { p: MatchPreview; home: string; away: string; result?: { home: number; away: number } | null; modelTested: boolean; id?: string }) {
+export function MatchPreviewCard({ p, home, away, result, modelTested, pick, id }: { p: MatchPreview; home: string; away: string; result?: { home: number; away: number } | null; modelTested: boolean; pick?: { label: string; sel: MarketSelection } | null; id?: string }) {
   const notes = p.data_notes.filter((n) => !n.includes(UNTESTED_NOTE));
   // a LIMITED level whose only reason was the untested note reads as GOOD, like a preview written today
   const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
   const hasScore = p.predicted_home != null && p.predicted_away != null;
+  const ifScore = pick && hasScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
   const hit = result && hasScore ? (result.home === p.predicted_home && result.away === p.predicted_away ? 'ตรงสกอร์' : sameOutcome(result, p) ? 'ตรงผล' : 'ไม่ตรง') : null;
 
   return (
@@ -48,16 +51,22 @@ export function MatchPreviewCard({ p, home, away, result, modelTested, id }: { p
 
       <div className="mt-5 grid gap-x-8 gap-y-2 border-t border-zinc-100 pt-4 sm:grid-cols-[11rem_minmax(0,1fr)]">
         <div>
-          <p className="text-xs text-zinc-500">สกอร์คาดการณ์จากโมเดล</p>
+          <p className="text-xs text-zinc-500">สกอร์ที่เป็นไปได้มากที่สุด</p>
           {hasScore ? (
             <>
-              <p className="mt-1 text-3xl font-semibold tabular-nums tracking-tight text-zinc-950">
+              <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-950">
                 {p.predicted_home}–{p.predicted_away}
               </p>
               <p className="mt-1 text-xs text-zinc-500">
                 โอกาส {pct(p.predicted_p)}
+                {p.predicted_p != null ? ` · ยังมีสกอร์อื่นอีก ${pct(1 - Number(p.predicted_p))}` : ''}
                 {p.expected_home != null ? ` · xG ${Number(p.expected_home).toFixed(2)}–${Number(p.expected_away).toFixed(2)}` : ''}
               </p>
+              {ifScore ? (
+                <p className="mt-1 text-xs text-zinc-600">
+                  ถ้าจบ {p.predicted_home}–{p.predicted_away} เข็มทิศเกม {pick!.label} = <b className="font-semibold text-zinc-950">{STATUS[ifScore].label}</b>
+                </p>
+              ) : null}
               {modelTested ? null : <p className="mt-1 text-xs text-zinc-400">อยู่ระหว่างการวัดผล</p>}
               {hit ? (
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600">

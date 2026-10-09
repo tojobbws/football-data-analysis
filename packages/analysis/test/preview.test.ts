@@ -41,7 +41,6 @@ const facts = (over: Partial<PreviewFacts> = {}): PreviewFacts => ({
       { home: 2, away: 0, p: 0.1 },
       { home: 1, away: 1, p: 0.09 },
     ],
-    overUnder: { line: 2.5, pOver: 0.55 },
     matchesUsed: 400,
     xgShare: 0.95,
     crossLeague: null,
@@ -153,11 +152,12 @@ describe('buildTemplateText', () => {
     expect(t.home_th).toContain('อันดับ 3');
     expect(t.home_th).toContain('A. Player');
     expect(t.score_th).toContain('Arsenal 1-0 Chelsea (12%)');
-    expect(t.score_th).toContain('ประตูคาดหวัง 1.70 ต่อ 1.00 โอกาสเกิน 2.5 ประตู 55%');
+    expect(t.score_th).toContain('ประตูคาดหวัง 1.70 ต่อ 1.00');
+    expect(t.score_th).not.toContain('เกิน');
 
     const thin = facts({ model: null });
     const tt = buildTemplateText(thin, assessDataSupport(thin));
     expect(tt.overview_th).toContain('ข้อมูลน้อย');
-    expect(tt.score_th).toContain('ยังไม่มีสกอร์คาดการณ์');
+    expect(tt.score_th).toContain('ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด');
   });
 });

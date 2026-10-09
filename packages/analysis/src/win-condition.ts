@@ -65,6 +65,24 @@ function totalText(r: Range): string {
   return `รวม ${lo}–${hi} ลูก`;
 }
 
+/**
+ * Why a pick exists, in one sentence: every pick is the model disagreeing with the market, so say in
+ * which direction. Keeps an underdog pick from reading as "we think they win".
+ */
+export function pickRationale(sel: MarketSelection, home: string, away: string): string {
+  if (sel.market === 'OVER_UNDER') return `โมเดลมองว่าเกมนี้จะมีประตู${sel.selection === 'OVER' ? 'มาก' : 'น้อย'}กว่าที่ตลาดคาด`;
+  if (sel.market === 'MATCH_WINNER') {
+    if (sel.selection === 'DRAW') return 'โมเดลให้โอกาสเสมอมากกว่าที่ตลาดคาด';
+    return `โมเดลให้โอกาส ${sel.selection === 'HOME' ? home : away} ชนะมากกว่าที่ตลาดคาด`;
+  }
+  const team = sel.selection === 'HOME' ? home : away;
+  const opponent = sel.selection === 'HOME' ? away : home;
+  if (sel.line < 0) return `โมเดลมองว่า ${team} จะชนะห่างมากกว่าที่ตลาดคาด`;
+  if (sel.line === 0) return `โมเดลมองว่า ${team} มีโอกาสชนะมากกว่าที่ตลาดคาด (เสมอ = เสมอตัว)`;
+  if (sel.line < 1) return `โมเดลมองว่า ${team} มีโอกาสไม่แพ้มากกว่าที่ตลาดคาด`;
+  return `${opponent} อาจชนะ แต่โมเดลมองว่าจะชนะห่างน้อยกว่าที่ตลาดคาด`;
+}
+
 /** Rows ordered from the best outcome for the pick to the worst; impossible outcomes are left out. */
 export function winCondition(sel: MarketSelection, home: string, away: string): WinConditionRow[] {
   let rows: WinConditionRow[];

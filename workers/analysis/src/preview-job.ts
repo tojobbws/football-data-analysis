@@ -192,14 +192,12 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
       crossLeague: inputs.crossLeague ? { lambda: Number(inputs.crossLeague.lambda), mu: Number(inputs.crossLeague.mu), weightCupOnly: Number(inputs.crossLeague.weightCupOnly) } : null,
     });
     const eg = matrixExpectedGoals(matrix);
-    const over = dc.find((x) => x.market === 'OVER_UNDER' && x.selection === 'OVER' && x.line === 2.5);
     model = {
       modelVersionId: ensemble.length === 3 ? ENSEMBLE_VERSION : DIXON_COLES_VERSION,
       computedAt: dc[0]!.computedAt.toISOString(),
       p: { home: r4(p('HOME')), draw: r4(p('DRAW')), away: r4(p('AWAY')) },
       expectedGoals: { home: r2(eg.home), away: r2(eg.away) },
       scorelines: topScorelines(matrix, 3).map((s) => ({ ...s, p: r4(s.p) })),
-      overUnder: over ? { line: 2.5, pOver: r4(over.probability) } : null,
       matchesUsed: Number(inputs.matchesUsed ?? 0),
       xgShare: Number(inputs.xgShare ?? 0),
       crossLeague: inputs.crossLeague ? { cupMatchesUsed: Number(inputs.crossLeague.cupMatchesUsed) } : null,

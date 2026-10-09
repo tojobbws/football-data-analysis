@@ -1,6 +1,15 @@
-import { selectionLabel, winCondition } from '@fp/analysis';
+import { pickRationale, selectionLabel, settle, winCondition, type MarketSelection } from '@fp/analysis';
 
-export { selectionLabel, winCondition };
+export { pickRationale, selectionLabel, settle, winCondition };
+
+/** A stored pick as a settle-able selection (null when the row can't be mapped, e.g. AH without a line). */
+export function toSelection(market: string | null, selection: string | null, line: number | null): MarketSelection | null {
+  if (market === 'MATCH_WINNER' && (selection === 'HOME' || selection === 'DRAW' || selection === 'AWAY')) return { market, selection };
+  if (line == null) return null;
+  if (market === 'ASIAN_HANDICAP' && (selection === 'HOME' || selection === 'AWAY')) return { market, selection, line };
+  if (market === 'OVER_UNDER' && (selection === 'OVER' || selection === 'UNDER')) return { market, selection, line };
+  return null;
+}
 
 export type Status = 'PENDING' | 'WIN' | 'HALF_WIN' | 'LOSS' | 'HALF_LOSS' | 'PUSH' | 'VOID' | 'NO_SIGNAL';
 

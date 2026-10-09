@@ -38,6 +38,19 @@ _Avoid_: presenting it as the chance the win condition happens
 **Settlement**:
 The act of deciding a pick's outcome from the match result; it is separate from the match finishing and may lag behind full time.
 
+### Around the pick
+
+**Supporting analysis**:
+Everything on a match page besides the Game Compass — preview, model outlook, market, form. It explains the match and the pick, is never measured, and must never read as a second pick.
+_Avoid_: prediction, tip (for anything that is not the pick)
+
+**Most likely scoreline**:
+The single exact score the model rates highest; usually well under 20%, so "some other score" is far more likely.
+_Avoid_: predicted score, สกอร์คาดการณ์
+
+**Gated-off market**:
+A market whose model is not enabled for picks (not yet back-tested, or failed it); it can't produce a pick, and its figures stay off fan pages.
+
 **Match phase**:
 Where the match itself stands — upcoming, live, or finished. Fan pages describe an unsettled pick by its match phase, not by the bare fact that it is unsettled.
 _Avoid_: using the pick's status to imply match state

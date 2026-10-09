@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { winCondition } from '../src/index.js';
+import { pickRationale, winCondition } from '../src/index.js';
 
 const rows = (...args: Parameters<typeof winCondition>) => winCondition(...args).map((r) => `${r.when} → ${r.outcome}`);
 
@@ -55,5 +55,18 @@ describe('winCondition', () => {
       'รวม 2 ลูกหรือน้อยกว่า → LOSS',
     ]);
     expect(rows({ market: 'OVER_UNDER', selection: 'UNDER', line: 2.5 }, 'H', 'A')).toEqual(['รวม 2 ลูกหรือน้อยกว่า → WIN', 'รวม 3 ลูกขึ้นไป → LOSS']);
+  });
+});
+
+describe('pickRationale', () => {
+  const r = (sel: Parameters<typeof pickRationale>[0]) => pickRationale(sel, 'Dortmund', 'Bremen');
+  it('says which way the model disagrees with the market', () => {
+    expect(r({ market: 'ASIAN_HANDICAP', selection: 'AWAY', line: 2 })).toBe('Dortmund อาจชนะ แต่โมเดลมองว่าจะชนะห่างน้อยกว่าที่ตลาดคาด');
+    expect(r({ market: 'ASIAN_HANDICAP', selection: 'AWAY', line: 0.5 })).toBe('โมเดลมองว่า Bremen มีโอกาสไม่แพ้มากกว่าที่ตลาดคาด');
+    expect(r({ market: 'ASIAN_HANDICAP', selection: 'HOME', line: -1.25 })).toBe('โมเดลมองว่า Dortmund จะชนะห่างมากกว่าที่ตลาดคาด');
+    expect(r({ market: 'ASIAN_HANDICAP', selection: 'HOME', line: 0 })).toBe('โมเดลมองว่า Dortmund มีโอกาสชนะมากกว่าที่ตลาดคาด (เสมอ = เสมอตัว)');
+    expect(r({ market: 'MATCH_WINNER', selection: 'AWAY' })).toBe('โมเดลให้โอกาส Bremen ชนะมากกว่าที่ตลาดคาด');
+    expect(r({ market: 'MATCH_WINNER', selection: 'DRAW' })).toBe('โมเดลให้โอกาสเสมอมากกว่าที่ตลาดคาด');
+    expect(r({ market: 'OVER_UNDER', selection: 'UNDER', line: 2.5 })).toBe('โมเดลมองว่าเกมนี้จะมีประตูน้อยกว่าที่ตลาดคาด');
   });
 });

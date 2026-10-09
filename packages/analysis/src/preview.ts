@@ -11,7 +11,7 @@
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.3';
+export const PREVIEW_VERSION = 'preview-v0.4';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -73,8 +73,6 @@ export interface PreviewModel {
   expectedGoals: { home: number; away: number };
   /** most likely scorelines, best first */
   scorelines: Array<{ home: number; away: number; p: number }>;
-  /** totals at the main line (the line is a fact of the input too, so the text may quote it) */
-  overUnder: { line: number; pOver: number } | null;
   matchesUsed: number;
   xgShare: number;
   crossLeague: { cupMatchesUsed: number } | null;
@@ -256,14 +254,13 @@ export function buildTemplateText(f: PreviewFacts, support: { level: DataSupport
   const score = m
     ? (() => {
         const [best, ...rest] = m.scorelines;
-        if (!best) return 'โมเดลยังไม่มีสกอร์คาดการณ์';
+        if (!best) return 'โมเดลยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด';
         let s = `สกอร์ที่โมเดลให้โอกาสสูงสุดคือ ${home} ${best.home}-${best.away} ${away} (${pct(best.p)})`;
         if (rest.length) s += ` รองลงมา ${rest.map((r) => `${r.home}-${r.away} (${pct(r.p)})`).join(' และ ')}`;
         s += ` ประตูคาดหวัง ${n2(m.expectedGoals.home)} ต่อ ${n2(m.expectedGoals.away)}`;
-        if (m.overUnder) s += ` โอกาสเกิน ${m.overUnder.line} ประตู ${pct(m.overUnder.pOver)}`;
         return s;
       })()
-    : 'ยังไม่มีสกอร์คาดการณ์ เพราะโมเดลไม่มีข้อมูลพอสำหรับรายการนี้';
+    : 'ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด เพราะโมเดลไม่มีข้อมูลพอสำหรับรายการนี้';
 
   return { overview_th: overview, home_th: teamText(f.home), away_th: teamText(f.away), score_th: score };
 }

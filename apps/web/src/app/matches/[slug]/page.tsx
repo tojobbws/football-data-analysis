@@ -6,7 +6,7 @@ import { MatchPreviewCard } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { Badge, Card, Note } from '@/components/sheet';
 import { TeamLogo } from '@/components/ui';
-import { FINISHED, LIVE, odds, selectionLabel } from '@/lib/labels';
+import { FINISHED, LIVE, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { matchBySlug, type FormRow } from '@/lib/queries';
 import { dateTimeTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
 
@@ -40,6 +40,8 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   const pick = latest?.kind === 'SIGNAL' ? latest : null;
   const earlierPicks = d.rounds.slice(0, -1).filter((c) => c.kind === 'SIGNAL');
   const noAnalysisYet = !latest;
+  const pickSel = pick ? toSelection(pick.market, pick.selection, pick.line == null ? null : Number(pick.line)) : null;
+  const previewPick = pick && pickSel ? { label: selectionLabel(pick.market!, pick.selection!, pick.line == null ? null : Number(pick.line), m.home.name, m.away.name), sel: pickSel } : null;
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -114,7 +116,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
             ) : null}
 
             {d.preview ? (
-              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} />
+              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} pick={previewPick} />
             ) : !d.finished && !OFF[m.status_short] ? (
               <Card id="analysis" title="วิเคราะห์เกม">
                 <p className="text-sm text-zinc-500">บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</p>

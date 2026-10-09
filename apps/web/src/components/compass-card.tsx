@@ -1,6 +1,6 @@
 import type { OutcomeDistribution } from '@fp/analysis';
 import type { Compass } from '@/lib/queries';
-import { STATUS, odds, pct, selectionLabel, unsettledPhaseLabel, winCondition } from '@/lib/labels';
+import { STATUS, odds, pct, pickRationale, selectionLabel, toSelection, unsettledPhaseLabel, winCondition } from '@/lib/labels';
 import { dateTimeTH } from '@/lib/time';
 import { Badge, Card, StatStrip, StatusPill, plainLine } from './sheet';
 
@@ -52,6 +52,7 @@ export function CompassCard({ c, home, away, matchStatus, id }: { c: Compass; ho
         {c.signal_strength ? <Badge>สัญญาณ{STRENGTH_TH[c.signal_strength] ?? c.signal_strength}</Badge> : null}
       </div>
       <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-zinc-950">{label}</p>
+      {sel ? <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{pickRationale(sel, home, away)}</p> : null}
 
       {rows.length ? (
         <div className="mt-4">
@@ -137,12 +138,4 @@ function ReasonList({ lines }: { lines: string[] }) {
       ))}
     </ul>
   );
-}
-
-function toSelection(market: string | null, selection: string | null, line: number | null): Parameters<typeof winCondition>[0] | null {
-  if (market === 'MATCH_WINNER' && (selection === 'HOME' || selection === 'DRAW' || selection === 'AWAY')) return { market, selection };
-  if (line == null) return null;
-  if (market === 'ASIAN_HANDICAP' && (selection === 'HOME' || selection === 'AWAY')) return { market, selection, line };
-  if (market === 'OVER_UNDER' && (selection === 'OVER' || selection === 'UNDER')) return { market, selection, line };
-  return null;
 }
