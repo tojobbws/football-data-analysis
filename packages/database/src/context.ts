@@ -18,7 +18,7 @@ export interface JobContext {
  * `storeRawResponses: false` (live-score polling: the final state is still stored by `results`).
  */
 export function createJobContext(
-  overrides: Partial<Pick<JobContext, 'db'>> & { env?: Env; storeRawResponses?: boolean } = {},
+  overrides: Partial<Pick<JobContext, 'db'>> & { env?: Env; storeRawResponses?: boolean; maxRetries?: number } = {},
 ): JobContext {
   const env = overrides.env ?? loadEnv();
   const log = createLogger(env.LOG_LEVEL);
@@ -28,6 +28,7 @@ export function createJobContext(
     apiKey: env.API_FOOTBALL_KEY,
     baseUrl: env.API_FOOTBALL_BASE_URL,
     requestsPerMinute: env.API_FOOTBALL_RPM,
+    maxRetries: overrides.maxRetries,
     onRawResponse: overrides.storeRawResponses === false ? undefined : (rec) => repo.insertRawResponse(rec),
     onRequest: (endpoint, params) => log.debug('api request', { endpoint, params }),
   });
