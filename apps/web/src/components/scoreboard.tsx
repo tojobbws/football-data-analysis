@@ -4,7 +4,9 @@ import type { MatchRow } from '@/lib/queries';
 import { FINISHED, LIVE, STATUS, selectionLabel } from '@/lib/labels';
 import { addDaysStr, dayMonthTH, thaiDate, timeTH, weekdayShortTH } from '@/lib/time';
 import { DatePickerButton } from './date-picker-button';
+import { toSeed } from '@/lib/live';
 import { CompassMark } from './icons';
+import { LiveCountBadge, LiveGoal, LiveMinute, LiveWatch } from './live';
 import { TeamLogo } from './primitives';
 
 // Dark, livescore-style scoreboard: date strip → league header → one card per match.
@@ -43,11 +45,7 @@ export function DateStrip({ base, selected, today, liveCount }: { base: string; 
             }`}
           >
             LIVE
-            {liveCount ? (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-live)] px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
-                {liveCount}
-              </span>
-            ) : null}
+            <LiveCountBadge initial={liveCount} />
           </Link>
         </li>
         {days.map((d) => {
@@ -155,6 +153,7 @@ function MatchCard({ m }: { m: MatchRow }) {
   ];
   const c = m.compass;
   const pick = c?.kind === 'SIGNAL' ? selectionLabel(c.market!, c.selection!, c.line == null ? null : Number(c.line), m.home.name, m.away.name) : null;
+  const seed = toSeed(m);
 
   return (
     <Link
@@ -164,16 +163,16 @@ function MatchCard({ m }: { m: MatchRow }) {
       {/* status */}
       <div className="flex w-11 shrink-0 flex-col items-center justify-center text-center leading-none">
         {live ? (
-          <>
-            <span className="text-xs font-bold text-[var(--color-live)]">{m.status_short === 'HT' ? 'HT' : `${m.elapsed ?? ''}′`}</span>
-            <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[var(--color-live)] motion-safe:animate-pulse" aria-hidden />
-          </>
+          <LiveMinute seed={seed} className="text-xs font-bold text-[var(--color-live)]" />
         ) : finished ? (
           <span className="text-xs font-semibold text-slate-500">{DONE[m.status_short] ?? m.status_short}</span>
         ) : off ? (
           <span className="text-xs font-semibold text-rose-700">{off}</span>
         ) : (
-          <span className="text-[13px] font-semibold tabular-nums">{timeTH(m.kickoff_at)}</span>
+          <>
+            <span className="text-[13px] font-semibold tabular-nums">{timeTH(m.kickoff_at)}</span>
+            <LiveWatch seed={seed} />
+          </>
         )}
       </div>
 
@@ -181,12 +180,14 @@ function MatchCard({ m }: { m: MatchRow }) {
 
       {/* teams + score */}
       <div className="min-w-0 flex-1 space-y-1">
-        {teams.map(({ t, g, won }) => (
+        {teams.map(({ t, g, won }, i) => (
           <div key={t.id} className="flex items-center gap-2">
             <TeamLogo src={t.logo_url} alt="" size={18} />
             <span className={`truncate text-sm ${won ? 'font-semibold' : decided ? 'text-slate-500' : ''}`}>{t.name}</span>
-            {showScore ? (
-              <span className={`ml-auto w-6 shrink-0 text-right text-sm tabular-nums ${live || won ? 'font-bold' : 'text-slate-500'}`}>{g ?? '–'}</span>
+            {live ? (
+              <LiveGoal seed={seed} side={i === 0 ? 'home' : 'away'} className="ml-auto w-6 shrink-0 text-right text-sm font-bold tabular-nums" />
+            ) : showScore ? (
+              <span className={`ml-auto w-6 shrink-0 text-right text-sm tabular-nums ${won ? 'font-bold' : 'text-slate-500'}`}>{g ?? '–'}</span>
             ) : null}
           </div>
         ))}

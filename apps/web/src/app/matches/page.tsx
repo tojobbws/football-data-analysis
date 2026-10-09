@@ -1,7 +1,5 @@
 import type { Metadata } from 'next';
-import { AutoRefresh } from '@/components/auto-refresh';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
-import { LIVE } from '@/lib/labels';
 import { liveMatches, matchesOnFootballDay } from '@/lib/queries';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
@@ -23,13 +21,12 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
 
   return (
     <main className="min-h-[70vh] bg-white">
-      {live.length || matches.some((m) => LIVE.includes(m.status_short)) ? <AutoRefresh seconds={60} /> : null}
       <ScoreboardBand>
         <DateStrip base="/matches" selected={date} today={today} liveCount={live.length} />
         <h1 className="sr-only">
           ผลบอล โปรแกรมบอล {liveView ? 'ที่กำลังแข่งขัน' : dayTH(`${date}T12:00:00+07:00`)}
         </h1>
-        <BandTitle title={title} sub={liveView ? 'อัปเดตอัตโนมัติทุก 1 นาที' : `${dayTH(`${date}T12:00:00+07:00`)} · ${matches.length} คู่`} />
+        <BandTitle title={title} sub={liveView ? 'อัปเดตสด' : `${dayTH(`${date}T12:00:00+07:00`)} · ${matches.length} คู่`} />
         {matches.length ? (
           <ScoreboardList matches={matches} date={date} />
         ) : (

@@ -59,6 +59,12 @@ describe('fixture mappers', () => {
     expect((row.raw as Record<string, unknown>).events).toBeUndefined();
   });
 
+  it('keeps stoppage-time minutes (45+2) and null outside them', () => {
+    const stoppage = { ...fixture, fixture: { ...fixture.fixture, status: { long: 'First Half', short: '1H', elapsed: 45, extra: 2 } } } as FixtureItem;
+    expect(toFixtureRow(stoppage)).toMatchObject({ elapsed: 45, elapsed_extra: 2 });
+    expect(toFixtureRow(fixture).elapsed_extra).toBeNull();
+  });
+
   it('treats venue id 0 as unknown (null), not a foreign key', () => {
     const noVenue = { ...fixture, fixture: { ...fixture.fixture, venue: { id: 0, name: null, city: null } } } as FixtureItem;
     expect(toFixtureRow(noVenue).venue_id).toBeNull();

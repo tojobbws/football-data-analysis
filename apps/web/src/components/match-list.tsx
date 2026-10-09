@@ -2,7 +2,9 @@ import Link from 'next/link';
 import type { MatchRow } from '@/lib/queries';
 import { FINISHED, LIVE, selectionLabel } from '@/lib/labels';
 import { timeTH } from '@/lib/time';
+import { toSeed } from '@/lib/live';
 import { CompassMark } from './icons';
+import { LiveGoal, LiveMinute, LiveWatch } from './live';
 import { StatusBadge, TeamLogo } from './ui';
 
 const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย' };
@@ -48,6 +50,7 @@ function MatchItem({ m, compact }: { m: MatchRow; compact: boolean }) {
   const gh = m.goals_home;
   const ga = m.goals_away;
   const decided = finished && gh != null && ga != null && gh !== ga;
+  const seed = toSeed(m);
   const teams = [
     { t: m.home, g: gh, won: decided && gh! > ga! },
     { t: m.away, g: ga, won: decided && ga! > gh! },
@@ -64,26 +67,30 @@ function MatchItem({ m, compact }: { m: MatchRow; compact: boolean }) {
         {/* status column: minute (live) / final / time */}
         <div className="flex flex-col items-center justify-center text-center leading-none">
           {live ? (
-            <>
-              <span className="text-xs font-bold text-[var(--color-live)]">{m.status_short === 'HT' ? 'HT' : `${m.elapsed ?? ''}′`}</span>
-              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[var(--color-live)] motion-safe:animate-pulse" aria-hidden />
-            </>
+            <LiveMinute seed={seed} className="text-xs font-bold text-[var(--color-live)]" />
           ) : finished ? (
             <span className="text-xs font-medium text-slate-500">{DONE[m.status_short] ?? m.status_short}</span>
           ) : off ? (
             <span className="text-xs font-medium text-rose-700">{off}</span>
           ) : (
-            <span className="text-sm font-semibold tabular-nums">{timeTH(m.kickoff_at)}</span>
+            <>
+              <span className="text-sm font-semibold tabular-nums">{timeTH(m.kickoff_at)}</span>
+              <LiveWatch seed={seed} />
+            </>
           )}
         </div>
 
         {/* teams: home over away, scores right-aligned on each row */}
         <div className={`min-w-0 text-sm ${compact ? 'space-y-1' : 'space-y-1.5'}`}>
-          {teams.map(({ t, g, won }) => (
+          {teams.map(({ t, g, won }, i) => (
             <div key={t.id} className="flex items-center gap-2">
               <TeamLogo src={t.logo_url} alt="" size={compact ? 18 : 20} />
               <span className={`truncate ${won ? 'font-semibold' : decided ? 'text-slate-500' : ''}`}>{t.name}</span>
-              {showScore ? <span className={`ml-auto w-5 shrink-0 text-right tabular-nums ${live || won ? 'font-bold' : 'text-slate-500'}`}>{g ?? '–'}</span> : null}
+              {live ? (
+                <LiveGoal seed={seed} side={i === 0 ? 'home' : 'away'} className="ml-auto w-5 shrink-0 text-right font-bold tabular-nums" />
+              ) : showScore ? (
+                <span className={`ml-auto w-5 shrink-0 text-right tabular-nums ${won ? 'font-bold' : 'text-slate-500'}`}>{g ?? '–'}</span>
+              ) : null}
             </div>
           ))}
         </div>

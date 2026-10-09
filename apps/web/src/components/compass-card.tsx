@@ -1,7 +1,9 @@
 import type { OutcomeDistribution } from '@fp/analysis';
 import type { Compass } from '@/lib/queries';
-import { STATUS, odds, pct, pickRationale, selectionLabel, toSelection, unsettledPhaseLabel, winCondition } from '@/lib/labels';
+import { STATUS, odds, pct, pickRationale, selectionLabel, toSelection, winCondition } from '@/lib/labels';
+import type { LiveSeed } from '@/lib/live';
 import { dateTimeTH } from '@/lib/time';
+import { LivePhaseBadge } from './live';
 import { Badge, Card, StatStrip, StatusPill, plainLine } from './sheet';
 
 const MARKET_TH: Record<string, string> = { MATCH_WINNER: 'ผลแพ้ชนะ 1X2', ASIAN_HANDICAP: 'กำแพง · แฮนดิแคป', OVER_UNDER: 'สูง/ต่ำ' };
@@ -19,7 +21,7 @@ const OUTCOME_TONE: Record<string, string> = { WIN: 'text-emerald-800', HALF_WIN
  * Reads top-down for any fan: the pick, what has to happen on the pitch for each outcome (with the
  * model's chance of it), and why it was picked. Technical figures sit behind "รายละเอียดเพิ่มเติม".
  */
-export function CompassCard({ c, home, away, matchStatus, id }: { c: Compass; home: string; away: string; matchStatus: string; id?: string }) {
+export function CompassCard({ c, home, away, live, id }: { c: Compass; home: string; away: string; live: LiveSeed; id?: string }) {
   const line = c.line == null ? null : Number(c.line);
   const label = selectionLabel(c.market!, c.selection!, line, home, away);
   const sel = toSelection(c.market, c.selection, line);
@@ -36,8 +38,7 @@ export function CompassCard({ c, home, away, matchStatus, id }: { c: Compass; ho
   const edge = c.model_probability != null && c.market_probability != null ? Math.round((Number(c.model_probability) - Number(c.market_probability)) * 1000) / 10 : null;
 
   // an unsettled pick is described by where the match stands; settled picks show their result
-  const phase = c.status === 'PENDING' ? unsettledPhaseLabel(matchStatus) : null;
-  const badge = c.status !== 'PENDING' ? <StatusPill status={c.status} /> : phase ? <Badge variant="secondary">{phase}</Badge> : null;
+  const badge = c.status !== 'PENDING' ? <StatusPill status={c.status} /> : <LivePhaseBadge seed={live} />;
 
   // model_probability leaves pushes out and counts half outcomes as half: say so when it matters
   const qualifiers = [

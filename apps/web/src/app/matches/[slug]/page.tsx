@@ -2,11 +2,13 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CompassCard } from '@/components/compass-card';
+import { LiveGoal, LiveHeadBadge, LiveStaleNote, LiveWatch } from '@/components/live';
 import { MatchPreviewCard } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { Badge, Card, Note } from '@/components/sheet';
 import { TeamLogo } from '@/components/ui';
 import { FINISHED, LIVE, odds, selectionLabel, toSelection } from '@/lib/labels';
+import { toSeed } from '@/lib/live';
 import { matchBySlug, type FormRow } from '@/lib/queries';
 import { dateTimeTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
 
@@ -90,7 +92,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
 
         <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0 space-y-6">
-            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} matchStatus={m.status_short} /> : null}
+            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} live={toSeed(m)} /> : null}
             {earlierPicks.length ? (
               <div id={pick ? undefined : 'pick'} className="scroll-mt-24 space-y-2">
                 {earlierPicks.map((c) => (
@@ -103,7 +105,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
                       <span className="hidden text-xs text-zinc-500 group-open:inline">ซ่อน</span>
                     </summary>
                     <div className="pt-3">
-                      <CompassCard c={c} home={m.home.name} away={m.away.name} matchStatus={m.status_short} />
+                      <CompassCard c={c} home={m.home.name} away={m.away.name} live={toSeed(m)} />
                     </div>
                   </details>
                 ))}
@@ -153,6 +155,7 @@ function MatchHead({ d }: { d: Data }) {
   const m = d.match;
   const live = LIVE.includes(m.status_short);
   const showScore = d.finished || live;
+  const seed = toSeed(m);
   return (
     <header className="border-b border-zinc-200 pb-6">
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
@@ -172,13 +175,14 @@ function MatchHead({ d }: { d: Data }) {
           {showScore ? (
             <>
               <p className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-950 sm:text-5xl">
-                {m.goals_home}
+                {live ? <LiveGoal seed={seed} side="home" className="px-1" /> : m.goals_home}
                 <span className="px-2 text-zinc-300">–</span>
-                {m.goals_away}
+                {live ? <LiveGoal seed={seed} side="away" className="px-1" /> : m.goals_away}
               </p>
               <div className="mt-2 flex flex-col items-center gap-1 text-xs text-zinc-500">
-                {live ? <Badge variant="live">สด {m.status_short === 'HT' ? 'พักครึ่ง' : `${m.elapsed}′`}</Badge> : <Badge variant="secondary">จบการแข่งขัน</Badge>}
+                {live ? <LiveHeadBadge seed={seed} /> : <Badge variant="secondary">จบการแข่งขัน</Badge>}
                 {m.ht_home != null ? <span className="tabular-nums">ครึ่งแรก {m.ht_home}–{m.ht_away}</span> : null}
+                {live ? <LiveStaleNote /> : null}
               </div>
             </>
           ) : OFF[m.status_short] ? (
@@ -187,6 +191,7 @@ function MatchHead({ d }: { d: Data }) {
             <>
               <p className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-950 sm:text-5xl">{timeTH(m.kickoff_at)}</p>
               <p className="mt-1.5 text-xs text-zinc-500">เวลาไทย</p>
+              <LiveWatch seed={seed} />
             </>
           )}
         </div>

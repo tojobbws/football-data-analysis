@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { IBM_Plex_Sans_Thai } from 'next/font/google';
 import Link from 'next/link';
 import { IconShield, Logo } from '@/components/icons';
+import { LiveProvider } from '@/components/live-provider';
 import { SiteNav } from '@/components/site-nav';
 import { tickerMatches } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, siteUrl } from '@/lib/site';
@@ -43,8 +44,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="th" className={thai.variable}>
       <body className="min-h-screen pb-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom))] font-sans antialiased md:pb-0">
-        <SiteNav ticker={tickerRows} tickerLabel={tickerLabel} />
-        {children}
+        <LiveProvider>
+          <SiteNav ticker={tickerRows} tickerLabel={tickerLabel} />
+          {children}
+        </LiveProvider>
         <footer className="on-dark mt-12 bg-[var(--color-ink)] text-slate-300">
           <div className="mx-auto grid max-w-5xl gap-6 px-4 py-10 text-sm sm:grid-cols-[1fr_auto]">
             <div className="space-y-3">

@@ -5,10 +5,9 @@ import { usePathname } from 'next/navigation';
 import { SITE_NAME } from '@/lib/brand';
 import type { TickerMatch } from '@/lib/queries';
 import { IconArticle, IconCalendar, IconChart, IconChevronRight, CompassMark, IconHome, Logo } from './icons';
+import { LIVE, minuteLabel, phaseGroup, toSeed } from '@/lib/live';
+import { useLiveCount, useLiveMatch } from './live-provider';
 import { TeamLogo } from './primitives';
-
-const LIVE = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INT', 'SUSP'];
-const DONE = ['FT', 'AET', 'PEN'];
 
 const NAV = [
   { href: '/', label: 'หน้าแรก', Icon: IconHome },
@@ -28,8 +27,8 @@ const isActive = (path: string, href: string) => (href === '/' ? path === '/' : 
  */
 export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & { clock: string }>; tickerLabel: string }) {
   const path = usePathname() ?? '/';
+  const live = useLiveCount(ticker.filter((m) => LIVE.includes(m.status_short)).length);
   if (path.startsWith('/admin')) return <AdminBar />;
-  const live = ticker.filter((m) => LIVE.includes(m.status_short)).length;
 
   return (
     <>
@@ -138,33 +137,9 @@ function ScoreStrip({ matches, label }: { matches: Array<TickerMatch & { clock: 
       <div className="mx-auto flex max-w-5xl items-stretch">
         <p className="flex shrink-0 items-center gap-2 border-r border-white/10 px-4 text-xs font-semibold text-[var(--color-pitch-bright)]">{label}</p>
         <ul className="rail flex min-w-0 flex-1 overflow-x-auto" aria-label={`แมตช์${label}`}>
-          {matches.map((m) => {
-            const live = LIVE.includes(m.status_short);
-            const done = DONE.includes(m.status_short);
-            return (
-              <li key={m.slug} className="shrink-0 border-r border-white/10">
-                <Link href={`/matches/${m.slug}`} className="flex h-full min-h-11 items-center gap-3 px-3.5 py-1.5 text-xs transition-colors hover:bg-white/5">
-                  <span className={`w-9 shrink-0 text-center font-semibold ${live ? 'text-rose-400' : 'text-slate-400'}`}>
-                    {live ? (m.status_short === 'HT' ? 'HT' : `${m.elapsed ?? ''}′`) : done ? 'จบ' : m.clock}
-                  </span>
-                  <span className="grid gap-0.5">
-                    {[
-                      [m.home, m.goals_home],
-                      [m.away, m.goals_away],
-                    ].map(([t, g], i) => (
-                      <span key={i} className="flex items-center gap-1.5">
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-white">
-                          <TeamLogo src={(t as TickerMatch['home']).logo_url} alt="" size={12} />
-                        </span>
-                        <span className="max-w-[7.5rem] truncate text-slate-200">{(t as TickerMatch['home']).name}</span>
-                        {live || done ? <span className="ml-auto pl-2 font-bold tabular-nums">{g as number | null}</span> : null}
-                      </span>
-                    ))}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
+          {matches.map((m) => (
+            <StripItem key={m.slug} m={m} />
+          ))}
         </ul>
         <Link href="/matches" className="hidden shrink-0 items-center gap-0.5 border-l border-white/10 px-4 text-xs font-medium text-slate-300 hover:text-white sm:flex">
           ทั้งหมด
@@ -172,6 +147,37 @@ function ScoreStrip({ matches, label }: { matches: Array<TickerMatch & { clock: 
         </Link>
       </div>
     </div>
+  );
+}
+
+/** One match on the strip; follows the live poller (minute, score, a brief highlight on a goal). */
+function StripItem({ m }: { m: TickerMatch & { clock: string } }) {
+  const { state, flash } = useLiveMatch(toSeed(m));
+  const g = phaseGroup(state.status_short);
+  const live = g === 'live';
+  const done = g === 'done';
+  return (
+    <li className="shrink-0 border-r border-white/10">
+      <Link href={`/matches/${m.slug}`} className="flex h-full min-h-11 items-center gap-3 px-3.5 py-1.5 text-xs transition-colors hover:bg-white/5">
+        <span className={`w-9 shrink-0 text-center font-semibold ${live ? 'text-rose-400' : 'text-slate-400'}`}>{live ? minuteLabel(state) : done ? 'จบ' : m.clock}</span>
+        <span className="grid gap-0.5">
+          {[
+            [m.home, state.goals_home],
+            [m.away, state.goals_away],
+          ].map(([t, goals], i) => (
+            <span key={i} className="flex items-center gap-1.5">
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-white">
+                <TeamLogo src={(t as TickerMatch['home']).logo_url} alt="" size={12} />
+              </span>
+              <span className="max-w-[7.5rem] truncate text-slate-200">{(t as TickerMatch['home']).name}</span>
+              {live || done ? (
+                <span className={`ml-auto rounded pl-2 pr-0.5 font-bold tabular-nums transition-colors duration-700 ${flash ? 'bg-amber-300 text-zinc-950' : ''}`}>{goals as number | null}</span>
+              ) : null}
+            </span>
+          ))}
+        </span>
+      </Link>
+    </li>
   );
 }
 

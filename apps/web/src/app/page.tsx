@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { AutoRefresh } from '@/components/auto-refresh';
 import { ArticleGrid, MoreLink, Rail, RailItem } from '@/components/home';
 import { IconChevronRight, CompassMark, IconLock } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
@@ -52,7 +51,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
       <h1 className="sr-only">
         {SITE_NAME} — วิเคราะห์บอลวันนี้ ผลบอล โปรแกรมแข่ง และบทวิเคราะห์ฟุตบอลด้วยข้อมูล
       </h1>
-      {live.length ? <AutoRefresh seconds={60} /> : null}
 
       {/* ---------------- 1: scoreboard ---------------- */}
       <ScoreboardBand wide>
@@ -62,7 +60,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             <BandTitle
               id="day-h"
               title={liveView ? 'กำลังแข่งขัน' : onToday ? 'แมตช์วันนี้' : date! < today ? 'ผลการแข่งขัน' : 'โปรแกรมแข่ง'}
-              sub={liveView ? 'อัปเดตอัตโนมัติทุก 1 นาที' : `${dayTH(noon(date!))} · ${shown.length} คู่`}
+              sub={liveView ? 'อัปเดตสด' : `${dayTH(noon(date!))} · ${shown.length} คู่`}
               aside={!liveView ? <BandLink href="/today" label="วิเคราะห์ทุกคู่" /> : null}
             />
             {ordered.length ? (

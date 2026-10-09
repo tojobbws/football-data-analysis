@@ -126,6 +126,7 @@ export function toFixtureRow(item: FixtureItem): Row {
     status_short: f.status.short,
     status_long: f.status.long,
     elapsed: f.status.elapsed,
+    elapsed_extra: f.status.extra ?? null,
     goals_home: item.goals.home,
     goals_away: item.goals.away,
     ht_home: item.score.halftime.home,

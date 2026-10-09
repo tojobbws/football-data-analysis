@@ -1,6 +1,8 @@
 import { pickRationale, selectionLabel, settle, winCondition, type MarketSelection } from '@fp/analysis';
+import { FINISHED, LIVE } from './live';
 
 export { pickRationale, selectionLabel, settle, winCondition };
+export { FINISHED, LIVE };
 
 /** A stored pick as a settle-able selection (null when the row can't be mapped, e.g. AH without a line). */
 export function toSelection(market: string | null, selection: string | null, line: number | null): MarketSelection | null {
@@ -47,8 +49,6 @@ export const MARKET: Record<string, string> = {
 
 export const ROUND: Record<string, string> = { EARLY: 'รอบแรก (ก่อนประกาศตัวจริง)', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ' };
 
-export const FINISHED = ['FT', 'AET', 'PEN'];
-export const LIVE = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INT', 'SUSP'];
 
 /**
  * Fan-facing badge for an unsettled pick, described by the match phase (never a bare "รอผล").

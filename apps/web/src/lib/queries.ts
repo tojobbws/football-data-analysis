@@ -3,6 +3,7 @@ import type { OutcomeDistribution } from '@fp/analysis';
 import { webEnv } from './env';
 import { db } from './supabase';
 import { FINISHED, LIVE, type Status } from './labels';
+import type { LiveSnapshot, LiveState } from './live';
 import { addDaysStr, footballDayRange, thaiDate, thaiDayRange } from './time';
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,7 @@ export interface MatchRow {
   kickoff_at: string;
   status_short: string;
   elapsed: number | null;
+  elapsed_extra: number | null;
   goals_home: number | null;
   goals_away: number | null;
   league: { id: number; name: string; logo_url: string | null; country: string | null };
@@ -88,7 +90,7 @@ export interface Compass {
   model_distribution: OutcomeDistribution | null;
 }
 
-const MATCH_SELECT = `id, slug, kickoff_at, status_short, elapsed, goals_home, goals_away,
+const MATCH_SELECT = `id, slug, kickoff_at, status_short, elapsed, elapsed_extra, goals_home, goals_away,
   league:leagues!fixtures_league_id_fkey(id, name, logo_url, country),
   home:teams!fixtures_home_team_id_fkey(id, name, logo_url),
   away:teams!fixtures_away_team_id_fkey(id, name, logo_url)`;
@@ -414,10 +416,12 @@ export async function performance() {
 // ---------------------------------------------------------------------------
 
 export interface TickerMatch {
+  id: number;
   slug: string;
   kickoff_at: string;
   status_short: string;
   elapsed: number | null;
+  elapsed_extra: number | null;
   goals_home: number | null;
   goals_away: number | null;
   home: Team;
@@ -430,7 +434,7 @@ export interface TickerMatch {
  */
 export async function tickerMatches(limit = 24): Promise<{ day: string | null; matches: TickerMatch[] }> {
   try {
-    const sel = `slug, kickoff_at, status_short, elapsed, goals_home, goals_away,
+    const sel = `id, slug, kickoff_at, status_short, elapsed, elapsed_extra, goals_home, goals_away,
       home:teams!fixtures_home_team_id_fkey(id, name, logo_url),
       away:teams!fixtures_away_team_id_fkey(id, name, logo_url)`;
     const sb = db();
@@ -455,6 +459,30 @@ export async function tickerMatches(limit = 24): Promise<{ day: string | null; m
   } catch {
     return { day: null, matches: [] };
   }
+}
+
+/**
+ * /api/live: matches in play plus those that finished in the last 15 minutes (so open pages see FT),
+ * only the fields that move during a game. One response for every page: it is cached at the edge.
+ */
+export async function liveSnapshot(): Promise<LiveSnapshot> {
+  const now = new Date();
+  const sel = 'id, status_short, elapsed, elapsed_extra, goals_home, goals_away';
+  const sb = db();
+  const leagues = webEnv().leagues;
+  const [live, done] = await Promise.all([
+    sb.from('fixtures').select(sel).in('league_id', leagues).in('status_short', LIVE),
+    sb
+      .from('fixtures')
+      .select(sel)
+      .in('league_id', leagues)
+      .in('status_short', FINISHED)
+      .gte('synced_at', new Date(now.getTime() - 15 * 60_000).toISOString())
+      .gte('kickoff_at', new Date(now.getTime() - 6 * 3_600_000).toISOString()),
+  ]);
+  if (live.error) fail('fixtures (live)', live.error);
+  if (done.error) fail('fixtures (just finished)', done.error);
+  return { at: now.toISOString(), matches: [...(live.data ?? []), ...(done.data ?? [])] as LiveState[] };
 }
 
 /** Matches in play right now (tracked leagues). */
