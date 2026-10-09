@@ -14,11 +14,11 @@ const noon = (d: string) => `${d}T12:00:00+07:00`;
 const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย' };
 const DONE: Record<string, string> = { FT: 'จบ', AET: 'ต่อเวลา', PEN: 'จุดโทษ' };
 
-/** Band that holds the scoreboard (full width, content centred). */
-export function ScoreboardBand({ children }: { children: ReactNode }) {
+/** Band that holds the scoreboard (full width, content centred). `wide` makes room for a sidebar from `lg`. */
+export function ScoreboardBand({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
     <div className="border-b border-slate-200 bg-white text-[var(--color-ink)]">
-      <div className="mx-auto max-w-3xl px-4 pb-8">{children}</div>
+      <div className={`mx-auto max-w-3xl px-4 pb-8 ${wide ? 'lg:max-w-5xl' : ''}`}>{children}</div>
     </div>
   );
 }
@@ -64,7 +64,7 @@ export function DateStrip({ base, selected, today, liveCount }: { base: string; 
                 }`}
               >
                 <span className={`text-xs font-semibold ${isToday && !on ? 'text-[var(--color-pitch)]' : ''}`}>{isToday ? 'วันนี้' : weekdayShortTH(noon(d))}</span>
-                <span className="whitespace-nowrap text-[11px]">{dayMonthTH(noon(d))}</span>
+                <span className="whitespace-nowrap text-xs">{dayMonthTH(noon(d))}</span>
               </Link>
             </li>
           );

@@ -88,6 +88,7 @@ export default async function TodayPage() {
                     model_probability: m.compass!.model_probability,
                     market_probability: m.compass!.market_probability,
                     odds_at_publish: m.compass!.odds_at_publish,
+                    round: m.compass!.publish_round,
                   }}
                 />
               </li>

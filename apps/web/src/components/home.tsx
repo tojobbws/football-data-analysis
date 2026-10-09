@@ -29,7 +29,7 @@ export function Rail({ children, label }: { children: ReactNode; label: string }
 }
 
 export function RailItem({ children }: { children: ReactNode }) {
-  return <li className="w-[78%] shrink-0 snap-start sm:w-auto">{children}</li>;
+  return <li className="w-[84%] shrink-0 snap-start sm:w-auto">{children}</li>;
 }
 
 export function ArticleGrid({ articles }: { articles: ArticleCard[] }) {

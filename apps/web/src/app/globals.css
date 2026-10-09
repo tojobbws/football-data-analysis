@@ -14,6 +14,7 @@
   --color-pitch-soft: #ccfbf1;
   --color-compass: #b45309; /* 🧭 signals only (5.0:1 on white) */
   --color-compass-soft: #fef3c7;
+  --color-compass-bright: #fbbf24; /* 🧭 on dark chrome (10:1 on ink) */
   --color-live: #e11d48;
 
   /* layout */
@@ -36,6 +37,11 @@ body {
   outline: 2px solid var(--color-pitch);
   outline-offset: 2px;
   border-radius: 0.5rem;
+}
+
+/* on dark chrome (score strip, footer) the teal ring is too dim: use the bright tint */
+.on-dark :where(a, button, summary, [tabindex]):focus-visible {
+  outline-color: var(--color-pitch-bright);
 }
 
 /* horizontal card rails on mobile: hide the scrollbar, keep it scrollable */
