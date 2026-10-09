@@ -77,19 +77,19 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
 
       {d.outlook ? <ModelOutlookCard o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <MarketSection d={d} />
         <FormSection d={d} />
       </div>
 
       {d.finished && d.stats.length ? <StatsSection d={d} /> : null}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <InjurySection d={d} />
         <LineupSection d={d} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <StandingsSection d={d} />
         <H2HSection d={d} />
       </div>

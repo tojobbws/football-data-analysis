@@ -26,10 +26,10 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
       {live.length || matches.some((m) => LIVE.includes(m.status_short)) ? <AutoRefresh seconds={60} /> : null}
       <ScoreboardBand>
         <DateStrip base="/matches" selected={date} today={today} liveCount={live.length} />
-        <BandTitle title={title} sub={liveView ? 'อัปเดตอัตโนมัติทุก 1 นาที' : `${dayTH(`${date}T12:00:00+07:00`)} · ${matches.length} คู่`} />
         <h1 className="sr-only">
           ผลบอล โปรแกรมบอล {liveView ? 'ที่กำลังแข่งขัน' : dayTH(`${date}T12:00:00+07:00`)}
         </h1>
+        <BandTitle title={title} sub={liveView ? 'อัปเดตอัตโนมัติทุก 1 นาที' : `${dayTH(`${date}T12:00:00+07:00`)} · ${matches.length} คู่`} />
         {matches.length ? (
           <ScoreboardList matches={matches} date={date} />
         ) : (

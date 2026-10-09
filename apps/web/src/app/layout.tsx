@@ -45,7 +45,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body className="min-h-screen pb-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom))] font-sans antialiased md:pb-0">
         <SiteNav ticker={tickerRows} tickerLabel={tickerLabel} />
         {children}
-        <footer className="mt-12 bg-[var(--color-ink)] text-slate-300">
+        <footer className="on-dark mt-12 bg-[var(--color-ink)] text-slate-300">
           <div className="mx-auto grid max-w-5xl gap-6 px-4 py-10 text-sm sm:grid-cols-[1fr_auto]">
             <div className="space-y-3">
               <Link href="/" className="inline-flex items-center gap-2 font-bold text-white">

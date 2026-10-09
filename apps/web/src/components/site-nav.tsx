@@ -136,7 +136,7 @@ function Tab({ href, label, Icon, on }: { href: string; label: string; Icon: (ty
  */
 function ScoreStrip({ matches, label }: { matches: Array<TickerMatch & { clock: string }>; label: string }) {
   return (
-    <div className="bg-[var(--color-ink)] text-white">
+    <div className="on-dark bg-[var(--color-ink)] text-white">
       <div className="mx-auto flex max-w-5xl items-stretch">
         <p className="flex shrink-0 items-center gap-2 border-r border-white/10 px-4 text-xs font-semibold text-[var(--color-pitch-bright)]">{label}</p>
         <ul className="rail flex min-w-0 flex-1 overflow-x-auto" aria-label={`แมตช์${label}`}>

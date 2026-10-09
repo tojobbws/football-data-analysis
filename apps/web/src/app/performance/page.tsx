@@ -47,7 +47,7 @@ export default async function PerformancePage() {
         </Section>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Breakdown title="แยกตามตลาด" rows={by('market')} name={(b) => MARKET[b.bucket] ?? b.bucket} />
         <Breakdown title="แยกตามลีก" rows={by('league')} name={(b) => leagueNames.get(b.bucket) ?? `League ${b.bucket}`} />
         <Breakdown title="รายเดือน" rows={by('month').sort((a, b) => b.bucket.localeCompare(a.bucket))} name={(b) => MONTH.format(new Date(`${b.bucket}-15T00:00:00Z`))} />
@@ -70,15 +70,15 @@ export default async function PerformancePage() {
               <tbody className="divide-y divide-slate-100">
                 {recent.map((r) => (
                   <tr key={r.public_id} className="align-top">
-                    <td className="px-4 py-2 sm:px-0">
-                      <Link href={`/matches/${r.fixture_slug}`} className="hover:underline">
+                    <td className="px-4 pb-3 sm:px-0">
+                      <Link href={`/matches/${r.fixture_slug}`} className="inline-flex min-h-11 items-center hover:underline">
                         {r.home_team} vs {r.away_team}
                       </Link>
                       <p className="text-xs text-slate-500">
                         {shortDayTH(r.kickoff_at)} · {r.league_name} · {r.public_id} · เผยแพร่ {dateTimeTH(r.published_at)}
                       </p>
                     </td>
-                    <td className="py-2">
+                    <td className="py-3">
                       {r.kind === 'SIGNAL' ? (
                         <>
                           {selectionLabel(r.market!, r.selection!, r.line == null ? null : Number(r.line), r.home_team, r.away_team)}
@@ -90,9 +90,9 @@ export default async function PerformancePage() {
                         <span className="text-slate-400">🌫️</span>
                       )}
                     </td>
-                    <td className="py-2 text-right tabular-nums">{r.kind === 'SIGNAL' ? odds(r.odds_at_publish) : ''}</td>
-                    <td className="py-2 text-right tabular-nums">{r.result_score ?? ''}</td>
-                    <td className="py-2 pr-4 text-right sm:pr-0">
+                    <td className="py-3 text-right tabular-nums">{r.kind === 'SIGNAL' ? odds(r.odds_at_publish) : ''}</td>
+                    <td className="py-3 text-right tabular-nums">{r.result_score ?? ''}</td>
+                    <td className="py-3 pr-4 text-right sm:pr-0">
                       <StatusBadge status={r.status} />
                     </td>
                   </tr>
