@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SITE_NAME } from '@/lib/brand';
 import type { TickerMatch } from '@/lib/queries';
-import { IconArticle, IconCalendar, IconChart, IconChevronRight, IconCompass, IconHome, Logo } from './icons';
+import { IconArticle, IconCalendar, IconChart, IconChevronRight, CompassMark, IconHome, Logo } from './icons';
 import { TeamLogo } from './primitives';
 
 const LIVE = ['1H', 'HT', '2H', 'ET', 'BT', 'P', 'LIVE', 'INT', 'SUSP'];
@@ -39,11 +39,9 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 md:h-16 md:gap-6">
           <Link href="/" className="flex shrink-0 items-center gap-2.5 whitespace-nowrap" aria-label={`${SITE_NAME} หน้าแรก`}>
-            <Logo size={34} />
-            <span className="leading-none">
-              <span className="block text-[17px] font-bold tracking-tight">{SITE_NAME}</span>
-              <span className="mt-1 hidden text-xs text-slate-500 sm:block">Football Data &amp; Analysis</span>
-            </span>
+            {/* brand lockup (emblem + wordmark) replaces the icon and the text name */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/logo-lockup.webp" width={450} height={128} alt={SITE_NAME} decoding="async" className="h-9 w-auto md:h-10" draggable={false} />
           </Link>
 
           <nav aria-label="เมนูหลัก" className="hidden h-full md:block">
@@ -82,9 +80,9 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
             ) : null}
             <Link
               href={COMPASS_HREF}
-              className="hidden min-h-10 items-center gap-2 rounded-full bg-[var(--color-compass)] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-800 md:inline-flex"
+              className="hidden min-h-10 items-center gap-2 rounded-full bg-[var(--color-compass)] py-1 pl-1 pr-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-800 md:inline-flex"
             >
-              <IconCompass size={18} />
+              <CompassMark size={32} />
               คู่น่าจับตา
             </Link>
           </div>
@@ -98,8 +96,8 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
           ))}
           <li className="flex justify-center">
             <Link href={COMPASS_HREF} className="flex -translate-y-4 flex-col items-center gap-1 text-xs font-semibold text-[var(--color-compass)]">
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-compass)] text-white shadow-lg ring-4 ring-white">
-                <IconCompass size={26} />
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg ring-4 ring-white">
+                <CompassMark size={56} />
               </span>
               เข็มทิศ
             </Link>
