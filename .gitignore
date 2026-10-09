@@ -11,3 +11,14 @@ reports/
 .open-next/
 .wrangler/
 .dev.vars
+apps/web/.impeccable/live/config.json
+apps/web/.impeccable/review/desktop-nopick.png
+apps/web/.impeccable/review/desktop.png
+apps/web/.impeccable/review/h.png
+apps/web/.impeccable/review/m1.png
+apps/web/.impeccable/review/m2.png
+apps/web/.impeccable/review/m3.png
+apps/web/.impeccable/review/mobile.png
+apps/web/.impeccable/review/v1.png
+apps/web/.impeccable/review/v2.png
+apps/web/.impeccable/surfaces/src-app-matches-slug-page-tsx.md
