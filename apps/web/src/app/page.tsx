@@ -1,15 +1,17 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AutoRefresh } from '@/components/auto-refresh';
-import { ArticleGrid, BandHeading, MoreLink, Rail, RailItem, ScoreTile, WeeklyWinRate } from '@/components/home';
+import { DayTabs } from '@/components/day-tabs';
+import { ArticleGrid, MoreLink, Rail, RailItem } from '@/components/home';
+import { IconChevronRight } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { MatchList } from '@/components/match-list';
 import { SignalCard } from '@/components/signal-card';
-import { Empty, Section } from '@/components/ui';
+import { Empty } from '@/components/ui';
 import { FINISHED, LIVE, pct } from '@/lib/labels';
-import { latestArticles, leagueWidgets, liveMatches, matchDayCounts, matchesOnDay, perfSummary, upcomingSignals, weeklyPerformance } from '@/lib/queries';
+import { latestArticles, leagueWidgets, matchDayCounts, matchesOnDay, perfSummary, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
-import { addDaysStr, dayTH, thaiDate } from '@/lib/time';
+import { addDaysStr, dayTH, shortDayTH, thaiDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -18,101 +20,87 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
 };
 
-const RESULTS_SHOWN = 8;
+const noon = (d: string) => `${d}T12:00:00+07:00`;
+const isLive = (m: MatchRow) => LIVE.includes(m.status_short);
+/** what's on now → what's next (by kickoff) → what's done */
+const phase = (m: MatchRow) => (isLive(m) ? 0 : FINISHED.includes(m.status_short) ? 2 : 1);
 
+/**
+ * Home = today's scoreboard first, yesterday's results second, everything else below.
+ * Mobile first: one column, dense rows, sticky day tabs to jump between the two days.
+ */
 export default async function HomePage() {
   const today = thaiDate();
   const yesterday = addDaysStr(today, -1);
-  const [live, played, todays, counts, signals, perf, weeks, articles, leagues] = await Promise.all([
-    liveMatches(),
-    matchesOnDay(yesterday),
+  const tomorrow = addDaysStr(today, 1);
+  const [todays, played, counts, signals, perf, articles, leagues] = await Promise.all([
     matchesOnDay(today),
-    matchDayCounts(addDaysStr(today, 1), 10),
-    upcomingSignals(6),
+    matchesOnDay(yesterday),
+    matchDayCounts(tomorrow, 10),
+    upcomingSignals(4),
     perfSummary(),
-    weeklyPerformance(8),
-    latestArticles(12),
+    latestArticles(4),
     leagueWidgets(5),
   ]);
 
-  const results = played.filter((m) => FINISHED.includes(m.status_short));
-  // still to kick off today; when today is done, the next day that has matches
-  let upcoming = todays.filter((m) => !FINISHED.includes(m.status_short) && !LIVE.includes(m.status_short));
-  let upcomingDay = today;
-  if (!upcoming.length) {
+  // nothing today: show the next day that has matches, and say so
+  let day = today;
+  let matches = todays;
+  if (!matches.length) {
     const next = [...counts.keys()].sort()[0];
     if (next) {
-      upcomingDay = next;
-      upcoming = await matchesOnDay(next);
+      day = next;
+      matches = await matchesOnDay(next);
     }
   }
-  const todaysArticles = articles.filter((a) => thaiDate(new Date(a.published_at)) === today);
-  const moreArticles = articles.filter((a) => !todaysArticles.includes(a)).slice(0, 6);
+  const ordered = [...matches].sort((a, b) => phase(a) - phase(b) || Date.parse(a.kickoff_at) - Date.parse(b.kickoff_at));
+  const liveToday = matches.filter(isLive).length;
+  const liveYesterday = played.filter(isLive).length; // late kick-offs still in play after midnight
+
+  const tabs = [
+    { id: 'today', label: day === today ? 'วันนี้' : shortDayTH(noon(day)), count: matches.length, live: liveToday },
+    { id: 'yesterday', label: 'เมื่อวาน', count: played.length, live: liveYesterday },
+  ];
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-5 sm:py-8">
+    <main className="mx-auto max-w-5xl px-4 pb-8">
       <h1 className="sr-only">
         {SITE_NAME} — วิเคราะห์บอลวันนี้ ผลบอล โปรแกรมแข่ง และบทวิเคราะห์ฟุตบอลด้วยข้อมูล
       </h1>
-      {live.length ? <AutoRefresh seconds={60} /> : null}
+      {liveToday + liveYesterday ? <AutoRefresh seconds={60} /> : null}
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[auto_auto_1fr] lg:gap-x-6">
-        {/* ---------------- 1: on the pitch ---------------- */}
-        <section className="space-y-6" aria-label="สนามตอนนี้">
-          <div>
-            <BandHeading kicker="สนามตอนนี้" title={live.length ? `กำลังแข่ง ${live.length} คู่` : 'ผลบอลเมื่อวาน'} />
+      <DayTabs tabs={tabs} nextHref={`/matches?date=${day === today ? tomorrow : addDaysStr(day, 1)}`} nextLabel={day === today ? 'พรุ่งนี้' : 'วันถัดไป'} calendarHref="/matches" />
 
-            {live.length ? (
-              <div className="mb-6">
-                <p className="mb-2 flex items-center gap-2 text-xs text-slate-600">
-                  <span className="h-2 w-2 rounded-full bg-[var(--color-live)] motion-safe:animate-pulse" aria-hidden />
-                  สด · อัปเดตอัตโนมัติทุก 1 นาที
-                </p>
-                <Rail label="คู่ที่กำลังแข่ง">
-                  {live.map((m) => (
-                    <RailItem key={m.id}>
-                      <ScoreTile m={m} />
-                    </RailItem>
-                  ))}
-                </Rail>
-              </div>
-            ) : null}
+      <div className="mt-2 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-x-6">
+        <div className="space-y-8">
+          {/* ---------------- 1: today ---------------- */}
+          <section id="today" className="scroll-mt-28" aria-labelledby="today-h">
+            <DayHeading
+              id="today-h"
+              kicker={dayTH(noon(day))}
+              title={day === today ? 'แมตช์วันนี้' : 'โปรแกรมถัดไป'}
+              count={matches.length}
+              live={liveToday}
+              href="/today"
+              linkLabel="วิเคราะห์ทุกคู่"
+            />
+            {day !== today ? <p className="mb-2 text-sm text-slate-600">วันนี้ไม่มีแมตช์ในลีกที่เราติดตาม — นี่คือโปรแกรมวันถัดไปที่มีแข่ง</p> : null}
+            {ordered.length ? <MatchList matches={ordered} compact /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
+          </section>
 
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold">{live.length ? 'ผลการแข่งขันเมื่อวาน' : dayTH(`${yesterday}T12:00:00+07:00`)}</h3>
-              <MoreLink href={`/matches?date=${yesterday}`} label={results.length > RESULTS_SHOWN ? `ดูครบ ${results.length} คู่` : 'ดูตามวัน'} />
-            </div>
-            {results.length ? (
-              <Rail label="ผลการแข่งขันเมื่อวาน">
-                {results.slice(0, RESULTS_SHOWN).map((m) => (
-                  <RailItem key={m.id}>
-                    <ScoreTile m={m} />
-                  </RailItem>
-                ))}
-              </Rail>
-            ) : (
-              <Empty>เมื่อวานไม่มีแมตช์ในลีกที่ติดตาม</Empty>
-            )}
-          </div>
+          {/* ---------------- 2: yesterday ---------------- */}
+          <section id="yesterday" className="scroll-mt-28" aria-labelledby="yesterday-h">
+            <DayHeading id="yesterday-h" kicker={dayTH(noon(yesterday))} title="ผลบอลเมื่อวาน" count={played.length} live={liveYesterday} href={`/matches?date=${yesterday}`} linkLabel="ดูตามวัน" />
+            {played.length ? <MatchList matches={played} compact /> : <Empty>เมื่อวานไม่มีแมตช์ในลีกที่ติดตาม</Empty>}
+          </section>
 
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold">{upcomingDay === today ? 'โปรแกรมแข่งวันนี้' : `โปรแกรมถัดไป · ${dayTH(`${upcomingDay}T12:00:00+07:00`)}`}</h3>
-              <MoreLink href="/today" label="วิเคราะห์บอลวันนี้" />
-            </div>
-            {upcoming.length ? <MatchList matches={upcoming} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
-          </div>
-        </section>
-
-        {/* ---------------- 2: compass ---------------- */}
-        <section id="compass" className="scroll-mt-20 space-y-4" aria-label="เข็มทิศเกม">
-          <BandHeading kicker="เข็มทิศเกม" title="คู่น่าจับตาและผลงานการวิเคราะห์" href="/performance" linkLabel="ผลงานทั้งหมด" />
-
-          <Section title="🧭 คู่น่าจับตา" aside="ล็อกก่อนเตะ แก้ไขไม่ได้">
+          {/* ---------------- 3: compass ---------------- */}
+          <section id="compass" className="scroll-mt-28" aria-labelledby="compass-h">
+            <DayHeading id="compass-h" kicker="เข็มทิศเกม" title="🧭 คู่น่าจับตา" href="/performance" linkLabel="ผลงานทั้งหมด" />
             {signals.length ? (
-              <ul className="grid gap-3 sm:grid-cols-2">
+              <Rail label="คู่น่าจับตา">
                 {signals.map((s) => (
-                  <li key={s.public_id}>
+                  <RailItem key={s.public_id}>
                     <SignalCard
                       s={{
                         slug: s.fixture_slug,
@@ -129,50 +117,59 @@ export default async function HomePage() {
                         odds_at_publish: s.odds_at_publish,
                       }}
                     />
-                  </li>
+                  </RailItem>
                 ))}
-              </ul>
+              </Rail>
             ) : (
               <Empty>ยังไม่มีคู่ที่ผ่านเกณฑ์ในขณะนี้ — บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ</Empty>
             )}
-          </Section>
-
-          <Section title="บทวิเคราะห์วันนี้" aside={<MoreLink href="/analysis" label="ทั้งหมด" />}>
-            {todaysArticles.length ? <ArticleGrid articles={todaysArticles} /> : <Empty>ยังไม่มีบทวิเคราะห์ที่เผยแพร่วันนี้</Empty>}
-          </Section>
-
-          <Section title="สรุปผลการวิเคราะห์" aside="ทุกสัญญาณ ทั้งถูกและผิด">
             {perf && perf.total_signals ? (
-              <dl className="mb-5 grid grid-cols-3 gap-2">
-                <Kpi k="สัญญาณทั้งหมด" v={String(perf.total_signals)} />
-                <Kpi k="Win rate รวม" v={pct(perf.win_rate, 1)} />
-                <Kpi k="ชนะราคาปิด" v={pct(perf.beat_closing_rate, 0)} />
-              </dl>
+              <Link href="/performance" className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 text-sm transition-colors hover:bg-slate-50">
+                <span className="text-slate-600">
+                  ผลงานรวม <b className="text-[var(--color-ink)] tabular-nums">{perf.total_signals}</b> สัญญาณ · Win rate <b className="text-[var(--color-ink)] tabular-nums">{pct(perf.win_rate, 1)}</b> · ชนะราคาปิด{' '}
+                  <b className="text-[var(--color-ink)] tabular-nums">{pct(perf.beat_closing_rate, 0)}</b>
+                </span>
+                <IconChevronRight size={16} className="shrink-0 text-slate-500" />
+              </Link>
             ) : null}
-            {weeks.some((w) => w.settled) ? <WeeklyWinRate weeks={weeks} /> : <Empty>ยังไม่มีสัญญาณที่ตัดสินผลแล้ว — ผลรายสัปดาห์จะแสดงที่นี่</Empty>}
-          </Section>
-        </section>
+          </section>
+
+          {/* ---------------- 4: articles ---------------- */}
+          <section aria-labelledby="articles-h">
+            <DayHeading id="articles-h" kicker="อ่านต่อ" title="บทวิเคราะห์ล่าสุด" href="/analysis" />
+            {articles.length ? <ArticleGrid articles={articles} /> : <Empty>ยังไม่มีบทความ</Empty>}
+          </section>
+        </div>
 
         {/* ---------------- widgets ---------------- */}
-        <aside className="space-y-4 lg:col-start-2 lg:row-span-3 lg:row-start-1" aria-label="ข้อมูลลีก">
+        <aside className="space-y-4" aria-label="ข้อมูลลีก">
           <LeagueWidgets widgets={leagues} />
         </aside>
-
-        {/* ---------------- 3: articles ---------------- */}
-        <section className="lg:col-start-1" aria-label="บทความ">
-          <BandHeading kicker="อ่านต่อ" title="ข่าวและบทความ" href="/analysis" />
-          {moreArticles.length ? <ArticleGrid articles={moreArticles} /> : <Empty>ยังไม่มีบทความ</Empty>}
-        </section>
       </div>
     </main>
   );
 }
 
-function Kpi({ k, v }: { k: string; v: string }) {
+function DayHeading({ id, kicker, title, count, live, href, linkLabel = 'ทั้งหมด' }: { id: string; kicker: string; title: string; count?: number; live?: number; href?: string; linkLabel?: string }) {
   return (
-    <div className="rounded-xl bg-slate-50 px-3 py-2.5">
-      <dt className="text-xs text-slate-600">{k}</dt>
-      <dd className="mt-0.5 text-xl font-bold tabular-nums">{v}</dd>
+    <div className="mb-2 flex items-end justify-between gap-3">
+      <div className="min-w-0">
+        <p className="flex items-center gap-2 text-xs font-semibold text-[var(--color-pitch)]">
+          <span className="h-3 w-1 rounded-full bg-current" aria-hidden />
+          {kicker}
+        </p>
+        <h2 id={id} className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-lg font-bold leading-tight">
+          {title}
+          {count != null ? <span className="text-sm font-normal text-slate-500">{count} คู่</span> : null}
+          {live ? (
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-[var(--color-live)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse" aria-hidden />
+              สด {live}
+            </span>
+          ) : null}
+        </h2>
+      </div>
+      {href ? <MoreLink href={href} label={linkLabel} /> : null}
     </div>
   );
 }

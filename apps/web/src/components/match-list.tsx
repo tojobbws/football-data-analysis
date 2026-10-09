@@ -2,12 +2,17 @@ import Link from 'next/link';
 import type { MatchRow } from '@/lib/queries';
 import { FINISHED, LIVE, selectionLabel } from '@/lib/labels';
 import { timeTH } from '@/lib/time';
+import { IconCompass } from './icons';
 import { StatusBadge, TeamLogo } from './ui';
 
-const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ' };
+const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย' };
+const DONE: Record<string, string> = { FT: 'จบ', AET: 'ต่อเวลา', PEN: 'จุดโทษ' };
 
-/** Matches grouped by league, in kickoff order. */
-export function MatchList({ matches }: { matches: MatchRow[] }) {
+/**
+ * Matches grouped by league, scoreboard style: status | home / away stacked with their scores | 🧭.
+ * `compact` = the home page density (no 🔎 teaser, tighter rows); list pages keep the teaser.
+ */
+export function MatchList({ matches, compact = false }: { matches: MatchRow[]; compact?: boolean }) {
   const groups = new Map<number, { league: MatchRow['league']; rows: MatchRow[] }>();
   for (const m of matches) {
     const g = groups.get(m.league.id) ?? { league: m.league, rows: [] };
@@ -15,75 +20,107 @@ export function MatchList({ matches }: { matches: MatchRow[] }) {
     groups.set(m.league.id, g);
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {[...groups.values()].map(({ league, rows }) => (
-        <div key={league.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold">
+        <section key={league.id} aria-label={league.name} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <header className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-sm font-semibold sm:px-4">
             <TeamLogo src={league.logo_url} alt="" size={18} />
             <span className="truncate">{league.name}</span>
-            {league.country ? <span className="shrink-0 font-normal text-slate-500">· {league.country}</span> : null}
+            {league.country ? <span className="hidden shrink-0 font-normal text-slate-500 sm:inline">· {league.country}</span> : null}
             <span className="ml-auto shrink-0 text-xs font-normal text-slate-500">{rows.length} คู่</span>
-          </div>
+          </header>
           <ul className="divide-y divide-slate-100">
             {rows.map((m) => (
-              <MatchItem key={m.id} m={m} />
+              <MatchItem key={m.id} m={m} compact={compact} />
             ))}
           </ul>
-        </div>
+        </section>
       ))}
     </div>
   );
 }
 
-function MatchItem({ m }: { m: MatchRow }) {
+function MatchItem({ m, compact }: { m: MatchRow; compact: boolean }) {
   const finished = FINISHED.includes(m.status_short);
   const live = LIVE.includes(m.status_short);
+  const off = OFF[m.status_short];
+  const showScore = finished || live;
+  const gh = m.goals_home;
+  const ga = m.goals_away;
+  const decided = finished && gh != null && ga != null && gh !== ga;
+  const teams = [
+    { t: m.home, g: gh, won: decided && gh! > ga! },
+    { t: m.away, g: ga, won: decided && ga! > gh! },
+  ];
   const c = m.compass;
+  const pick = c?.kind === 'SIGNAL' ? selectionLabel(c.market!, c.selection!, c.line == null ? null : Number(c.line), m.home.name, m.away.name) : null;
+
   return (
-    <li>
-      <Link href={`/matches/${m.slug}`} className="grid min-h-16 grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 px-4 py-3 transition-colors duration-150 hover:bg-slate-50 sm:grid-cols-[3.5rem_minmax(0,1fr)_auto]">
-        <div className="text-xs">
+    <li className={live ? 'border-l-[3px] border-l-[var(--color-live)]' : ''}>
+      <Link
+        href={`/matches/${m.slug}`}
+        className={`grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 px-2 transition-colors duration-150 hover:bg-slate-50 sm:grid-cols-[3.5rem_minmax(0,1fr)_auto] sm:gap-x-3 sm:px-3 ${compact ? 'min-h-14 py-2' : 'min-h-16 gap-y-2 py-2.5'}`}
+      >
+        {/* status column: minute (live) / final / time */}
+        <div className="flex flex-col items-center justify-center text-center leading-none">
           {live ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-live)] px-1.5 py-0.5 font-semibold text-white">{m.status_short === 'HT' ? 'HT' : `${m.elapsed ?? ''}′`}</span>
+            <>
+              <span className="text-xs font-bold text-[var(--color-live)]">{m.status_short === 'HT' ? 'HT' : `${m.elapsed ?? ''}′`}</span>
+              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-[var(--color-live)] motion-safe:animate-pulse" aria-hidden />
+            </>
           ) : finished ? (
-            <span className="text-slate-500">จบ</span>
-          ) : OFF[m.status_short] ? (
-            <span className="font-medium text-rose-700">{OFF[m.status_short]}</span>
+            <span className="text-xs font-medium text-slate-500">{DONE[m.status_short] ?? m.status_short}</span>
+          ) : off ? (
+            <span className="text-xs font-medium text-rose-700">{off}</span>
           ) : (
             <span className="text-sm font-semibold tabular-nums">{timeTH(m.kickoff_at)}</span>
           )}
         </div>
-        <div className="space-y-1 text-sm">
-          {[
-            [m.home, m.goals_home],
-            [m.away, m.goals_away],
-          ].map(([t, g], i) => (
-            <div key={i} className="flex items-center gap-2">
-              <TeamLogo src={(t as MatchRow['home']).logo_url} alt="" size={20} />
-              <span className="truncate">{(t as MatchRow['home']).name}</span>
-              {finished || live ? <span className="ml-auto pl-2 font-semibold tabular-nums">{g as number | null}</span> : null}
+
+        {/* teams: home over away, scores right-aligned on each row */}
+        <div className={`min-w-0 text-sm ${compact ? 'space-y-1' : 'space-y-1.5'}`}>
+          {teams.map(({ t, g, won }) => (
+            <div key={t.id} className="flex items-center gap-2">
+              <TeamLogo src={t.logo_url} alt="" size={compact ? 18 : 20} />
+              <span className={`truncate ${won ? 'font-semibold' : decided ? 'text-slate-500' : ''}`}>{t.name}</span>
+              {showScore ? <span className={`ml-auto w-5 shrink-0 text-right tabular-nums ${live || won ? 'font-bold' : 'text-slate-500'}`}>{g ?? '–'}</span> : null}
             </div>
           ))}
         </div>
-        {m.preview ? (
-          <p className="col-start-2 line-clamp-2 text-xs leading-relaxed text-slate-600 sm:col-span-2">
-            <span className="mr-1" aria-hidden>🔎</span>
+
+        {/* 🧭 column */}
+        <div className="flex items-center justify-end">
+          {c ? (
+            pick ? (
+              c.status !== 'PENDING' ? (
+                <StatusBadge status={c.status} />
+              ) : (
+                <>
+                  <span className="hidden max-w-[11rem] truncate rounded-full bg-[var(--color-compass-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-compass)] sm:inline-block" title={pick}>
+                    🧭 {pick}
+                  </span>
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-compass-soft)] text-[var(--color-compass)] sm:hidden" title={`🧭 ${pick}`}>
+                    <IconCompass size={16} />
+                    <span className="sr-only">🧭 เข็มทิศเกม: {pick}</span>
+                  </span>
+                </>
+              )
+            ) : (
+              <span className="text-xs text-slate-400" title="🌫️ หมอกข้อมูล — ไม่มีตลาดที่ข้อมูลสนับสนุนพอ">
+                <span aria-hidden>🌫️</span>
+                <span className="sr-only">หมอกข้อมูล</span>
+              </span>
+            )
+          ) : null}
+        </div>
+
+        {!compact && m.preview ? (
+          <p className="col-start-2 col-end-4 line-clamp-2 text-xs leading-relaxed text-slate-600">
+            <span className="mr-1" aria-hidden>
+              🔎
+            </span>
             {m.preview.overview_th}
           </p>
-        ) : null}
-        {c ? (
-          <div className="col-start-2 flex flex-wrap items-center gap-1.5 sm:col-start-3 sm:row-start-1 sm:flex-col sm:items-end">
-            {c.kind === 'SIGNAL' ? (
-              <>
-                <span className="rounded-full bg-[var(--color-compass-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--color-compass)]">
-                  🧭 {selectionLabel(c.market!, c.selection!, c.line == null ? null : Number(c.line), m.home.name, m.away.name)}
-                </span>
-                {c.status !== 'PENDING' ? <StatusBadge status={c.status} /> : <span className="text-xs text-slate-500">{c.signal_strength}</span>}
-              </>
-            ) : (
-              <span className="text-xs text-slate-500">🌫️ หมอกข้อมูล</span>
-            )}
-          </div>
         ) : null}
       </Link>
     </li>

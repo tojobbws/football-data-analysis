@@ -33,7 +33,8 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
 
   return (
     <>
-      {ticker.length ? <ScoreStrip matches={ticker} label={tickerLabel} /> : null}
+      {/* the home page is itself the scoreboard: skip the strip there so today's list starts at the top */}
+      {ticker.length && path !== '/' ? <ScoreStrip matches={ticker} label={tickerLabel} /> : null}
 
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4 md:h-16 md:gap-6">
