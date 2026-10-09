@@ -25,7 +25,7 @@ export function DatePickerButton({ value, base }: { value: string; base: string 
         className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-[var(--color-ink)] transition-colors duration-150 hover:bg-slate-200"
         aria-label="เลือกวันที่จากปฏิทิน"
       >
-        <IconCalendar size={20} />
+        <IconCalendar size={18} />
       </button>
       <input
         ref={input}

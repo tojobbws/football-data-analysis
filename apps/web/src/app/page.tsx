@@ -105,7 +105,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <Empty>ยังไม่มีคู่ที่ผ่านเกณฑ์ในขณะนี้ — บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ</Empty>
             )}
             {perf && perf.total_signals ? (
-              <Link href="/performance" className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 text-sm transition-colors hover:bg-slate-50">
+              <Link href="/performance" className="mt-3 flex min-h-11 items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 text-xs transition-colors hover:bg-slate-50">
                 <span className="text-slate-600">
                   ผลงานรวม <b className="text-[var(--color-ink)] tabular-nums">{perf.total_signals}</b> สัญญาณ · Win rate <b className="text-[var(--color-ink)] tabular-nums">{pct(perf.win_rate, 1)}</b> · ชนะราคาปิด{' '}
                   <b className="text-[var(--color-ink)] tabular-nums">{pct(perf.beat_closing_rate, 0)}</b>
@@ -139,7 +139,7 @@ function DayHeading({ id, kicker, title, href, linkLabel = 'ทั้งหม�
           <span className="h-3 w-1 rounded-full bg-current" aria-hidden />
           {kicker}
         </p>
-        <h2 id={id} className="mt-0.5 text-lg font-bold leading-tight">
+        <h2 id={id} className="mt-0.5 text-base font-bold leading-tight">
           {title}
         </h2>
       </div>
@@ -150,7 +150,7 @@ function DayHeading({ id, kicker, title, href, linkLabel = 'ทั้งหม�
 
 function BandLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-lg px-2 text-sm font-medium text-[var(--color-pitch)] transition-colors hover:bg-[var(--color-pitch-soft)]/60">
+    <Link href={href} className="inline-flex min-h-11 shrink-0 items-center gap-0.5 rounded-lg px-2 text-xs font-medium text-[var(--color-pitch)] transition-colors hover:bg-[var(--color-pitch-soft)]/60">
       {label}
       <IconChevronRight size={16} />
     </Link>
