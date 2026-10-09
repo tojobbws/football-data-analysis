@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CompassCard } from '@/components/compass-card';
 import { MatchPreviewCard } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
-import { Empty, FormPills, Section, TeamLogo, TextLink } from '@/components/ui';
+import { Badge, Card, Note } from '@/components/sheet';
+import { TeamLogo } from '@/components/ui';
 import { FINISHED, LIVE, odds, selectionLabel } from '@/lib/labels';
 import { matchBySlug, type FormRow } from '@/lib/queries';
 import { dateTimeTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
@@ -19,18 +21,25 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { home, away, league, kickoff_at } = d.match;
   return {
     title: `${home.name} vs ${away.name} วิเคราะห์บอล ${league.name}`,
-    description: `วิเคราะห์ ${home.name} vs ${away.name} (${league.name}) ${dayTH(kickoff_at)} — ฟอร์ม, xG, ตัวเจ็บ, แรงตลาด และ 🧭 เข็มทิศเกม`,
+    description: `วิเคราะห์ ${home.name} vs ${away.name} (${league.name}) ${dayTH(kickoff_at)} — ฟอร์ม, xG, ตัวเจ็บ, แรงตลาด และเข็มทิศเกม`,
     alternates: { canonical: `/matches/${slug}` },
   };
 }
 
+/**
+ * Match page as a quiet data sheet: typographic header, then cards with hairlines and tables.
+ * Main column = the pick and the reading; side column = market, table, H2H.
+ */
 export default async function MatchPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const d = await matchBySlug(slug);
   if (!d) notFound();
   const { match: m } = d;
+  // fog (NO_CLEAR_SIGNAL) rounds stay in the record (/performance) but are not shown here: only picks are
   const latest = d.rounds.at(-1) ?? null;
-  const earlier = d.rounds.slice(0, -1);
+  const pick = latest?.kind === 'SIGNAL' ? latest : null;
+  const earlierPicks = d.rounds.slice(0, -1).filter((c) => c.kind === 'SIGNAL');
+  const noAnalysisYet = !latest;
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -44,139 +53,169 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
     superEvent: { '@type': 'SportsEvent', name: m.league.name },
   };
 
+  const sections = [
+    pick || earlierPicks.length || noAnalysisYet ? { id: 'pick', label: 'เข็มทิศเกม' } : null,
+    d.preview || (!d.finished && !OFF[m.status_short]) ? { id: 'analysis', label: 'วิเคราะห์' } : null,
+    d.outlook ? { id: 'model', label: 'โมเดล' } : null,
+    d.finished && d.stats.length ? { id: 'stats', label: 'สถิติ' } : null,
+    { id: 'form', label: 'ฟอร์ม' },
+    { id: 'squad', label: 'ผู้เล่น' },
+    { id: 'market', label: 'แรงตลาด' },
+    { id: 'table', label: 'ตาราง' },
+    { id: 'h2h', label: 'H2H' },
+  ].filter((x): x is { id: string; label: string } => x != null);
+
   return (
-    <main className="mx-auto max-w-5xl space-y-4 px-4 py-5 sm:space-y-5 sm:py-8">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <Header d={d} />
+    <div className="bg-white">
+      <main className="mx-auto max-w-5xl px-4 pb-12 pt-5 sm:pt-8">
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        <MatchHead d={d} />
 
-      {latest ? (
-        <div className="space-y-2">
-          <CompassCard c={latest} home={m.home.name} away={m.away.name} />
-          {earlier.map((c) => (
-            <details key={c.public_id} className="rounded-xl border border-slate-200 bg-white px-4 text-sm">
-              <summary className="flex min-h-11 cursor-pointer items-center text-slate-600">บทวิเคราะห์รอบก่อนหน้า ({c.public_id}) — ยังอยู่ใน track record</summary>
-              <div className="pb-3">
-                <CompassCard c={c} home={m.home.name} away={m.away.name} />
+        <nav aria-label="ส่วนต่าง ๆ ของหน้านี้" className="sticky top-14 z-20 -mx-4 mt-4 overflow-x-auto border-b border-zinc-100 bg-white px-4 py-2 [scrollbar-width:none] md:top-16">
+          <ul className="inline-flex gap-1 rounded-lg bg-zinc-100 p-1">
+            {sections.map((s) => (
+              <li key={s.id}>
+                <a
+                  href={`#${s.id}`}
+                  className="flex min-h-10 items-center whitespace-nowrap rounded-md px-3 text-sm font-medium text-zinc-600 transition-colors duration-150 hover:bg-white hover:text-zinc-950 hover:shadow-[0_1px_2px_rgb(9_9_11/0.06)]"
+                >
+                  {s.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="min-w-0 space-y-6">
+            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} /> : null}
+            {earlierPicks.length ? (
+              <div id={pick ? undefined : 'pick'} className="scroll-mt-24 space-y-2">
+                {earlierPicks.map((c) => (
+                  <details key={c.public_id} className="group">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 border-b border-zinc-200 text-sm text-zinc-700 [&::-webkit-details-marker]:hidden">
+                      <span>
+                        เข็มทิศเกมรอบก่อนหน้า <span className="font-mono text-xs text-zinc-500">{c.public_id}</span>
+                      </span>
+                      <span className="text-xs text-zinc-500 group-open:hidden">แสดง</span>
+                      <span className="hidden text-xs text-zinc-500 group-open:inline">ซ่อน</span>
+                    </summary>
+                    <div className="pt-3">
+                      <CompassCard c={c} home={m.home.name} away={m.away.name} />
+                    </div>
+                  </details>
+                ))}
               </div>
-            </details>
-          ))}
+            ) : null}
+            {noAnalysisYet ? (
+              <Card id="pick" title="เข็มทิศเกม" description="1 ตัวเลือกที่ข้อมูลสนับสนุนมากที่สุด เฉพาะคู่ที่ข้อมูลชี้ชัด">
+                <p className="text-sm text-zinc-500">{FINISHED.includes(m.status_short) ? 'แมตช์นี้ไม่มีบทวิเคราะห์ที่เผยแพร่' : 'บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ'}</p>
+              </Card>
+            ) : null}
+
+            {d.preview ? (
+              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} />
+            ) : !d.finished && !OFF[m.status_short] ? (
+              <Card id="analysis" title="วิเคราะห์เกม">
+                <p className="text-sm text-zinc-500">บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</p>
+              </Card>
+            ) : null}
+
+            {d.outlook ? <ModelOutlookCard id="model" o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
+          </div>
+
+          <aside className="min-w-0 space-y-6 lg:sticky lg:top-32" aria-label="ข้อมูลประกอบ">
+            <MarketSection d={d} />
+            <StandingsSection d={d} />
+            <H2HSection d={d} />
+          </aside>
         </div>
-      ) : (
-        <Section title="🧭 เข็มทิศเกม">
-          <Empty>{FINISHED.includes(m.status_short) ? 'แมตช์นี้ไม่มีบทวิเคราะห์ที่เผยแพร่' : 'บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ'}</Empty>
-        </Section>
-      )}
 
-      {d.preview ? (
-        <MatchPreviewCard p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} />
-      ) : !d.finished && !OFF[m.status_short] ? (
-        <Section title="🔎 วิเคราะห์เกม">
-          <Empty>บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</Empty>
-        </Section>
-      ) : null}
-
-      {d.outlook ? <ModelOutlookCard o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <MarketSection d={d} />
-        <FormSection d={d} />
-      </div>
-
-      {d.finished && d.stats.length ? <StatsSection d={d} /> : null}
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <InjurySection d={d} />
-        <LineupSection d={d} />
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <StandingsSection d={d} />
-        <H2HSection d={d} />
-      </div>
-    </main>
+        <div className="mt-6 space-y-6">
+          {d.finished && d.stats.length ? <StatsSection d={d} /> : null}
+          <FormSection d={d} />
+          <SquadSection d={d} />
+        </div>
+      </main>
+    </div>
   );
 }
 
 const OFF: Record<string, string> = { PST: 'เลื่อนการแข่งขัน', CANC: 'ยกเลิก', ABD: 'ยุติการแข่งขัน' };
 
-function Header({ d }: { d: Data }) {
+// ---------------------------------------------------------------------------
+// Header: type on white, no hero box
+// ---------------------------------------------------------------------------
+
+function MatchHead({ d }: { d: Data }) {
   const m = d.match;
   const live = LIVE.includes(m.status_short);
   const showScore = d.finished || live;
-  const photo = m.venue?.image_url;
   return (
-    <section className="relative -mx-4 overflow-hidden bg-[var(--color-ink)] px-4 py-6 text-white sm:mx-0 sm:rounded-3xl sm:px-6 sm:py-8">
-      {photo ? (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={photo} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-ink)]/60 to-[var(--color-ink)]" aria-hidden />
-        </>
-      ) : null}
-      <div className="relative">
-        <p className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-0.5 text-center text-xs text-slate-300">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="flex h-4 w-4 items-center justify-center rounded bg-white">
-              <TeamLogo src={m.league.logo_url} alt="" size={12} />
-            </span>
-            {m.league.name}
-          </span>
-          {m.round ? <span>· {m.round}</span> : null}
-          <span>· {dayTH(m.kickoff_at)}</span>
-          {m.venue?.name ? <span>· {m.venue.name}</span> : null}
-        </p>
-        <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-6">
-          <Team t={m.home} side="เจ้าบ้าน" />
-          <div className="text-center">
-            {showScore ? (
-              <>
-                <p className="text-4xl font-bold tabular-nums sm:text-5xl">
-                  {m.goals_home}
-                  <span className="mx-1.5 text-slate-500">–</span>
-                  {m.goals_away}
-                </p>
-                <p className="mt-1.5 text-xs text-slate-300">
-                  {live ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-live)] px-2 py-0.5 font-semibold text-white">
-                      <span className="h-1.5 w-1.5 rounded-full bg-white motion-safe:animate-pulse" aria-hidden />
-                      สด {m.status_short === 'HT' ? 'พักครึ่ง' : `${m.elapsed}′`}
-                    </span>
-                  ) : (
-                    'จบการแข่งขัน'
-                  )}
-                  {m.ht_home != null ? <span className="block pt-1">ครึ่งแรก {m.ht_home}-{m.ht_away}</span> : null}
-                </p>
-              </>
-            ) : OFF[m.status_short] ? (
-              <p className="text-base font-semibold text-rose-300">{OFF[m.status_short]}</p>
-            ) : (
-              <>
-                <p className="text-3xl font-bold tabular-nums sm:text-4xl">{timeTH(m.kickoff_at)}</p>
-                <p className="mt-1 text-xs text-slate-300">เวลาไทย</p>
-              </>
-            )}
-          </div>
-          <Team t={m.away} side="ทีมเยือน" />
+    <header className="border-b border-zinc-200 pb-6">
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
+        <span className="inline-flex items-center gap-1.5 font-medium text-zinc-700">
+          <TeamLogo src={m.league.logo_url} alt="" size={16} />
+          {m.league.name}
+        </span>
+        {m.round ? <><Sep />{m.round}</> : null}
+        <Sep />
+        {dayTH(m.kickoff_at)}
+        {m.venue?.name ? <><Sep />{m.venue.name}</> : null}
+      </p>
+
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-8">
+        <TeamHead t={m.home} side="เจ้าบ้าน" />
+        <div className="text-center">
+          {showScore ? (
+            <>
+              <p className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-950 sm:text-5xl">
+                {m.goals_home}
+                <span className="px-2 text-zinc-300">–</span>
+                {m.goals_away}
+              </p>
+              <div className="mt-2 flex flex-col items-center gap-1 text-xs text-zinc-500">
+                {live ? <Badge variant="live">สด {m.status_short === 'HT' ? 'พักครึ่ง' : `${m.elapsed}′`}</Badge> : <Badge variant="secondary">จบการแข่งขัน</Badge>}
+                {m.ht_home != null ? <span className="tabular-nums">ครึ่งแรก {m.ht_home}–{m.ht_away}</span> : null}
+              </div>
+            </>
+          ) : OFF[m.status_short] ? (
+            <Badge variant="bad">{OFF[m.status_short]}</Badge>
+          ) : (
+            <>
+              <p className="text-4xl font-semibold tabular-nums tracking-tight text-zinc-950 sm:text-5xl">{timeTH(m.kickoff_at)}</p>
+              <p className="mt-1.5 text-xs text-zinc-500">เวลาไทย</p>
+            </>
+          )}
         </div>
+        <TeamHead t={m.away} side="ทีมเยือน" right />
       </div>
-    </section>
+    </header>
   );
 }
 
-function Team({ t, side }: { t: Data['match']['home']; side: string }) {
+function Sep() {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-2 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-2 sm:h-20 sm:w-20">
-        <TeamLogo src={t.logo_url} alt="" size={56} />
-      </span>
-      <p className="line-clamp-2 text-sm font-semibold leading-tight sm:text-base">{t.name}</p>
-      <p className="text-xs text-slate-400">{side}</p>
+    <span className="text-zinc-300" aria-hidden>
+      /
+    </span>
+  );
+}
+
+function TeamHead({ t, side, right = false }: { t: Data['match']['home']; side: string; right?: boolean }) {
+  return (
+    <div className={`flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 ${right ? 'items-end text-right sm:flex-row-reverse' : 'items-start'}`}>
+      <TeamLogo src={t.logo_url} alt="" size={48} />
+      <div className="min-w-0">
+        <p className="line-clamp-2 text-base font-semibold leading-tight tracking-tight text-zinc-950 sm:text-2xl">{t.name}</p>
+        <p className="mt-1 text-xs text-zinc-500">{side}</p>
+      </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// 📈 Market
+// Market
 // ---------------------------------------------------------------------------
 
 type MarketRow = Data['market'][number];
@@ -205,65 +244,73 @@ function MarketSection({ d }: { d: Data }) {
   const ou = d.market.filter((r) => r.market === 'OVER_UNDER');
   const ahLine = mainLine(ah, 'HOME', 'AWAY');
   const ouLine = mainLine(ou, 'OVER', 'UNDER');
-  const rows: Array<{ label: string; r: MarketRow | undefined }> = [
-    ...(['HOME', 'DRAW', 'AWAY'] as const).map((s) => ({ label: selectionLabel('MATCH_WINNER', s, null, m.home.name, m.away.name), r: mw.find((x) => x.selection === s) })),
-    ...(ahLine != null
-      ? [
-          { label: selectionLabel('ASIAN_HANDICAP', 'HOME', ahLine, m.home.name, m.away.name), r: ah.find((x) => x.selection === 'HOME' && Number(x.line) === ahLine) },
-          { label: selectionLabel('ASIAN_HANDICAP', 'AWAY', -ahLine || 0, m.home.name, m.away.name), r: ah.find((x) => x.selection === 'AWAY' && Number(x.line) === (-ahLine || 0)) },
-        ]
-      : []),
-    ...(ouLine != null
-      ? (['OVER', 'UNDER'] as const).map((s) => ({ label: selectionLabel('OVER_UNDER', s, ouLine, m.home.name, m.away.name), r: ou.find((x) => x.selection === s && Number(x.line) === ouLine) }))
-      : []),
-  ].filter((x) => x.r);
+  const groups: Array<{ name: string; rows: Array<{ label: string; r: MarketRow | undefined }> }> = [
+    { name: '1X2', rows: (['HOME', 'DRAW', 'AWAY'] as const).map((s) => ({ label: selectionLabel('MATCH_WINNER', s, null, m.home.name, m.away.name), r: mw.find((x) => x.selection === s) })) },
+    {
+      name: 'แฮนดิแคป',
+      rows:
+        ahLine != null
+          ? [
+              { label: selectionLabel('ASIAN_HANDICAP', 'HOME', ahLine, m.home.name, m.away.name), r: ah.find((x) => x.selection === 'HOME' && Number(x.line) === ahLine) },
+              { label: selectionLabel('ASIAN_HANDICAP', 'AWAY', -ahLine || 0, m.home.name, m.away.name), r: ah.find((x) => x.selection === 'AWAY' && Number(x.line) === (-ahLine || 0)) },
+            ]
+          : [],
+    },
+    {
+      name: 'สูง/ต่ำ',
+      rows: ouLine != null ? (['OVER', 'UNDER'] as const).map((s) => ({ label: selectionLabel('OVER_UNDER', s, ouLine, m.home.name, m.away.name), r: ou.find((x) => x.selection === s && Number(x.line) === ouLine) })) : [],
+    },
+  ]
+    .map((g) => ({ ...g, rows: g.rows.filter((x) => x.r) }))
+    .filter((g) => g.rows.length);
   const last = d.market.reduce<string | null>((a, r) => (!a || r.last_quote_at > a ? r.last_quote_at : a), null);
+  const books = d.market.length ? Math.max(...d.market.map((r) => r.bookmakers)) : 0;
 
   return (
-    <Section title="📈 แรงตลาด" aside={last ? `อัปเดต ${dateTimeTH(last)}` : undefined}>
-      {rows.length ? (
+    <Card id="market" title="แรงตลาด" description={last ? `ค่ากลางจากสูงสุด ${books} เจ้ามือ · อัปเดต ${dateTimeTH(last)}` : 'ราคาก่อนเตะจากหลายเจ้ามือ'}>
+      {groups.length ? (
         <>
-          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          <table className="w-full min-w-[20rem] text-sm">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs text-slate-500">
-                <th className="pb-2 font-normal">ตัวเลือก</th>
-                <th className="pb-2 text-right font-normal">ราคาเปิด</th>
-                <th className="pb-2 text-right font-normal">ล่าสุด</th>
-                <th className="pb-2 text-right font-normal">เจ้า</th>
+              <tr className="border-b border-zinc-200 text-xs text-zinc-500">
+                <th className="pb-2 text-left font-medium">ตัวเลือก</th>
+                <th className="pb-2 text-right font-medium">เปิด</th>
+                <th className="pb-2 text-right font-medium">ล่าสุด</th>
+                <th className="pb-2 pl-2 text-right font-medium">เปลี่ยน</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map(({ label, r }) => {
-                const o = Number(r!.opening_odds);
-                const c = Number(r!.current_odds);
-                const move = o && c ? (c - o) / o : 0;
-                return (
-                  <tr key={label}>
-                    <td className="py-2 pr-2">{label}</td>
-                    <td className="py-2 text-right tabular-nums text-slate-600">{odds(r!.opening_odds)}</td>
-                    <td className="py-2 text-right font-semibold tabular-nums">
-                      {odds(r!.current_odds)}
-                      {Math.abs(move) >= 0.03 ? (
-                        <span className={`ml-1 text-xs ${move < 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          <span aria-hidden>{move < 0 ? '▼' : '▲'}</span>
-                          <span className="sr-only">{move < 0 ? 'ราคาลง' : 'ราคาขึ้น'}</span>
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="py-2 text-right text-xs text-slate-500">{r!.bookmakers}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
+            {groups.map((g) => (
+              <tbody key={g.name} className="border-b border-zinc-100 last:border-0">
+                <tr>
+                  <th colSpan={4} className="pb-1 pt-3 text-left text-xs font-medium text-zinc-500">
+                    {g.name}
+                  </th>
+                </tr>
+                {g.rows.map(({ label, r }) => {
+                  const o = Number(r!.opening_odds);
+                  const c = Number(r!.current_odds);
+                  const delta = o && c ? c - o : 0;
+                  const moved = o ? Math.abs(delta) / o >= 0.03 : false;
+                  return (
+                    <tr key={label}>
+                      <td className="max-w-[9rem] truncate py-1.5 pr-2 text-zinc-800">{label}</td>
+                      <td className="py-1.5 text-right tabular-nums text-zinc-500">{odds(r!.opening_odds)}</td>
+                      <td className="py-1.5 text-right font-semibold tabular-nums text-zinc-950">{odds(r!.current_odds)}</td>
+                      <td className={`py-1.5 pl-2 text-right text-xs tabular-nums ${moved ? (delta < 0 ? 'font-medium text-emerald-700' : 'font-medium text-rose-700') : 'text-zinc-400'}`}>
+                        {delta === 0 ? '0.00' : `${delta > 0 ? '+' : '−'}${Math.abs(delta).toFixed(2)}`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            ))}
           </table>
-          </div>
-          <p className="mt-3 text-xs text-slate-500">ค่ากลาง (median) ของราคาจากหลายเจ้ามือ ก่อนเตะ · ▼ ราคาลง = ตลาดให้น้ำหนักฝั่งนั้นมากขึ้น</p>
+          <Note>ราคาลด (สีเขียว) = ตลาดให้น้ำหนักฝั่งนั้นมากขึ้น · ไฮไลต์เมื่อเปลี่ยนตั้งแต่ 3%</Note>
         </>
       ) : (
-        <Empty>ยังไม่มีข้อมูลราคาตลาดสำหรับแมตช์นี้</Empty>
+        <p className="text-sm text-zinc-500">ยังไม่มีข้อมูลราคาตลาดสำหรับแมตช์นี้</p>
       )}
-    </Section>
+    </Card>
   );
 }
 
@@ -274,45 +321,60 @@ function MarketSection({ d }: { d: Data }) {
 function FormSection({ d }: { d: Data }) {
   const m = d.match;
   return (
-    <Section title="ฟอร์ม 5 นัดล่าสุด + xG" aside="ทุกรายการ">
-      <div className="space-y-4">
+    <Card id="form" title="ฟอร์ม 5 นัดล่าสุด" description="ทุกรายการ เรียงจากล่าสุด · xG เมื่อมีข้อมูล">
+      <div className="grid gap-6 md:grid-cols-2">
         <FormTeam name={m.home.name} rows={d.form.home} />
         <FormTeam name={m.away.name} rows={d.form.away} />
       </div>
-    </Section>
+    </Card>
   );
 }
+
+const RESULT_TONE = {
+  W: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+  D: 'bg-zinc-50 text-zinc-700 ring-zinc-200',
+  L: 'bg-rose-50 text-rose-800 ring-rose-200',
+} as const;
 
 function FormTeam({ name, rows }: { name: string; rows: FormRow[] }) {
   const xg = rows.filter((r) => r.xgFor != null);
   const avg = (xs: number[]) => (xs.length ? (xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2) : '–');
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-sm font-semibold">{name}</span>
-        <FormPills results={[...rows].reverse().map((r) => r.result)} />
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 pb-2">
+        <span className="min-w-0 truncate text-sm font-semibold text-zinc-950">{name}</span>
+        <span className="flex gap-1" aria-label={`ผล 5 นัด: ${[...rows].reverse().map((r) => r.result).join(' ')}`}>
+          {[...rows].reverse().map((r, i) => (
+            <span key={i} className={`inline-flex h-5 w-5 items-center justify-center rounded-[4px] text-[11px] font-semibold ring-1 ring-inset ${RESULT_TONE[r.result]}`} aria-hidden>
+              {r.result}
+            </span>
+          ))}
+        </span>
       </div>
       {rows.length ? (
         <>
-          <ul className="space-y-1 text-sm text-slate-700">
+          <ul className="divide-y divide-zinc-100 text-sm">
             {rows.map((r) => (
-              <li key={r.slug} className="flex justify-between gap-2">
-                <span className="truncate">
-                  {shortDayTH(r.kickoff_at)} · {r.venue === 'H' ? 'เหย้า' : 'เยือน'} vs {r.opponent}
+              <li key={r.slug} className="flex items-baseline justify-between gap-3 py-1.5">
+                <span className="min-w-0 text-zinc-700">
+                  <span className="text-xs text-zinc-500">{shortDayTH(r.kickoff_at)}</span> <span className="text-xs text-zinc-500">{r.venue === 'H' ? 'เหย้า' : 'เยือน'}</span> {r.opponent}
                 </span>
-                <span className="shrink-0 tabular-nums">
-                  {r.gf}-{r.ga}
-                  {r.xgFor != null ? <span className="ml-2 text-xs text-slate-500">xG {r.xgFor.toFixed(2)}-{r.xgAgainst?.toFixed(2) ?? '–'}</span> : null}
+                <span className="shrink-0 text-right tabular-nums">
+                  <span className="font-medium text-zinc-950">{r.gf}–{r.ga}</span>
+                  {r.xgFor != null ? <span className="ml-2 text-xs text-zinc-500">{r.xgFor.toFixed(2)}–{r.xgAgainst?.toFixed(2) ?? '–'}</span> : null}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="mt-1.5 text-xs text-slate-500">
-            เฉลี่ย xG ได้ {avg(xg.map((r) => r.xgFor!))} · เสีย {avg(xg.filter((r) => r.xgAgainst != null).map((r) => r.xgAgainst!))} ({xg.length} นัดที่มี xG)
-          </p>
+          {xg.length ? (
+            <p className="mt-2 text-xs text-zinc-500">
+              xG เฉลี่ย ได้ <b className="font-medium tabular-nums text-zinc-700">{avg(xg.map((r) => r.xgFor!))}</b> · เสีย{' '}
+              <b className="font-medium tabular-nums text-zinc-700">{avg(xg.filter((r) => r.xgAgainst != null).map((r) => r.xgAgainst!))}</b> ({xg.length} นัด)
+            </p>
+          ) : null}
         </>
       ) : (
-        <p className="text-xs text-slate-500">ยังไม่มีข้อมูล</p>
+        <p className="pt-2 text-sm text-zinc-500">ยังไม่มีข้อมูล</p>
       )}
     </div>
   );
@@ -339,17 +401,7 @@ function StatsSection({ d }: { d: Data }) {
   const val = (team: number, type: string) => d.stats.find((s) => s.team_id === team && s.type === type);
   const goals = d.events.filter((e) => e.type === 'Goal');
   return (
-    <Section title="สถิติหลังเกม">
-      <div className="mb-3 flex justify-between gap-3 text-xs font-semibold">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-[var(--color-pitch)]" aria-hidden />
-          <span className="truncate">{m.home.name}</span>
-        </span>
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate">{m.away.name}</span>
-          <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-slate-500" aria-hidden />
-        </span>
-      </div>
+    <Card id="stats" title="สถิติหลังเกม" description={`${m.home.name} (แท่งเข้ม) ซ้าย · ${m.away.name} ขวา`}>
       <div className="space-y-3">
         {Object.entries(STAT_LABEL).map(([type, label]) => {
           const h = val(m.home.id, type);
@@ -362,154 +414,165 @@ function StatsSection({ d }: { d: Data }) {
           return (
             <div key={type}>
               <div className="flex justify-between text-sm">
-                <span className="font-semibold tabular-nums">{show(h)}</span>
-                <span className="text-slate-500">{label}</span>
-                <span className="font-semibold tabular-nums">{show(a)}</span>
+                <span className="font-semibold tabular-nums text-zinc-950">{show(h)}</span>
+                <span className="text-zinc-500">{label}</span>
+                <span className="font-semibold tabular-nums text-zinc-950">{show(a)}</span>
               </div>
-              <div className="mt-1 flex h-2 gap-0.5" aria-hidden>
-                <div className="rounded-l-full bg-[var(--color-pitch)]" style={{ width: `${share}%` }} />
-                <div className="flex-1 rounded-r-full bg-slate-500" />
+              <div className="mt-1 flex h-1.5 gap-0.5 overflow-hidden rounded-full" aria-hidden>
+                <div className="bg-zinc-800" style={{ width: `${share}%` }} />
+                <div className="flex-1 bg-zinc-300" />
               </div>
             </div>
           );
         })}
       </div>
       {goals.length ? (
-        <ul className="mt-4 space-y-1 border-t border-slate-100 pt-3 text-sm text-slate-700">
+        <ul className="mt-4 space-y-1 border-t border-zinc-100 pt-3 text-sm text-zinc-700">
           {goals.map((g, i) => (
             <li key={i} className={g.team_id === m.away.id ? 'text-right' : ''}>
-              ⚽ {g.elapsed}
-              {g.extra ? `+${g.extra}` : ''}′ {g.player_name}
+              <span className="tabular-nums text-zinc-500">
+                {g.elapsed}
+                {g.extra ? `+${g.extra}` : ''}′
+              </span>{' '}
+              {g.player_name}
               {g.detail && g.detail !== 'Normal Goal' ? ` (${g.detail})` : ''}
             </li>
           ))}
         </ul>
       ) : null}
-    </Section>
+    </Card>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Injuries / lineups / standings / H2H
+// Players: absences + starting XI in one card
 // ---------------------------------------------------------------------------
 
-function InjurySection({ d }: { d: Data }) {
-  const m = d.match;
-  return (
-    <Section title="ตัวเจ็บ / ติดโทษ">
-      {d.injuries.length ? (
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          {[m.home, m.away].map((t) => (
-            <div key={t.id}>
-              <p className="mb-1 text-xs font-semibold text-slate-500">{t.name}</p>
-              <ul className="space-y-0.5">
-                {d.injuries
-                  .filter((i) => i.team_id === t.id)
-                  .map((i, k) => (
-                    <li key={k}>
-                      {i.player_name} <span className="text-xs text-slate-500">· {i.type === 'Missing Fixture' ? 'ไม่ได้ลงเล่น' : i.type === 'Questionable' ? 'ไม่แน่นอน' : i.type} ({i.reason})</span>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Empty>ไม่มีรายงานตัวเจ็บ</Empty>
-      )}
-    </Section>
-  );
-}
+const ABSENCE: Record<string, string> = { 'Missing Fixture': 'ไม่ได้ลงเล่น', Questionable: 'ไม่แน่นอน' };
 
-function LineupSection({ d }: { d: Data }) {
+function SquadSection({ d }: { d: Data }) {
   const m = d.match;
   const starters = d.lineups.filter((p) => p.is_starter);
   return (
-    <Section title="ตัวจริง" aside={starters.length ? 'ยืนยันแล้ว' : undefined}>
-      {starters.length ? (
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          {[m.home, m.away].map((t) => (
-            <ol key={t.id} className="space-y-0.5">
-              <li className="mb-1 text-xs font-semibold text-slate-500">{t.name}</li>
-              {starters
-                .filter((p) => p.team_id === t.id)
-                .map((p, k) => (
-                  <li key={k} className="flex gap-2">
-                    <span className="w-6 shrink-0 text-right text-xs tabular-nums text-slate-500">{p.number}</span>
-                    {p.player_name}
-                  </li>
-                ))}
-            </ol>
-          ))}
-        </div>
-      ) : (
-        <Empty>รายชื่อตัวจริงจะประกาศประมาณ 1 ชั่วโมงก่อนเตะ</Empty>
-      )}
-    </Section>
+    <Card id="squad" title="ผู้เล่น" description={starters.length ? 'ตัวจริงยืนยันแล้ว' : 'ตัวจริงจะประกาศประมาณ 1 ชั่วโมงก่อนเตะ'}>
+      <div className="grid gap-6 md:grid-cols-2">
+        {[m.home, m.away].map((t) => {
+          const out = d.injuries.filter((i) => i.team_id === t.id);
+          const xi = starters.filter((p) => p.team_id === t.id);
+          return (
+            <div key={t.id} className="min-w-0">
+              <p className="border-b border-zinc-200 pb-2 text-sm font-semibold text-zinc-950">{t.name}</p>
+              <p className="mt-3 text-xs font-medium text-zinc-500">ตัวเจ็บ / ติดโทษ</p>
+              {out.length ? (
+                <ul className="mt-1 divide-y divide-zinc-100 text-sm">
+                  {out.map((i, k) => (
+                    <li key={k} className="flex items-baseline justify-between gap-3 py-1.5">
+                      <span className="min-w-0 text-zinc-800">
+                        {i.player_name} <span className="text-xs text-zinc-500">{i.reason}</span>
+                      </span>
+                      <span className={`shrink-0 text-xs ${i.type === 'Missing Fixture' ? 'font-medium text-zinc-800' : 'text-zinc-500'}`}>{ABSENCE[i.type ?? ''] ?? i.type}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-sm text-zinc-500">ไม่มีรายงาน</p>
+              )}
+              {xi.length ? (
+                <>
+                  <p className="mt-4 text-xs font-medium text-zinc-500">ตัวจริง</p>
+                  <ol className="mt-1 grid grid-cols-1 gap-x-4 text-sm sm:grid-cols-2">
+                    {xi.map((p, k) => (
+                      <li key={k} className="flex gap-2 py-0.5">
+                        <span className="w-5 shrink-0 text-right text-xs tabular-nums leading-5 text-zinc-500">{p.number}</span>
+                        <span className="min-w-0 truncate text-zinc-800">{p.player_name}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Standings / H2H
+// ---------------------------------------------------------------------------
 
 function StandingsSection({ d }: { d: Data }) {
   const m = d.match;
   const rows = [m.home, m.away].map((t) => ({ t, s: d.standings.find((s) => s.team_id === t.id) })).filter((x) => x.s);
   return (
-    <Section title="ตารางคะแนน">
+    <Card id="table" title="ตารางคะแนน" description={m.league.name}>
       {rows.length ? (
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <table className="w-full min-w-[22rem] text-sm">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs text-slate-500">
-              <th className="pb-2 text-left font-normal">ทีม</th>
-              <th className="pb-2 font-normal">อันดับ</th>
-              <th className="pb-2 font-normal">แข่ง</th>
-              <th className="pb-2 font-normal">ชนะ-เสมอ-แพ้</th>
-              <th className="pb-2 font-normal">ได้-เสีย</th>
-              <th className="pb-2 font-normal">แต้ม</th>
+            <tr className="border-b border-zinc-200 text-xs text-zinc-500">
+              <th className="pb-2 text-left font-medium">#</th>
+              <th className="pb-2 text-left font-medium">ทีม</th>
+              <th className="pb-2 text-right font-medium">แข่ง</th>
+              <th className="pb-2 text-right font-medium">+/-</th>
+              <th className="pb-2 text-right font-medium">แต้ม</th>
             </tr>
           </thead>
-          <tbody className="text-center tabular-nums">
+          <tbody className="divide-y divide-zinc-100 tabular-nums">
             {rows.map(({ t, s }) => (
               <tr key={t.id}>
-                <td className="max-w-[9rem] truncate py-2 pr-2 text-left">{t.name}</td>
-                <td>{s!.rank}</td>
-                <td>{s!.played}</td>
-                <td>
-                  {s!.win}-{s!.draw}-{s!.lose}
+                <td className="w-6 py-2 text-zinc-500">{s!.rank}</td>
+                <td className="max-w-[8rem] truncate py-2 pr-2 text-zinc-800">
+                  {t.name}
+                  <span className="block text-xs text-zinc-500">
+                    ชนะ {s!.win} เสมอ {s!.draw} แพ้ {s!.lose}
+                  </span>
                 </td>
-                <td>
-                  {s!.goals_for}-{s!.goals_against}
-                </td>
-                <td className="font-semibold">{s!.points}</td>
+                <td className="py-2 text-right text-zinc-600">{s!.played}</td>
+                <td className="py-2 text-right text-zinc-600">{s!.goals_for - s!.goals_against > 0 ? '+' : ''}{s!.goals_for - s!.goals_against}</td>
+                <td className="py-2 text-right font-semibold text-zinc-950">{s!.points}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        </div>
       ) : (
-        <Empty>ยังไม่มีตารางคะแนน</Empty>
+        <p className="text-sm text-zinc-500">ยังไม่มีตารางคะแนน</p>
       )}
-    </Section>
+    </Card>
   );
 }
 
 function H2HSection({ d }: { d: Data }) {
   return (
-    <Section title="เจอกันล่าสุด (H2H)">
+    <Card id="h2h" title="เจอกันล่าสุด" description={d.h2h.length ? `${d.h2h.length} นัดในข้อมูลของเรา` : undefined}>
       {d.h2h.length ? (
-        <ul className="space-y-1 text-sm">
-          {d.h2h.map((h) => (
-            <li key={h.slug} className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
-              <span className="text-xs text-slate-500">{shortDayTH(h.kickoff_at)}</span>
-              <TextLink href={`/matches/${h.slug}`}>
-                {h.home.name} {h.ft_home ?? h.goals_home}-{h.ft_away ?? h.goals_away} {h.away.name}
-              </TextLink>
-            </li>
-          ))}
+        <ul className="-mx-2 divide-y divide-zinc-100 text-sm">
+          {d.h2h.map((h) => {
+            const hs = h.ft_home ?? h.goals_home;
+            const as = h.ft_away ?? h.goals_away;
+            const homeWon = hs != null && as != null && hs > as;
+            const awayWon = hs != null && as != null && as > hs;
+            return (
+              <li key={h.slug}>
+                <Link href={`/matches/${h.slug}`} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-md px-2 py-2 transition-colors duration-150 hover:bg-zinc-50">
+                  <span className="whitespace-nowrap text-xs text-zinc-500">{shortDayTH(h.kickoff_at)}</span>
+                  <span className="min-w-0 leading-snug">
+                    <span className={`block ${homeWon ? 'font-semibold text-zinc-950' : 'text-zinc-600'}`}>{h.home.name}</span>
+                    <span className={`block ${awayWon ? 'font-semibold text-zinc-950' : 'text-zinc-600'}`}>{h.away.name}</span>
+                  </span>
+                  <span className="text-right font-semibold leading-snug tabular-nums text-zinc-950">
+                    <span className="block">{hs ?? '–'}</span>
+                    <span className="block">{as ?? '–'}</span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       ) : (
-        <Empty>ไม่มีประวัติการพบกันในข้อมูลของเรา</Empty>
+        <p className="text-sm text-zinc-500">ไม่มีประวัติการพบกันในข้อมูลของเรา</p>
       )}
-    </Section>
+    </Card>
   );
 }
 

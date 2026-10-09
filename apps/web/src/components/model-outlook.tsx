@@ -1,50 +1,67 @@
 import type { ModelOutlook } from '@/lib/queries';
 import { pct } from '@/lib/labels';
 import { dateTimeTH } from '@/lib/time';
-import { Section } from './primitives';
+import { Badge, Card, Note } from './sheet';
 
 /**
- * 📊 มุมมองโมเดล — model probabilities as information. Deliberately NOT styled like 🧭:
- * no pick, no compass colour; never counted in 🧭 stats (measured on its own on /performance).
+ * มุมมองโมเดล — model probabilities as information. Deliberately NOT styled like the pick:
+ * no compass colour; never counted in pick stats (measured on its own on /performance).
+ * One 100% bar split three ways, with the values in a legend underneath.
  */
-export function ModelOutlookCard({ o, home, away, result }: { o: ModelOutlook; home: string; away: string; result?: 'HOME' | 'DRAW' | 'AWAY' | null }) {
+export function ModelOutlookCard({ o, home, away, result, id }: { o: ModelOutlook; home: string; away: string; result?: 'HOME' | 'DRAW' | 'AWAY' | null; id?: string }) {
   const sides = [
-    { key: 'HOME' as const, label: home, p: o.p_home },
-    { key: 'DRAW' as const, label: 'เสมอ', p: o.p_draw },
-    { key: 'AWAY' as const, label: away, p: o.p_away },
-  ];
+    { key: 'HOME' as const, label: home, p: Number(o.p_home ?? 0) },
+    { key: 'DRAW' as const, label: 'เสมอ', p: Number(o.p_draw ?? 0) },
+    { key: 'AWAY' as const, label: away, p: Number(o.p_away ?? 0) },
+  ].map((s, _, all) => {
+    // teal marks whichever outcome the model leans to; the rest stay neutral
+    const lead = s.p === Math.max(...all.map((x) => x.p));
+    return { ...s, fill: lead ? 'bg-[var(--color-pitch)]' : s.key === 'DRAW' ? 'bg-zinc-200' : 'bg-zinc-400' };
+  });
+  const top = Math.max(...sides.map((s) => s.p));
+  const over = o.p_over25 == null ? null : Number(o.p_over25);
+
   return (
-    <Section title="📊 มุมมองโมเดล" aside={`ค่าล่าสุดก่อนเตะ · ${dateTimeTH(o.computed_at)}`}>
-      {!o.sides_tested ? (
-        <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 ring-1 ring-amber-200">
-          ⚠️ <b>ยังไม่ผ่านการทดสอบ</b> — โมเดลยังไม่ได้พิสูจน์ว่าทายลีกนี้แม่นกว่าค่าเฉลี่ยของลีก ใช้ตัวเลขนี้อย่างระวัง
-        </p>
-      ) : null}
-      <ul className="space-y-2">
+    <Card
+      id={id}
+      title="มุมมองโมเดล"
+      description={`โอกาสแพ้ชนะจากโมเดลสถิติ · ค่าล่าสุด ${dateTimeTH(o.computed_at)}`}
+      action={o.sides_tested ? <Badge variant="good">ผ่านการทดสอบ</Badge> : <Badge variant="warn">ยังไม่ผ่านการทดสอบ</Badge>}
+    >
+      <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden>
         {sides.map((s) => (
-          <li key={s.key}>
-            <div className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="min-w-0 truncate">
-                {s.label}
-                {result === s.key ? <span className="ml-1.5 text-xs font-semibold text-[var(--color-pitch)]">✓ ผลจริง</span> : null}
-              </span>
-              <span className="font-semibold tabular-nums">{pct(s.p)}</span>
-            </div>
-            <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100" aria-hidden>
-              <div className="h-full rounded-full bg-[var(--color-pitch)]" style={{ width: `${Math.round(Number(s.p ?? 0) * 100)}%` }} />
-            </div>
-          </li>
+          <div key={s.key} className={s.fill} style={{ width: `${s.p * 100}%` }} />
         ))}
-      </ul>
-      {o.p_over25 != null ? (
-        <p className="mt-3 text-sm text-slate-700">
-          สูงกว่า 2.5 ประตู <b className="tabular-nums">{pct(o.p_over25)}</b> · ต่ำกว่า <b className="tabular-nums">{pct(1 - Number(o.p_over25))}</b>
-          {!o.totals_tested ? <span className="ml-1 text-xs text-amber-800">(⚠️ ยังไม่ผ่านการทดสอบ)</span> : null}
-        </p>
+      </div>
+
+      <dl className="mt-3 divide-y divide-zinc-100">
+        {sides.map((s) => (
+          <div key={s.key} className="flex items-center justify-between gap-3 py-2 text-sm">
+            <dt className="flex min-w-0 items-center gap-2.5">
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-[3px] ${s.fill}`} aria-hidden />
+              <span className={`truncate ${s.p === top ? 'font-semibold text-zinc-950' : 'text-zinc-700'}`}>{s.label}</span>
+              {result === s.key ? <Badge variant="secondary">ผลจริง</Badge> : null}
+            </dt>
+            <dd className={`tabular-nums ${s.p === top ? 'font-semibold text-zinc-950' : 'text-zinc-600'}`}>{pct(s.p)}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {over != null ? (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 px-3 py-2.5 text-sm">
+          <span className="text-zinc-700">
+            สูงกว่า 2.5 ประตู <b className="font-semibold tabular-nums text-zinc-950">{pct(over)}</b>
+            <span className="px-2 text-zinc-300">/</span>
+            ต่ำกว่า <b className="font-semibold tabular-nums text-zinc-950">{pct(1 - over)}</b>
+          </span>
+          {!o.totals_tested ? <Badge variant="warn">ยังไม่ผ่านการทดสอบ</Badge> : null}
+        </div>
       ) : null}
-      <p className="mt-3 text-xs leading-relaxed text-slate-500">
-        โอกาสที่โมเดลสถิติคำนวณจากผลงานย้อนหลัง — เป็นข้อมูลประกอบ <b>ไม่ใช่ 🧭 เข็มทิศเกม</b> และไม่นับเป็นการชี้ ความแม่นของส่วนนี้วัดแยกไว้ที่หน้าผลงาน
-      </p>
-    </Section>
+
+      <Note>
+        {o.sides_tested ? '' : 'โมเดลยังไม่ได้พิสูจน์ว่าทายลีกนี้แม่นกว่าค่าเฉลี่ยของลีก ใช้ตัวเลขนี้อย่างระวัง · '}
+        คำนวณจากผลงานย้อนหลัง เป็นข้อมูลประกอบ ไม่ใช่เข็มทิศเกม และไม่นับเป็นการชี้ ความแม่นของส่วนนี้วัดแยกไว้ที่หน้าผลงาน
+      </Note>
+    </Card>
   );
 }

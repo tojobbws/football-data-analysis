@@ -1,70 +1,74 @@
 import type { Compass } from '@/lib/queries';
-import { MARKET, ROUND, odds, pct, selectionLabel } from '@/lib/labels';
+import { odds, pct, selectionLabel } from '@/lib/labels';
 import { dateTimeTH } from '@/lib/time';
-import { StatusBadge } from './ui';
+import { Badge, Card, StatStrip, StatusPill, plainLine } from './sheet';
 
-/** 🧭 เข็มทิศเกม — the most prominent block on the match page. */
-export function CompassCard({ c, home, away }: { c: Compass; home: string; away: string }) {
-  if (c.kind === 'NO_CLEAR_SIGNAL') {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-slate-500">🧭 เข็มทิศเกม</p>
-            <p className="mt-1 text-2xl font-bold">🌫️ หมอกข้อมูล</p>
-            <p className="mt-1 text-sm text-slate-600">ไม่มีตลาดใดมี Data Support เพียงพอ — เราไม่บังคับเลือกทุกคู่</p>
-          </div>
-          <StatusBadge status="NO_SIGNAL" />
-        </div>
-        {c.reason ? <p className="mt-4 whitespace-pre-line rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">{c.reason}</p> : null}
-        <Footer c={c} />
-      </div>
-    );
-  }
+const MARKET_TH: Record<string, string> = { MATCH_WINNER: 'ผลแพ้ชนะ 1X2', ASIAN_HANDICAP: 'กำแพง · แฮนดิแคป', OVER_UNDER: 'สูง/ต่ำ' };
+const STRENGTH_TH: Record<string, string> = { STRONG: 'หนักแน่น', MEDIUM: 'ปานกลาง', LEAN: 'อ่อน' };
+// reason lines that only repeat the pick or the stat strip
+const REPEATS = ['เข็มทิศเกม', 'ระดับสัญญาณ', 'โมเดลให้โอกาส', 'อ้างอิงราคา'];
+const ROUND_TH: Record<string, string> = { EARLY: 'รอบแรก ก่อนประกาศตัวจริง', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ' };
+
+/**
+ * เข็มทิศเกม — the one pick for this match (SIGNAL rounds only; fog is not shown on the match page).
+ * The stored reason is shown line by line with leading emoji stripped for display.
+ */
+export function CompassCard({ c, home, away, id }: { c: Compass; home: string; away: string; id?: string }) {
   const label = selectionLabel(c.market!, c.selection!, c.line == null ? null : Number(c.line), home, away);
+  // the first line repeats the pick and the strength line repeats the strip: keep the rest
+  const reasons = (c.reason ?? '')
+    .split('\n')
+    .map(plainLine)
+    .filter((l) => l && !REPEATS.some((p) => l.startsWith(p)));
+  const edge = c.model_probability != null && c.market_probability != null ? Math.round((Number(c.model_probability) - Number(c.market_probability)) * 1000) / 10 : null;
+
   return (
-    <div className="rounded-2xl border-2 border-[var(--color-compass)]/30 bg-gradient-to-br from-[var(--color-compass-soft)] to-white p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-[var(--color-compass)]">🧭 เข็มทิศเกม · {MARKET[c.market!] ?? c.market}</p>
-          <p className="mt-1 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">{label}</p>
-        </div>
-        <StatusBadge status={c.status} />
+    <Card id={id} title="เข็มทิศเกม" description={`${ROUND_TH[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้`} action={<StatusPill status={c.status} />} tone="pick">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="compass">{MARKET_TH[c.market!] ?? c.market}</Badge>
+        {c.signal_strength ? <Badge>สัญญาณ{STRENGTH_TH[c.signal_strength] ?? c.signal_strength}</Badge> : null}
       </div>
-      <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat k="Signal" v={c.signal_strength ?? '–'} />
-        <Stat k="Model Probability" v={pct(c.model_probability, 1)} />
-        <Stat k="Market Probability" v={pct(c.market_probability, 1)} />
-        <Stat k="ราคาอ้างอิง" v={odds(c.odds_at_publish)} />
-      </dl>
-      {c.reason ? <p className="mt-4 whitespace-pre-line rounded-xl bg-white/70 p-3 text-sm leading-relaxed text-slate-700">{c.reason}</p> : null}
-      {c.result_score ? <p className="mt-3 text-sm text-slate-600">ผล 90 นาที: <b>{c.result_score}</b></p> : null}
-      <Footer c={c} />
-    </div>
-  );
-}
+      <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-zinc-950">{label}</p>
 
-function Stat({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="rounded-xl bg-white/80 px-3 py-2 ring-1 ring-slate-200/70">
-      <dt className="text-xs text-slate-600">{k}</dt>
-      <dd className="text-lg font-semibold tabular-nums">{v}</dd>
-    </div>
-  );
-}
+      <div className="mt-4">
+        <StatStrip
+          items={[
+            { k: 'โมเดล', v: pct(c.model_probability, 1), tone: 'text-amber-800' },
+            { k: 'ตลาด', v: pct(c.market_probability, 1) },
+            { k: 'ส่วนต่าง', v: edge == null ? '–' : `${edge > 0 ? '+' : ''}${edge.toFixed(1)} จุด` },
+            { k: 'ราคาอ้างอิง', v: odds(c.odds_at_publish) },
+          ]}
+        />
+      </div>
 
-function Footer({ c }: { c: Compass }) {
-  return (
-    <div className="mt-4 text-xs text-slate-600">
-      <p>
-        วิเคราะห์เมื่อ {dateTimeTH(c.published_at)} · {ROUND[c.publish_round] ?? c.publish_round} · {c.public_id}
-        {c.settled_at ? <> · ตัดสินผล {dateTimeTH(c.settled_at)}</> : null}
-      </p>
-      {/* tap to reveal + select the full hash (a hover tooltip never shows on touch screens) */}
-      <details className="mt-1">
-        <summary className="inline-flex min-h-8 cursor-pointer items-center font-mono">hash {c.record_hash.slice(0, 12)}… แตะเพื่อดูทั้งหมด</summary>
-        <p className="mt-1 select-all break-all rounded-lg bg-white/80 p-2 font-mono ring-1 ring-slate-200">{c.record_hash}</p>
-      </details>
-    </div>
+      {reasons.length ? (
+        <ul className="mt-4 space-y-1.5 text-sm leading-relaxed text-zinc-700">
+          {reasons.map((r, i) => (
+            <li key={i} className="flex gap-2.5">
+              <span className="mt-[0.6em] h-px w-2.5 shrink-0 bg-zinc-300" aria-hidden />
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {c.result_score ? (
+        <p className="mt-4 text-sm text-zinc-700">
+          ผล 90 นาที <b className="font-semibold tabular-nums text-zinc-950">{c.result_score}</b>
+        </p>
+      ) : null}
+
+      <div className="mt-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500">
+        <p>
+          วิเคราะห์เมื่อ {dateTimeTH(c.published_at)} · รหัส {c.public_id}
+          {c.settled_at ? <> · ตัดสินผล {dateTimeTH(c.settled_at)}</> : null}
+        </p>
+        {/* tap to reveal + select the full hash (a hover tooltip never shows on touch screens) */}
+        <details className="mt-1">
+          <summary className="inline-flex min-h-8 cursor-pointer items-center font-mono">hash {c.record_hash.slice(0, 12)}… แตะเพื่อดูทั้งหมด</summary>
+          <p className="mt-1 select-all break-all rounded-md border border-zinc-200 bg-zinc-50 p-2 font-mono">{c.record_hash}</p>
+        </details>
+      </div>
+    </Card>
   );
 }

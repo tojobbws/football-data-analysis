@@ -6,7 +6,7 @@ export function Section({ title, aside, children, className = '' }: { title: Rea
   return (
     <section className={`rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 ${className}`}>
       <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-base font-semibold">{title}</h2>
+        <h2 className="text-base font-bold">{title}</h2>
         {aside ? <div className="text-xs text-slate-500">{aside}</div> : null}
       </div>
       {children}
@@ -20,6 +20,8 @@ export function TeamLogo({ src, alt, size = 24 }: { src: string | null; alt: str
   return <img src={src} alt={alt} width={size} height={size} loading="lazy" className="inline-block shrink-0 object-contain" style={{ width: size, height: size }} />;
 }
 
-export function Empty({ children }: { children: ReactNode }) {
+/** `inline` = a plain line for use inside a Section card (no box within a box). */
+export function Empty({ children, inline = false }: { children: ReactNode; inline?: boolean }) {
+  if (inline) return <p className="text-sm text-slate-500">{children}</p>;
   return <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{children}</p>;
 }
