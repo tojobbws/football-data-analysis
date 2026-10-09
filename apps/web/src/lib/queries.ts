@@ -2,7 +2,7 @@ import 'server-only';
 import { webEnv } from './env';
 import { db } from './supabase';
 import { FINISHED, LIVE, type Status } from './labels';
-import { addDaysStr, thaiDate, thaiDayRange } from './time';
+import { addDaysStr, footballDayRange, thaiDate, thaiDayRange } from './time';
 
 // ---------------------------------------------------------------------------
 // Types (what the pages render)
@@ -113,6 +113,16 @@ async function compassFor(fixtureIds: number[]): Promise<Map<number, Compass>> {
 
 export async function matchesOnDay(date: string): Promise<MatchRow[]> {
   const { from, to } = thaiDayRange(date);
+  return matchesBetween(from, to);
+}
+
+/** Matches of one football day (06:00 → 06:00 Thai time) — the scoreboard views. */
+export async function matchesOnFootballDay(date: string): Promise<MatchRow[]> {
+  const { from, to } = footballDayRange(date);
+  return matchesBetween(from, to);
+}
+
+async function matchesBetween(from: string, to: string): Promise<MatchRow[]> {
   const { data, error } = await db()
     .from('fixtures')
     .select(MATCH_SELECT)
