@@ -150,14 +150,13 @@ type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[
 
 async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<PreviewFacts> {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
-  const [formHome, formAway, standings, injuries, lineup, probs, cfg, apiPred, h2h, qHome, qDraw, qAway] = await Promise.all([
+  const [formHome, formAway, standings, injuries, lineup, probs, apiPred, h2h, qHome, qDraw, qAway] = await Promise.all([
     ctx.repo.teamForm(f.homeTeamId, f.kickoffAt),
     ctx.repo.teamForm(f.awayTeamId, f.kickoffAt),
     ctx.repo.standingsForTeams(header.leagueId, header.season, [f.homeTeamId, f.awayTeamId]),
     ctx.repo.injuriesDetailed(f.id),
     ctx.repo.lineupPlayers(f.id),
     ctx.repo.latestProbabilities(f.id, DIXON_COLES_VERSION),
-    ctx.repo.latestModelConfigs(header.leagueId),
     ctx.repo.latestApiPrediction(f.id),
     ctx.repo.headToHead(f.homeTeamId, f.awayTeamId, f.kickoffAt),
     ctx.repo.selectionMovement(f.id, 'MATCH_WINNER', 'HOME', null),
@@ -192,7 +191,6 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
     });
     const eg = matrixExpectedGoals(matrix);
     const over = dc.find((x) => x.market === 'OVER_UNDER' && x.selection === 'OVER' && x.line === 2.5);
-    const tested = ensemble.length === 3 ? Boolean(cfg.ENSEMBLE?.enabled) : Boolean(cfg.SIDES?.enabled);
     model = {
       modelVersionId: ensemble.length === 3 ? ENSEMBLE_VERSION : DIXON_COLES_VERSION,
       computedAt: dc[0]!.computedAt.toISOString(),
@@ -200,7 +198,6 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
       expectedGoals: { home: r2(eg.home), away: r2(eg.away) },
       scorelines: topScorelines(matrix, 3).map((s) => ({ ...s, p: r4(s.p) })),
       overUnder: over ? { line: 2.5, pOver: r4(over.probability) } : null,
-      tested,
       matchesUsed: Number(inputs.matchesUsed ?? 0),
       xgShare: Number(inputs.xgShare ?? 0),
       crossLeague: inputs.crossLeague ? { cupMatchesUsed: Number(inputs.crossLeague.cupMatchesUsed) } : null,

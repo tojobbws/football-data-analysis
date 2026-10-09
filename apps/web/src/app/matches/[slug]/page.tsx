@@ -56,7 +56,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   const sections = [
     pick || earlierPicks.length || noAnalysisYet ? { id: 'pick', label: 'เข็มทิศเกม' } : null,
     d.preview || (!d.finished && !OFF[m.status_short]) ? { id: 'analysis', label: 'วิเคราะห์' } : null,
-    d.outlook ? { id: 'model', label: 'โมเดล' } : null,
+    d.outlook?.sides_tested ? { id: 'model', label: 'โมเดล' } : null,
     d.finished && d.stats.length ? { id: 'stats', label: 'สถิติ' } : null,
     { id: 'form', label: 'ฟอร์ม' },
     { id: 'squad', label: 'ผู้เล่น' },
@@ -114,14 +114,14 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
             ) : null}
 
             {d.preview ? (
-              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} />
+              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} />
             ) : !d.finished && !OFF[m.status_short] ? (
               <Card id="analysis" title="วิเคราะห์เกม">
                 <p className="text-sm text-zinc-500">บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</p>
               </Card>
             ) : null}
 
-            {d.outlook ? <ModelOutlookCard id="model" o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
+            {d.outlook?.sides_tested ? <ModelOutlookCard id="model" o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
           </div>
 
           <aside className="min-w-0 space-y-6 lg:sticky lg:top-32" aria-label="ข้อมูลประกอบ">

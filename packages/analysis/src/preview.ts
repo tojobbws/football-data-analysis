@@ -11,7 +11,7 @@
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.2';
+export const PREVIEW_VERSION = 'preview-v0.3';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -75,8 +75,6 @@ export interface PreviewModel {
   scorelines: Array<{ home: number; away: number; p: number }>;
   /** totals at the main line (the line is a fact of the input too, so the text may quote it) */
   overUnder: { line: number; pOver: number } | null;
-  /** the league's 1X2 model passed `model:tune` */
-  tested: boolean;
   matchesUsed: number;
   xgShare: number;
   crossLeague: { cupMatchesUsed: number } | null;
@@ -176,7 +174,8 @@ const FEW_CUP_MATCHES = 60;
 /**
  * How far the data can carry an opinion, with the reasons in Thai. Severity is the worst note:
  *  THIN    — no model, or the model sees very little of these teams (e.g. a cross-league cup early on)
- *  LIMITED — the model exists but is untuned / short on history for one team / blind to xG
+ *  LIMITED — the model exists but is short on history for one team / blind to xG
+ *  (whether the model passed `model:tune` is not a data gap: fan pages gate model numbers on it instead)
  *  GOOD    — everything the preview normally uses is present
  * Minor gaps (no odds, no injury report, no H2H) are noted but do not lower the level.
  */
@@ -204,7 +203,6 @@ export function assessDataSupport(f: PreviewFacts): { level: DataSupport; notes:
     }
     const low = [f.home, f.away].filter((t) => t.modelMatches != null && t.modelMatches < MIN_TEAM_MODEL_MATCHES);
     for (const t of low) add(low.length === 2 ? 'THIN' : 'LIMITED', `${t.name} มีผลงานในฐานข้อมูลของรายการนี้น้อย (น้ำหนักประมาณ ${Math.round(t.modelMatches!)} นัด) ตัวเลขของโมเดลจึงเอนเข้าหาค่าเฉลี่ยของลีก`);
-    if (!m.tested) add('LIMITED', 'โมเดลของรายการนี้ยังไม่ผ่านการทดสอบย้อนหลัง ตัวเลขใช้ประกอบการอ่านเกมเท่านั้น');
   }
 
   for (const t of [f.home, f.away]) {

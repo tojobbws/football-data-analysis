@@ -42,7 +42,6 @@ const facts = (over: Partial<PreviewFacts> = {}): PreviewFacts => ({
       { home: 1, away: 1, p: 0.09 },
     ],
     overUnder: { line: 2.5, pOver: 0.55 },
-    tested: true,
     matchesUsed: 400,
     xgShare: 0.95,
     crossLeague: null,
@@ -103,13 +102,12 @@ describe('assessDataSupport', () => {
     const s = assessDataSupport(
       facts({
         fixture: { ...facts().fixture, league: 'ASEAN Club Championship', leagueCountry: 'World', leagueType: 'Cup' },
-        model: { ...facts().model!, tested: false, matchesUsed: 40, crossLeague: { cupMatchesUsed: 40 } },
+        model: { ...facts().model!, matchesUsed: 40, crossLeague: { cupMatchesUsed: 40 } },
       }),
     );
     expect(s.level).toBe('THIN');
     expect(s.notes[0]).toContain('บอลถ้วยที่ทีมมาจากคนละลีก');
     expect(s.notes[0]).toContain('40 นัด');
-    expect(s.notes).toContainEqual(expect.stringContaining('ยังไม่ผ่านการทดสอบ'));
   });
 
   it('LIMITED for an international cup without the cross-league model, THIN when the model is missing', () => {

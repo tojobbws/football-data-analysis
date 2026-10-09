@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { PreviewText } from '@fp/analysis';
 import { allowedNumbers, BANNED_WORDS, inventedNumbers } from './guards.js';
 
-export const PREVIEW_PROMPT_VERSION = 'preview-ai-v0.2';
+export const PREVIEW_PROMPT_VERSION = 'preview-ai-v0.3';
 
 /** Kept byte-stable (no dates, no per-request values) so it caches across fixtures. */
 export const PREVIEW_SYSTEM_PROMPT = `You are the analyst of a Thai football data & analysis brand. You receive one upcoming match as JSON and write a short Thai preview a football fan enjoys reading.
@@ -16,7 +16,7 @@ export const PREVIEW_SYSTEM_PROMPT = `You are the analyst of a Thai football dat
 What the input contains, and nothing else exists for you:
 - fixture: teams, competition, round, stage (EARLY = before lineups, LINEUP = confirmed XIs)
 - home / away: last 5 results (with xG when available), league standing, injuries, confirmed starters, how much history the model has for the team
-- model: our statistical model's 1X2 probabilities, expected goals, the most likely scorelines, whether the model is tested for this competition (null = the model has no numbers for this match)
+- model: our statistical model's 1X2 probabilities, expected goals, the most likely scorelines (null = the model has no numbers for this match)
 - market: 1X2 consensus odds (opening -> current), api_prediction: a third-party opinion
 - h2h: recent meetings
 - data_support: how far the data can carry an opinion (GOOD / LIMITED / THIN) and the reasons, in Thai. These reasons are facts about the input: respect them.

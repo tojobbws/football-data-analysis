@@ -7,6 +7,8 @@ import { Badge, Card, Note } from './sheet';
  * มุมมองโมเดล — model probabilities as information. Deliberately NOT styled like the pick:
  * no compass colour; never counted in pick stats (measured on its own on /performance).
  * One 100% bar split three ways, with the values in a legend underneath.
+ * Rendered only when the league's 1X2 model passed `model:tune` (the page gates on `sides_tested`);
+ * an untested over/under line still shows, with a quiet note instead of a warning badge.
  */
 export function ModelOutlookCard({ o, home, away, result, id }: { o: ModelOutlook; home: string; away: string; result?: 'HOME' | 'DRAW' | 'AWAY' | null; id?: string }) {
   const sides = [
@@ -26,7 +28,7 @@ export function ModelOutlookCard({ o, home, away, result, id }: { o: ModelOutloo
       id={id}
       title="มุมมองโมเดล"
       description={`โอกาสแพ้ชนะจากโมเดลสถิติ · ค่าล่าสุด ${dateTimeTH(o.computed_at)}`}
-      action={o.sides_tested ? <Badge variant="good">ผ่านการทดสอบ</Badge> : <Badge variant="warn">ยังไม่ผ่านการทดสอบ</Badge>}
+      action={<Badge variant="good">ผ่านการทดสอบ</Badge>}
     >
       <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-full" aria-hidden>
         {sides.map((s) => (
@@ -48,18 +50,17 @@ export function ModelOutlookCard({ o, home, away, result, id }: { o: ModelOutloo
       </dl>
 
       {over != null ? (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 px-3 py-2.5 text-sm">
+        <div className="mt-2 rounded-lg border border-zinc-200 px-3 py-2.5 text-sm">
           <span className="text-zinc-700">
             สูงกว่า 2.5 ประตู <b className="font-semibold tabular-nums text-zinc-950">{pct(over)}</b>
             <span className="px-2 text-zinc-300">/</span>
             ต่ำกว่า <b className="font-semibold tabular-nums text-zinc-950">{pct(1 - over)}</b>
           </span>
-          {!o.totals_tested ? <Badge variant="warn">ยังไม่ผ่านการทดสอบ</Badge> : null}
         </div>
       ) : null}
 
       <Note>
-        {o.sides_tested ? '' : 'โมเดลยังไม่ได้พิสูจน์ว่าทายลีกนี้แม่นกว่าค่าเฉลี่ยของลีก ใช้ตัวเลขนี้อย่างระวัง · '}
+        {over != null && !o.totals_tested ? 'ตัวเลขสูง/ต่ำยังอยู่ระหว่างการวัดผล · ' : ''}
         คำนวณจากผลงานย้อนหลัง เป็นข้อมูลประกอบ ไม่ใช่เข็มทิศเกม และไม่นับเป็นการชี้ ความแม่นของส่วนนี้วัดแยกไว้ที่หน้าผลงาน
       </Note>
     </Card>

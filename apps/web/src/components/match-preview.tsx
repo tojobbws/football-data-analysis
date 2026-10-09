@@ -9,20 +9,25 @@ export const DATA_SUPPORT: Record<DataSupport, { label: string; variant: 'good' 
   THIN: { label: 'ข้อมูลน้อย', variant: 'bad' },
 };
 
+/** Older previews carried an "untested model" note; fan pages no longer show it (the record is untouched). */
+const UNTESTED_NOTE = 'ยังไม่ผ่านการทดสอบ';
+
 const STAGE: Record<MatchPreview['stage'], string> = { EARLY: 'ก่อนประกาศตัวจริง', LINEUP: 'หลังประกาศตัวจริง' };
 
 /**
  * วิเคราะห์เกม — the written preview. Reading material, not a pick: no compass colour, never in pick stats.
  * Numbers (probabilities, predicted score) are the model's; the prose is AI or template text, stored before kickoff.
  */
-export function MatchPreviewCard({ p, home, away, result, id }: { p: MatchPreview; home: string; away: string; result?: { home: number; away: number } | null; id?: string }) {
-  const support = DATA_SUPPORT[p.data_support];
+export function MatchPreviewCard({ p, home, away, result, modelTested, id }: { p: MatchPreview; home: string; away: string; result?: { home: number; away: number } | null; modelTested: boolean; id?: string }) {
+  const notes = p.data_notes.filter((n) => !n.includes(UNTESTED_NOTE));
+  // a LIMITED level whose only reason was the untested note reads as GOOD, like a preview written today
+  const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
   const hasScore = p.predicted_home != null && p.predicted_away != null;
   const hit = result && hasScore ? (result.home === p.predicted_home && result.away === p.predicted_away ? 'ตรงสกอร์' : sameOutcome(result, p) ? 'ตรงผล' : 'ไม่ตรง') : null;
 
   return (
     <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`} action={<Badge variant={support.variant}>{support.label}</Badge>}>
-      {p.data_notes.length ? <p className="mb-3 text-xs leading-relaxed text-zinc-500">{p.data_notes.join(' · ')}</p> : null}
+      {notes.length ? <p className="mb-3 text-xs leading-relaxed text-zinc-500">{notes.join(' · ')}</p> : null}
 
       <p className="max-w-prose text-[15px] leading-7 text-zinc-800">{p.overview_th}</p>
 
@@ -53,6 +58,7 @@ export function MatchPreviewCard({ p, home, away, result, id }: { p: MatchPrevie
                 โอกาส {pct(p.predicted_p)}
                 {p.expected_home != null ? ` · xG ${Number(p.expected_home).toFixed(2)}–${Number(p.expected_away).toFixed(2)}` : ''}
               </p>
+              {modelTested ? null : <p className="mt-1 text-xs text-zinc-400">อยู่ระหว่างการวัดผล</p>}
               {hit ? (
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600">
                   ผลจริง <b className="tabular-nums text-zinc-950">{result!.home}–{result!.away}</b>
