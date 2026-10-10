@@ -11,7 +11,7 @@ The site's published analytical lean for a match — one pick, or fog when there
 _Avoid_: tip, bet, prediction (on fan pages)
 
 **Pick**:
-A single published selection of the Game Compass for one match (market, side, line), made before kickoff and never edited afterwards.
+A single published selection of the Game Compass for one match (market, side, line), made before kickoff and never edited afterwards. Its market is Asian handicap or over/under; 1X2 is never picked (a few early 1X2 picks stay as published).
 _Avoid_: tip, bet
 
 **Unsettled pick**:

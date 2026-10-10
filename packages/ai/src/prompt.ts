@@ -2,7 +2,7 @@
  * Prompt + output schema for the AI shadow ranking. Bump PROMPT_VERSION on any change:
  * every stored row records the version that produced it.
  */
-export const PROMPT_VERSION = 'ai-shadow-v0.1';
+export const PROMPT_VERSION = 'ai-shadow-v0.2';
 // Sonnet: the preview and shadow ranking are short structured writing over given facts, guarded after;
 // half Opus's price. Rows record the model that answered, so the switch stays traceable.
 export const AI_MODEL = 'claude-sonnet-5-5';
@@ -17,6 +17,7 @@ What the input contains, and nothing else exists for you:
 - model_1x2 and each candidate's model_probability: from our statistical model (the calculator)
 - market_probability_no_vig and odds: the betting market's view
 - rule_rejections: why our rule engine would not accept that candidate (an empty list means it passed the rules)
+- candidates are Asian handicap and over/under selections only; model_1x2 is context, not something to pick
 
 Your job:
 1. Check the data for gaps or contradictions (data_issues).

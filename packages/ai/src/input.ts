@@ -3,7 +3,7 @@
  * (what the system knew at publish time). The rules' own pick is deliberately left out
  * so the shadow ranking is an independent second opinion, not an echo.
  */
-import { selectionLabel } from '@fp/analysis';
+import { PICK_MARKETS, selectionLabel } from '@fp/analysis';
 
 export interface SnapshotCandidate {
   market: string;
@@ -46,7 +46,9 @@ export function buildShadowInput(src: ShadowSource): { input: Record<string, unk
   const side = (teamId: unknown) => (Number(teamId) === fx.homeTeamId ? 'HOME' : Number(teamId) === fx.awayTeamId ? 'AWAY' : null);
 
   const raw = (Array.isArray(s.candidates_snapshot) ? s.candidates_snapshot : []) as SnapshotCandidate[];
-  const candidates: ShadowCandidate[] = raw.map((c, index) => ({
+  // the AI ranks only what the Game Compass may pick; `index` stays the position in the snapshot
+  const pickable = raw.flatMap((c, index) => ((PICK_MARKETS as readonly string[]).includes(c.market) ? [{ c, index }] : []));
+  const candidates: ShadowCandidate[] = pickable.map(({ c, index }) => ({
     index,
     market: c.market,
     selection: c.selection,
@@ -90,9 +92,9 @@ export function buildShadowInput(src: ShadowSource): { input: Record<string, unk
     model_1x2: (model.prices ?? [])
       .filter((p) => p.market === 'MATCH_WINNER' && String(p.model ?? '').startsWith('dixon-coles'))
       .map((p) => ({ selection: p.selection, probability: r(p.p) })),
-    candidates: raw.map((c, index) => ({
+    candidates: pickable.map(({ c, index }, i) => ({
       index,
-      label: candidates[index]!.label,
+      label: candidates[i]!.label,
       market: c.market,
       selection: c.selection,
       line: c.line == null ? null : Number(c.line),

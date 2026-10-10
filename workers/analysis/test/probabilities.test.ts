@@ -74,6 +74,21 @@ afterAll(async () => {
 
 const q = async (sql: string) => (await db.query<Record<string, unknown>>(sql)).rows;
 
+/** Two bookmakers price AH Home -1.25 at the model's probability minus 5pp (3% margin) -> a real edge on HOME. */
+async function ahMarketBelowModel(modelVersion: string, at: string) {
+  const [row] = await q(`select probability from probability_predictions
+                         where fixture_id = 9001 and model_version_id = '${modelVersion}' and market = 'ASIAN_HANDICAP'
+                           and selection = 'HOME' and line = -1.25 order by computed_at desc limit 1`);
+  const fairHome = Number(row!.probability) - 0.05;
+  await db.query(`insert into bookmakers (id, name) values (9, 'Book B') on conflict do nothing`);
+  const values: string[] = [];
+  for (const bk of [8, 9]) {
+    values.push(`(9001, ${bk}, 'ASIAN_HANDICAP', 4, 'Asian Handicap', 'HOME', -1.25, -1.25, 'Home -1.25', ${(1 / (fairHome * 1.03)).toFixed(3)}, '${at}')`);
+    values.push(`(9001, ${bk}, 'ASIAN_HANDICAP', 4, 'Asian Handicap', 'AWAY', 1.25, -1.25, 'Away +1.25', ${(1 / ((1 - fairHome) * 1.03)).toFixed(3)}, '${at}')`);
+  }
+  await db.query(`insert into odds_history (fixture_id, bookmaker_id, market, api_bet_id, api_bet_name, selection, line, home_line, raw_value, odds, source_updated_at) values ${values.join(',')}`);
+}
+
 describe('computeProbabilities', () => {
   it('writes 1X2 / AH / O/U for fixtures with enough history and skips leagues without', async () => {
     await computeProbabilities(ctx, { now: NOW });
@@ -167,24 +182,12 @@ describe('candidate generator job (Phase 5)', () => {
   });
 
   it('with a real market below the model -> 🧭 SIGNAL with rank 1 and latest-decision view', async () => {
-    // market 1X2 = model ensemble probs shifted 5pp away from HOME, two bookmakers, 3% margin
-    const ens = await q(`select selection, probability from probability_predictions
-                         where fixture_id = 9001 and model_version_id = 'ensemble-v0.1' and computed_at = '${LATER.toISOString()}'`);
-    const p = Object.fromEntries(ens.map((r) => [r.selection, Number(r.probability)]));
-    const fair = { HOME: p.HOME! - 0.05, DRAW: p.DRAW! + 0.025, AWAY: p.AWAY! + 0.025 };
-    const at = new Date(RUN_AT.getTime() - 3_600_000).toISOString();
-    await db.query(`insert into bookmakers (id, name) values (9, 'Book B') on conflict do nothing`);
-    const values: string[] = [];
-    for (const bk of [8, 9])
-      for (const [sel, raw] of [['HOME', 'Home'], ['DRAW', 'Draw'], ['AWAY', 'Away']] as const)
-        values.push(`(9001, ${bk}, 'MATCH_WINNER', 1, 'Match Winner', '${sel}', null, null, '${raw}', ${(1 / (fair[sel] * 1.03)).toFixed(3)}, '${at}')`);
-    await db.query(`insert into odds_history (fixture_id, bookmaker_id, market, api_bet_id, api_bet_name, selection, line, home_line, raw_value, odds, source_updated_at) values ${values.join(',')}`);
+    await ahMarketBelowModel('dixon-coles-v0.2', new Date(RUN_AT.getTime() - 3_600_000).toISOString());
 
-    // synthetic league is lopsided (home odds ~1.23) -> allow shorter odds for this test only
     await generateCandidatesJob(ctx, { hours: 72, now: new Date(RUN_AT.getTime() + 4 * 3_600_000), rules: { ...DEFAULT_RULES, version: 'rules-test', minOdds: 1.1 } });
     const latest = (await q(`select * from analysis_latest_decision where fixture_id = 9001`))[0]!;
     expect(latest.outcome).toBe('SIGNAL');
-    expect(latest.market).toBe('MATCH_WINNER');
+    expect(latest.market).toBe('ASIAN_HANDICAP');
     expect(latest.selection).toBe('HOME');
     expect(Number(latest.edge)).toBeGreaterThan(0.03);
     expect(latest.strength).toBe('LEAN'); // gate z unknown (0) in this fixture -> capped at LEAN
@@ -289,17 +292,7 @@ describe('publish (Phase 6)', () => {
   it('LINEUP round: confirmed lineups + real market edge -> 🧭 SIGNAL priced with DC+IMPACT, chained to EARLY', async () => {
     const L = new Date(KO.getTime() - 60 * 60_000);
     await db.query(`insert into fixture_lineups (fixture_id, team_id, formation) values (9001, 1, '4-3-3'), (9001, 10, '4-4-2')`);
-    const imp = await q(`select selection, probability from probability_predictions
-                         where fixture_id = 9001 and model_version_id = 'dc-impact-v0.1' and market = 'MATCH_WINNER'
-                         order by computed_at desc limit 3`);
-    const p = Object.fromEntries(imp.map((r) => [r.selection, Number(r.probability)]));
-    const fair = { HOME: p.HOME! - 0.05, DRAW: p.DRAW! + 0.025, AWAY: p.AWAY! + 0.025 };
-    const at = new Date(L.getTime() - 10 * 60_000).toISOString();
-    const values: string[] = [];
-    for (const bk of [8, 9])
-      for (const [sel, raw] of [['HOME', 'Home'], ['DRAW', 'Draw'], ['AWAY', 'Away']] as const)
-        values.push(`(9001, ${bk}, 'MATCH_WINNER', 1, 'Match Winner', '${sel}', null, null, '${raw}', ${(1 / (fair[sel] * 1.03)).toFixed(3)}, '${at}')`);
-    await db.query(`insert into odds_history (fixture_id, bookmaker_id, market, api_bet_id, api_bet_name, selection, line, home_line, raw_value, odds, source_updated_at) values ${values.join(',')}`);
+    await ahMarketBelowModel('dc-impact-v0.1', new Date(L.getTime() - 10 * 60_000).toISOString());
 
     const rules = { ...DEFAULT_RULES, version: 'rules-test-pub', minOdds: 1.01 };
     await generateCandidatesJob(ctx, { hours: 72, now: L, rules });
@@ -308,11 +301,11 @@ describe('publish (Phase 6)', () => {
     const early = (await q(`select record_hash from analysis_predictions where fixture_id = 9001 and publish_round = 'EARLY'`))[0]!;
     const lu = (await q(`select * from analysis_predictions where fixture_id = 9001 and publish_round = 'LINEUP'`))[0]!;
     expect(lu.kind).toBe('SIGNAL');
-    expect(lu.market).toBe('MATCH_WINNER');
+    expect(lu.market).toBe('ASIAN_HANDICAP');
     expect(lu.selection).toBe('HOME');
     expect(lu.model_version_id).toBe('dc-impact-v0.1');
     expect(lu.prev_hash).toBe(early.record_hash);
-    expect(String(lu.reason)).toContain('🧭 เข็มทิศเกม: Team 1 ชนะ');
+    expect(String(lu.reason)).toContain('🧭 เข็มทิศเกม: Team 1 -1.25');
     expect(String(lu.reason)).toContain('ปรับตามผู้เล่นที่ขาดแล้ว');
     expect(lu.status).toBe('PENDING');
 

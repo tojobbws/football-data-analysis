@@ -31,6 +31,19 @@ describe('buildShadowInput', () => {
   it('does not reveal which candidate the rules picked', () => {
     expect(JSON.stringify(input)).not.toMatch(/"rank"|rules_pick|kind/);
   });
+
+  it('leaves 1X2 out of the candidates and keeps each index pointing at its snapshot position', () => {
+    const oneXTwo = { market: 'MATCH_WINNER', selection: 'HOME', line: null, odds: 1.8, model: 0.6, market_p: 0.53, edge: 0.07, rank: null, reasons: ['MARKET_NOT_PICKABLE'] };
+    const snap = source.snapshot.candidates_snapshot as unknown[];
+    const withMw = buildShadowInput({ ...source, snapshot: { ...source.snapshot, candidates_snapshot: [oneXTwo, ...snap] } });
+    expect(withMw.candidates.map((c) => [c.index, c.market])).toEqual([[1, 'ASIAN_HANDICAP'], [2, 'OVER_UNDER']]);
+    expect((withMw.input.candidates as Array<{ index: number }>).map((c) => c.index)).toEqual([1, 2]);
+
+    const out = { data_issues: [], conflicts_th: [], ranking: [{ candidate_index: 1, support: 'HIGH', reason_th: 'ข้อมูลชัด' }], no_clear_signal: false, top_pick_index: 1, explanation_th: 'ข้อมูลชัด' };
+    expect(validateShadowOutput(out, withMw.input, withMw.candidates).pick).toMatchObject({ index: 1, market: 'ASIAN_HANDICAP' });
+    const pickedMw = { ...out, ranking: [{ candidate_index: 0, support: 'HIGH', reason_th: 'ข้อมูลชัด' }], top_pick_index: 0 };
+    expect(validateShadowOutput(pickedMw, withMw.input, withMw.candidates).ok).toBe(false);
+  });
 });
 
 describe('inventedNumbers', () => {

@@ -53,8 +53,12 @@ export interface CandidateInput {
   unmodelledLoss?: number;
 }
 
+/** Markets the Game Compass may pick from. 1X2 is still priced and shown as supporting analysis, never picked. */
+export const PICK_MARKETS: readonly MarketCode[] = ['ASIAN_HANDICAP', 'OVER_UNDER'];
+
 export interface DecisionRules {
   version: string;
+  pickMarkets: readonly MarketCode[];
   minEdge: number;
   maxEdge: number;
   minEv: number;
@@ -71,7 +75,8 @@ export interface DecisionRules {
 }
 
 export const DEFAULT_RULES: DecisionRules = {
-  version: 'rules-v0.2',
+  version: 'rules-v0.3',
+  pickMarkets: PICK_MARKETS,
   minEdge: 0.03,
   maxEdge: 0.15,
   minEv: 0.02,
@@ -93,6 +98,7 @@ export type RejectReason =
   | 'TOO_CLOSE_TO_KICKOFF'
   | 'LOW_TEAM_DATA'
   | 'MAJOR_ABSENCE_UNMODELLED'
+  | 'MARKET_NOT_PICKABLE'
   | 'MARKET_GATED_OFF'
   | 'NO_MODEL_PRICE'
   | 'THIN_MARKET'
@@ -270,6 +276,7 @@ export function generateCandidates(input: CandidateInput, rules: DecisionRules =
 
   const candidates: Candidate[] = cons.map((c) => {
     const reasons: RejectReason[] = [...fixtureReasons];
+    if (!rules.pickMarkets.includes(c.market)) reasons.push('MARKET_NOT_PICKABLE');
     const gate = input.gates[c.market];
     if (!gate?.enabled) reasons.push('MARKET_GATED_OFF');
 

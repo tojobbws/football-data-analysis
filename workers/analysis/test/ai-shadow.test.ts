@@ -114,7 +114,7 @@ describe('aiShadowJob', () => {
     expect(ranker.calls).toBe(4);
 
     const a = await one(`select status, pick_market, pick_selection, pick_line, pick_odds, agrees_with_rules, no_clear_signal, prompt_version, ranking from ai_shadow_rankings where fixture_id = 201`);
-    expect(a).toMatchObject({ status: 'OK', pick_market: 'ASIAN_HANDICAP', pick_selection: 'AWAY', agrees_with_rules: true, no_clear_signal: false, prompt_version: 'ai-shadow-v0.1' });
+    expect(a).toMatchObject({ status: 'OK', pick_market: 'ASIAN_HANDICAP', pick_selection: 'AWAY', agrees_with_rules: true, no_clear_signal: false, prompt_version: 'ai-shadow-v0.2' });
     expect(Number(a.pick_line)).toBe(0.75);
     expect(Number(a.pick_odds)).toBe(1.95);
     expect((a.ranking as Array<{ label: string }>)[0]!.label).toBe('Away FC +0.75');

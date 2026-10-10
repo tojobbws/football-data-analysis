@@ -20,6 +20,7 @@ export const REASON_TH: Record<string, string> = {
   TOO_CLOSE_TO_KICKOFF: 'ใกล้เวลาแข่งเกินไป',
   LOW_TEAM_DATA: 'ข้อมูลของทีมยังน้อยเกินไป',
   MAJOR_ABSENCE_UNMODELLED: 'มีผู้เล่นหลักขาดที่โมเดลยังประเมินผลกระทบไม่ได้',
+  MARKET_NOT_PICKABLE: 'เข็มทิศเกมเลือกเฉพาะแฮนดิแคปและสูง/ต่ำ',
   MARKET_GATED_OFF: 'โมเดลยังไม่ผ่านการทดสอบย้อนหลังในตลาด/ลีกนี้',
   NO_MODEL_PRICE: 'ไม่มีราคาจากโมเดลสำหรับเส้นนี้',
   THIN_MARKET: 'ข้อมูลราคาตลาดไม่พอ',
@@ -97,6 +98,7 @@ export function buildReason(r: ReasonInput): string {
     lines.push(`${BRAND.NO_SIGNAL} (${when})`);
     lines.push('ไม่มีตลาดใดมีข้อมูลสนับสนุนเพียงพอ ณ เวลาที่วิเคราะห์');
     const top = Object.entries(r.rejectReasons ?? {})
+      .filter(([k]) => k !== 'MARKET_NOT_PICKABLE') // a policy, not something this match lacked
       .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
       .slice(0, 2)
       .map(([k]) => REASON_TH[k] ?? k);

@@ -37,11 +37,12 @@ export function validateShadowOutput(raw: unknown, input: Record<string, unknown
     return { ok: false, violations: [`schema: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`], ranking: [], noClearSignal: true, pick: null, explanation: '' };
   }
   const out = parsed.data;
+  const byIndex = new Map(candidates.map((c) => [c.index, c]));
 
   const seen = new Set<number>();
   const ranking: ValidatedShadow['ranking'] = [];
   for (const r of out.ranking) {
-    const c = candidates[r.candidate_index];
+    const c = byIndex.get(r.candidate_index);
     if (!c) {
       violations.push(`ranking: unknown candidate index ${r.candidate_index}`);
       continue;
@@ -56,7 +57,7 @@ export function validateShadowOutput(raw: unknown, input: Record<string, unknown
 
   let pick: ShadowCandidate | null = null;
   if (!out.no_clear_signal) {
-    pick = candidates[out.top_pick_index] ?? null;
+    pick = byIndex.get(out.top_pick_index) ?? null;
     if (!pick) violations.push(`top_pick_index ${out.top_pick_index} is not a candidate`);
     else if (!seen.has(out.top_pick_index)) violations.push(`top pick ${out.top_pick_index} is missing from the ranking`);
   }
