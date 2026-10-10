@@ -7,7 +7,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import detail from '../../../packages/football/test/fixtures/fixture-detail.json' with { type: 'json' };
-import { pruneRawResponses, syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncResults, syncTeams } from '../src/jobs.js';
+import { pruneStorage, syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncResults, syncTeams } from '../src/jobs.js';
 import { syncOdds } from '../../odds-sync/src/jobs.js';
 
 const future = new Date(Date.now() + 2 * 86_400_000).toISOString();
@@ -164,12 +164,24 @@ describe('sync pipeline', () => {
     // age every raw row that odds_history points at, plus one more
     await db.query(`update api_raw_responses set fetched_at = now() - interval '30 days'
                     where id in (select raw_response_id from odds_history) or id = (select min(id) from api_raw_responses)`);
-    const old = Number((await one(`select count(*) n from api_raw_responses where fetched_at < now() - interval '14 days'`)).n);
+    const old = Number((await one(`select count(*) n from api_raw_responses where fetched_at < now() - interval '3 days'`)).n);
 
-    expect(await pruneRawResponses(ctx, { days: 14, vacuum: true })).toBe(old);
+    expect(await pruneStorage(ctx, { vacuum: true })).toBe(old);
     expect(Number((await one(`select count(*) n from api_raw_responses`)).n)).toBe(total - old);
     expect(Number((await one(`select count(*) n from odds_history`)).n)).toBe(odds);
-    expect(Number((await one(`select count(*) n from odds_history where raw_response_id is not null`)).n)).toBe(0);
-    expect(await pruneRawResponses(ctx, { days: 14 })).toBe(0);
+    expect(await pruneStorage(ctx)).toBe(0);
+  });
+
+  it('prune: odds snapshots expire 7 days after kickoff, never earlier', async () => {
+    const odds = Number((await one(`select count(*) n from odds_history where fixture_id = 2002`)).n);
+    expect(odds).toBeGreaterThan(0);
+    await expect(db.query(`delete from odds_history where fixture_id = 2002`)).rejects.toThrow(/append-only/);
+
+    await db.query(`update fixtures set kickoff_at = now() - interval '6 days' where id = 2002`);
+    expect(await pruneStorage(ctx)).toBe(0);
+
+    await db.query(`update fixtures set kickoff_at = now() - interval '8 days' where id = 2002`);
+    expect(await pruneStorage(ctx)).toBe(odds);
+    expect(Number((await one(`select count(*) n from odds_history`)).n)).toBe(0);
   });
 });

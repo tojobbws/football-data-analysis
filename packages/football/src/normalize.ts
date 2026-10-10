@@ -138,8 +138,6 @@ export function toFixtureRow(item: FixtureItem): Row {
     pen_home: item.score.penalty.home,
     pen_away: item.score.penalty.away,
     slug: fixtureSlug(item.teams.home.name, item.teams.away.name, kickoff),
-    // keep raw without the heavy detail arrays (they live in their own tables)
-    raw: { fixture: item.fixture, league: item.league, teams: item.teams, goals: item.goals, score: item.score },
   };
 }
 

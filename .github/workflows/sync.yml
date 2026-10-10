@@ -4,7 +4,7 @@ name: data-sync
 on:
   schedule:
     - cron: '5 * * * *'     # hourly: odds + lineups + results + settlement + finished-match details
-    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings, prune raw responses
+    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings, prune raw responses + expired odds snapshots
     - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats, prune + reclaim disk (vacuum full)
   workflow_dispatch:
     inputs:

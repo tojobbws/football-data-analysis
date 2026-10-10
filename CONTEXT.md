@@ -38,6 +38,16 @@ _Avoid_: presenting it as the chance the win condition happens
 **Settlement**:
 The act of deciding a pick's outcome from the match result; it is separate from the match finishing and may lag behind full time.
 
+**Odds snapshot**:
+One bookmaker's quoted price for one selection at one moment. Snapshots feed pick selection and settlement only, and are discarded 7 days after a match whose picks are all settled.
+_Avoid_: odds history (as something kept for good)
+
+**Closing odds**:
+The median of each bookmaker's last pre-kickoff price for the pick's selection; recorded on the pick at settlement and kept for good.
+
+**CLV (closing line value)**:
+How much better the price at publish was than the closing odds; recorded on the pick at settlement, so it survives the odds snapshots it came from.
+
 ### Around the pick
 
 **Supporting analysis**:

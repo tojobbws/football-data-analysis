@@ -160,9 +160,8 @@ describe('odds_history', () => {
     await expect(q(`update odds_history set odds = 2.5 where fixture_id = 10`)).rejects.toThrow(/append-only/);
     await expect(q(`delete from odds_history where fixture_id = 10`)).rejects.toThrow(/append-only/);
 
-    await q(`delete from api_raw_responses where id = $1`, [raw!.id]); // prune audit log
-    const rows = await q<{ raw_response_id: unknown }>(`select raw_response_id from odds_history where fixture_id = 10`);
-    expect(rows.every((r) => r.raw_response_id === null)).toBe(true);
+    await q(`delete from api_raw_responses where id = $1`, [raw!.id]); // prune audit log: odds rows are left untouched
+    expect(await q(`select 1 from odds_history where fixture_id = 10`)).toHaveLength(2);
 
     const [mv] = await q<Record<string, unknown>>(`select * from odds_movement where fixture_id = 10`);
     expect(Number(mv!.opening_odds)).toBe(1.9);

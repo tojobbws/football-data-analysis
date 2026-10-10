@@ -10,7 +10,8 @@ async function main() {
     console.log('usage: npm run job -- odds [--fixture ID]');
     process.exit(1);
   }
-  const ctx = createJobContext();
+  // odds_history already holds every quote; raw /odds pages were most of the database (ADR 0002)
+  const ctx = createJobContext({ storeRawResponses: false });
   try {
     await syncOdds(ctx, { fixture: values.fixture ? Number(values.fixture) : undefined });
   } finally {

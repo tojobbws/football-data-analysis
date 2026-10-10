@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 import { createJobContext } from '@fp/database';
 import { loadDotEnvFile } from '@fp/shared';
 import {
-  pruneRawResponses,
+  pruneStorage,
   syncApiPredictions,
   syncFinishedDetails,
   syncFixtures,
@@ -33,7 +33,7 @@ jobs:
   support  [--last N]             results of untracked domestic leagues behind cross-league cups (last N per league, default 30)
   players  [--max-pages N]        player season stats (heavy, weekly)
   bootstrap                       leagues -> teams -> fixtures -> standings
-  prune    [--days N] [--vacuum]  delete raw API responses older than N days (default 14); --vacuum frees the disk space`;
+  prune    [--days N] [--vacuum]  delete raw API responses older than N days (default 3) + odds snapshots of settled matches >7 days old; --vacuum frees the raw table's disk space`;
 
 async function main() {
   loadDotEnvFile();
@@ -100,7 +100,7 @@ async function main() {
         await syncPlayers(ctx, { maxPages: num(values['max-pages']) });
         break;
       case 'prune':
-        await pruneRawResponses(ctx, { days: num(values.days), vacuum: values.vacuum });
+        await pruneStorage(ctx, { days: num(values.days), vacuum: values.vacuum });
         break;
       case 'bootstrap':
         await syncLeagues(ctx);

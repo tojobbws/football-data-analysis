@@ -56,7 +56,7 @@ describe('fixture mappers', () => {
       ft_away: 1,
       slug: 'liverpool-vs-arsenal-2026-09-18',
     });
-    expect((row.raw as Record<string, unknown>).events).toBeUndefined();
+    expect(row).not.toHaveProperty('raw');
   });
 
   it('keeps stoppage-time minutes (45+2) and null outside them', () => {

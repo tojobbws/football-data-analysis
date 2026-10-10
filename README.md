@@ -65,7 +65,7 @@ Layer แยกกันชัด: **API logic อยู่ใน `packages/foot
 | `sync:players` | สถิตินักเตะทั้ง season (หลาย page) | สัปดาห์ละครั้ง |
 | `sync:odds` | odds → `odds_history` (append-only) | ชั่วโมงละครั้ง / ถี่ขึ้นใกล้เตะ |
 
-ทุก job บันทึก `sync_runs` (จำนวน request ที่ใช้ = ต้นทุน API) และทุก response ถูกเก็บดิบใน `api_raw_responses` ก่อน process เสมอ (ยกเว้น `live`: ยิงถี่เกินจะทำ DB บวม — ผลสุดท้ายยังถูกเก็บดิบโดย `sync:results`)
+ทุก job บันทึก `sync_runs` (จำนวน request ที่ใช้ = ต้นทุน API) และทุก response ถูกเก็บดิบใน `api_raw_responses` ก่อน process เสมอ (ยกเว้น `live`: ยิงถี่เกินจะทำ DB บวม — ผลสุดท้ายยังถูกเก็บดิบโดย `sync:results` และ `sync:odds`: ทุก quote อยู่ใน `odds_history` แล้ว) เก็บดิบไว้ 3 วัน, odds snapshot ถูกลบ 7 วันหลังนัดที่ settle ครบ (`db:prune`, ดู `docs/adr/0002-data-retention.md`)
 **Free plan ของ API-Football มี quota ต่อวันจำกัด** — พอสำหรับพัฒนา แต่ถ้ารัน odds ทุกชั่วโมงจริงต้องใช้ plan แบบจ่ายเงิน (ดู request ที่ใช้จริงได้จาก `select job, sum(requests_used) from sync_runs group by 1`)
 
 ## Live scores (`workers/live-score`)
