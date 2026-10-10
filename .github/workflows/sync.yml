@@ -1,15 +1,16 @@
 name: data-sync
 
 # Schedules are UTC (Thailand = UTC+7).
+# Hourly (odds + lineups + results + settlement + finished-match details) is dispatched with
+# job=hourly by the live-score Worker's "5 * * * *" cron: GitHub's own hourly schedule fired only every 4–7 hours.
 on:
   schedule:
-    - cron: '5 * * * *'     # hourly: odds + lineups + results + settlement + finished-match details
     - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings, prune raw responses + expired odds snapshots
     - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats, prune + reclaim disk (vacuum full)
   workflow_dispatch:
     inputs:
       job:
-        description: 'Job to run (e.g. bootstrap, odds, details, players)'
+        description: 'Job to run (e.g. hourly, bootstrap, odds, details, players)'
         required: true
         default: bootstrap
 
@@ -39,7 +40,7 @@ jobs:
       - run: npm ci --ignore-scripts
 
       - name: Manual job
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.job != 'hourly'
         run: |
           case "${{ inputs.job }}" in
             odds) npm run sync:odds ;;
@@ -47,7 +48,7 @@ jobs:
           esac
 
       - name: Hourly
-        if: github.event.schedule == '5 * * * *'
+        if: inputs.job == 'hourly'
         run: |
           npm run sync:lineups -- --minutes 75
           npm run sync:odds

@@ -5,7 +5,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   // every minute; each run checks the DB first and only calls API-Football while a match is on
-  "triggers": { "crons": ["* * * * *"] },
+  // every minute: live scores; "5 * * * *": dispatch the hourly GitHub data-sync (needs secret GITHUB_DISPATCH_TOKEN)
+  "triggers": { "crons": ["* * * * *", "5 * * * *"] },
   // Supabase via Hyperdrive (see README "Live scores"). Created with --caching-disabled: the live gate must never read stale rows.
   // Local dev: set CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE (non-TLS URL) in workers/live-score/.env
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "62619d5d61874535bcfc1db91995f9a3" }],
@@ -13,7 +14,8 @@
   "vars": {
     "TRACKED_LEAGUES": "39,140,135,78,61,296,5,2,3,848,1129",
     "SEASON": "2026",
-    "LIVE_POLL_SECONDS": "30"
+    "LIVE_POLL_SECONDS": "30",
+    "GITHUB_REPO": "tojobbws/football-data-analysis"
   },
   "observability": { "enabled": true },
   // cron only, no HTTP endpoint
