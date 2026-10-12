@@ -3,6 +3,7 @@ import type { Compass } from '@/lib/queries';
 import { STATUS, odds, pct, pickRationale, selectionLabel, toSelection, winCondition } from '@/lib/labels';
 import type { LiveSeed } from '@/lib/live';
 import { dateTimeTH } from '@/lib/time';
+import { CompassExplainer } from './compass-explainer';
 import { LivePhaseBadge } from './live';
 import { Badge, Card, StatStrip, StatusPill, plainLine } from './sheet';
 
@@ -85,6 +86,7 @@ export function CompassCard({ c, home, away, live, id }: { c: Compass; home: str
           <b className="font-semibold text-zinc-950">{pct(c.market_probability)}</b>
         </p>
       ) : null}
+      <CompassExplainer className="mt-1" />
 
       <ReasonList lines={reasons.filter((l) => !isTechnical(l))} />
 

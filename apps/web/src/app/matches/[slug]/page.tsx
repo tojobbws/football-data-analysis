@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CompassCard } from '@/components/compass-card';
+import { COMPASS_LINE } from '@/components/compass-explainer';
 import { LiveGoal, LiveHeadBadge, LiveStaleNote, LiveWatch } from '@/components/live';
 import { MatchPreviewCard } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
@@ -112,7 +113,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
               </div>
             ) : null}
             {noAnalysisYet ? (
-              <Card id="pick" title="เข็มทิศเกม" description="1 ตัวเลือกที่ข้อมูลสนับสนุนมากที่สุด เฉพาะคู่ที่ข้อมูลชี้ชัด">
+              <Card id="pick" title="เข็มทิศเกม" description={COMPASS_LINE}>
                 <p className="text-sm text-zinc-500">{FINISHED.includes(m.status_short) ? 'แมตช์นี้ไม่มีบทวิเคราะห์ที่เผยแพร่' : 'บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ'}</p>
               </Card>
             ) : null}

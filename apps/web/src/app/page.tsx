@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { COMPASS_LINE, CompassExplainer } from '@/components/compass-explainer';
 import { ArticleGrid, MoreLink, Rail, RailItem } from '@/components/home';
 import { IconChevronRight, CompassMark, IconLock } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
@@ -87,7 +88,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                 <CompassMark size={40} />
                 เข็มทิศเกม คู่น่าจับตา
               </h2>
-              <p className="mt-1 text-xs leading-relaxed text-slate-600">1 ตัวเลือกที่ข้อมูลสนับสนุนมากที่สุดต่อคู่ ล็อกก่อนเตะ</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">{COMPASS_LINE}</p>
+              <CompassExplainer />
             </div>
             <MoreLink href="/today" label="ทุกคู่" />
           </div>

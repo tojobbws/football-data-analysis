@@ -7,8 +7,16 @@ A football analysis media site: the model publishes one analysed view per match,
 ### Picks and settlement
 
 **เข็มทิศเกม (Game Compass)**:
-The site's published analytical lean for a match — one pick, or fog when there is no clear signal.
-_Avoid_: tip, bet, prediction (on fan pages)
+The site's published analytical lean for a match — one pick, or fog when there is no clear signal. The pick is where the model's view differs most clearly from the market's, within limits; it is not the most likely outcome of the match.
+_Avoid_: tip, bet, prediction (on fan pages); "the option the data supports most" (reads as the most likely outcome)
+
+**Market (ตลาด)**:
+The combined view of the football market on a selection's chance, read from many bookmakers' prices. On fan explanations it is called ตลาด and described as that combined view.
+_Avoid_: เจ้ามือ, ราคา (in explanatory copy about the Game Compass)
+
+**Edge (ส่วนต่าง)**:
+How far the model's fair probability for a pick sits above the market's, in percentage points. Fan copy says the model "sees it differently" (มองต่าง) from the market.
+_Avoid_: claiming the market got it wrong (ตลาดประเมินพลาด) — the record does not yet show the model beats the market
 
 **Pick**:
 A single published selection of the Game Compass for one match (market, side, line), made before kickoff and never edited afterwards. Its market is Asian handicap or over/under; 1X2 is never picked (a few early 1X2 picks stay as published).
