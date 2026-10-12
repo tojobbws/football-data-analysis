@@ -103,16 +103,19 @@ export default async function TodayPage() {
       <section aria-labelledby="today-fixtures">
         <div className="mb-2 flex items-center justify-between gap-3">
           <h2 id="today-fixtures" className="text-lg font-bold">
-            {day === today ? 'โปรแกรมบอลและผลบอลวันนี้' : `โปรแกรมบอล ${dayTH(noon(day))}`}
+            {day === today ? 'โปรแกรมบอลและบทวิเคราะห์วันนี้' : `โปรแกรมบอลและบทวิเคราะห์ ${dayTH(noon(day))}`}
           </h2>
           <MoreLink href={`/matches?date=${day}`} label="ดูตามวัน" />
         </div>
         {matches.length ? <MatchList matches={matches} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
       </section>
 
-      <Section title="บทวิเคราะห์บอลวันนี้" aside={<MoreLink href="/analysis" label="ทั้งหมด" />}>
-        {todaysArticles.length ? <ArticleGrid articles={todaysArticles} /> : <Empty>ยังไม่มีบทความที่เผยแพร่วันนี้ — ดูข้อมูลวิเคราะห์ของแต่ละคู่ได้จากรายการด้านบน</Empty>}
-      </Section>
+      {/* each match's written preview is already in the list above; editorial articles show only when there are some */}
+      {todaysArticles.length ? (
+        <Section title="บทความวันนี้" aside={<MoreLink href="/analysis" label="ทั้งหมด" />}>
+          <ArticleGrid articles={todaysArticles} />
+        </Section>
+      ) : null}
     </main>
   );
 }
