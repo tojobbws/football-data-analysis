@@ -7,6 +7,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { closingJob } from '../src/closing-job.js';
+import { shadowReport } from '../src/shadow-report-job.js';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -103,5 +104,25 @@ describe('closing market', () => {
   it('is written once: a second run adds nothing', async () => {
     expect(await closingJob(ctx)).toBe(0);
     expect(Number((await db.query<{ n: string }>(`select count(*) n from market_closing`)).rows[0]!.n)).toBe(7);
+  });
+});
+
+describe('shadow report', () => {
+  it('tallies the shadow picks of kicked-off matches by side and settles finished ones', async () => {
+    await db.query(`update fixtures set status_short = 'FT', ft_home = 1, ft_away = 1 where id = 202`);
+    const shadow = (fixture: number, outcome: string, sel: string | null, line: number | null) =>
+      db.query(
+        `insert into shadow_decisions (fixture_id, rules_version, evaluated_at, outcome, market, selection, line, passed)
+         values ($1, 'shadow-test', $2, $3, $4, $5, $6, 1)`,
+        [fixture, at(-1), outcome, sel ? 'ASIAN_HANDICAP' : null, sel, line],
+      );
+    await shadow(201, 'SIGNAL', 'HOME', -0.5); // still playing
+    await shadow(202, 'SIGNAL', 'AWAY', 0.5); // 1-1 -> away +0.5 wins
+    const r = await shadowReport(ctx, { rulesVersion: 'shadow-test' });
+    expect(r.matches).toBe(2);
+    expect(r.shadow).toEqual([
+      { side: 'AH ต่อ', picks: 1, win: 0, halfWin: 0, push: 0, halfLoss: 0, loss: 0, open: 1 },
+      { side: 'AH รอง', picks: 1, win: 1, halfWin: 0, push: 0, halfLoss: 0, loss: 0, open: 0 },
+    ]);
   });
 });

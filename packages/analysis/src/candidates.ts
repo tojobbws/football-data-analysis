@@ -72,6 +72,12 @@ export interface DecisionRules {
   strongEdge: number;
   mediumEdge: number;
   maxUnmodelledLoss: number;
+  /**
+   * Shadow rules only: the model's usual lean against the market per selection and line
+   * (`MARKET|SELECTION|line`, probability points), taken off the model probability before the
+   * edge is measured, so only disagreements beyond the usual one count. Absent = no correction.
+   */
+  modelBias?: Readonly<Record<string, number>>;
 }
 
 export const DEFAULT_RULES: DecisionRules = {
@@ -118,6 +124,8 @@ export interface Candidate {
   bestBookmakerId: number;
   marketProbability: number;
   modelProbability: number | null;
+  /** usual model-vs-market lean taken off before the edge (shadow rules); 0 = none */
+  bias: number;
   edge: number | null;
   ev: number | null;
   /** 🤝 does Elo agree with the direction of the edge? null = not applicable */
@@ -288,9 +296,11 @@ export function generateCandidates(input: CandidateInput, rules: DecisionRules =
     let edge: number | null = null;
     let ev: number | null = null;
     let dist: OutcomeDistribution | null = null;
+    const bias = rules.modelBias ? biasFor(rules.modelBias, c.market, c.selection, c.line) : 0;
     if (mp) {
-      edge = mp.probability - c.marketProbability;
+      edge = mp.probability - bias - c.marketProbability;
       dist = mp.distribution ?? { win: mp.probability, halfWin: 0, push: 0, halfLoss: 0, loss: 1 - mp.probability };
+      if (bias) dist = shiftDistribution(dist, bias);
       ev = expectedValue(dist, c.medianOdds);
       if (edge < rules.minEdge) reasons.push('EDGE_BELOW_MIN');
       if (edge > rules.maxEdge) reasons.push('EDGE_TOO_LARGE');
@@ -323,6 +333,7 @@ export function generateCandidates(input: CandidateInput, rules: DecisionRules =
       bestBookmakerId: c.bestBookmakerId,
       marketProbability: round(c.marketProbability, 5),
       modelProbability: mp ? round(mp.probability, 5) : null,
+      bias: round(bias, 5),
       edge: edge === null ? null : round(edge, 5),
       ev: ev === null ? null : round(ev, 5),
       agreement,
@@ -380,6 +391,30 @@ export function eloAgreement(
 
 function round(x: number, d: number) {
   return Math.round(x * 10 ** d) / 10 ** d;
+}
+
+/**
+ * The model's usual lean against the market for a selection and line; the nearest measured line
+ * stands in beyond the measured range, 0 for a market or selection never measured.
+ */
+export function biasFor(table: Readonly<Record<string, number>>, market: MarketCode, selection: string, line: number | null): number {
+  const exact = table[`${market}|${selection}|${lineKey(line)}`];
+  if (exact !== undefined) return exact;
+  if (line === null) return 0;
+  let best: { d: number; v: number } | null = null;
+  for (const [k, v] of Object.entries(table)) {
+    const [m, sel, l] = k.split('|');
+    if (m !== market || sel !== selection || l === '') continue;
+    const d = Math.abs(Number(l) - line);
+    if (!best || d < best.d) best = { d, v };
+  }
+  return best?.v ?? 0;
+}
+
+/** Move `by` probability from win to loss (or back when negative), keeping every outcome in [0, 1]. */
+function shiftDistribution(d: OutcomeDistribution, by: number): OutcomeDistribution {
+  const move = by > 0 ? Math.min(by, d.win) : -Math.min(-by, d.loss);
+  return { ...d, win: d.win - move, loss: d.loss + move };
 }
 
 /** How long before kickoff a quote may be and still count as the closing market. */

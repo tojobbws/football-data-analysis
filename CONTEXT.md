@@ -53,6 +53,10 @@ _Avoid_: odds history (as something kept for good)
 **Closing odds**:
 The median of each bookmaker's last pre-kickoff price for the pick's selection; recorded on the pick at settlement and kept for good.
 
+**Shadow pick**:
+The selection an alternative set of pick rules would have made for a match, kept aside and measured against results but never published or counted in the track record. The AI shadow pick is one; the bias-corrected rules are another.
+_Avoid_: calling it a pick on fan pages
+
 **Closing market**:
 The market's view of a match at kickoff — the 1X2 and the main Asian handicap and over/under line (sides closest to 50/50), with the model's probability beside each side; kept for good after the odds snapshots expire, so the model can be measured against the market over time.
 _Avoid_: closing odds (that is the price recorded on a pick)

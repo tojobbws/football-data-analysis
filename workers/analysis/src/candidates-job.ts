@@ -4,6 +4,7 @@ import {
   ELO_VERSION,
   generateCandidates,
   IMPACT_VERSION,
+  SHADOW_RULES,
   type CandidateInput,
   type DecisionRules,
   type MarketCode,
@@ -21,11 +22,15 @@ import { ENSEMBLE_VERSION } from './jobs.js';
  * A fixture is re-evaluated when probabilities / gates / phase change, or when odds moved and
  * the last evaluation is older than `minGapHours` (keeps storage small on the free tier).
  */
-export function generateCandidatesJob(ctx: JobContext, opts: { hours?: number; now?: Date; rules?: DecisionRules; minGapHours?: number } = {}) {
+export function generateCandidatesJob(
+  ctx: JobContext,
+  opts: { hours?: number; now?: Date; rules?: DecisionRules; shadowRules?: DecisionRules | null; minGapHours?: number } = {},
+) {
   const leagues = ctx.env.TRACKED_LEAGUES;
   const hours = opts.hours ?? 36;
   const minGapMs = (opts.minGapHours ?? 3) * 3_600_000;
   const rules = opts.rules ?? DEFAULT_RULES;
+  const shadowRules = opts.shadowRules === undefined ? SHADOW_RULES : opts.shadowRules;
   return runJob(ctx, 'candidates', { leagues, hours, rules: rules.version }, async () => {
     const now = opts.now ?? new Date();
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, hours).toISOString());
@@ -166,6 +171,30 @@ export function generateCandidatesJob(ctx: JobContext, opts: { hours?: number; n
         rows,
       );
       written += rows.length;
+
+      // Shadow rules on the same inputs: kept aside, never published. Not inside the final
+      // minutes, where every rule set says "too close to kickoff" and would wipe the shadow pick.
+      if (shadowRules && f.kickoffAt.getTime() - now.getTime() >= shadowRules.minMinutesBeforeKickoff * 60_000) {
+        const sd = generateCandidates(input, shadowRules);
+        const sp = sd.pick;
+        await ctx.repo.upsertShadowDecision({
+          fixture_id: f.id,
+          rules_version: shadowRules.version,
+          evaluated_at: now.toISOString(),
+          outcome: sd.outcome,
+          market: sp?.market ?? null,
+          selection: sp?.selection ?? null,
+          line: sp?.line ?? null,
+          odds: sp?.odds ?? null,
+          model_probability: sp?.modelProbability ?? null,
+          bias: sp?.bias ?? null,
+          market_probability: sp?.marketProbability ?? null,
+          edge: sp?.edge ?? null,
+          strength: sp?.strength ?? null,
+          passed: sd.summary.passed,
+        });
+      }
+
       report.push({
         fixture: f.id,
         kickoff: f.kickoffAt.toISOString().slice(0, 16),

@@ -10,7 +10,7 @@ import { backtest, computeProbabilities, tune } from '../src/jobs.js';
 import { generateCandidatesJob } from '../src/candidates-job.js';
 import { playerImpactJob } from '../src/impact-job.js';
 import { publishJob } from '../src/publish-job.js';
-import { DEFAULT_RULES } from '@fp/analysis';
+import { DEFAULT_RULES, SHADOW_RULES } from '@fp/analysis';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -191,6 +191,10 @@ describe('candidate generator job (Phase 5)', () => {
     expect(latest.selection).toBe('HOME');
     expect(Number(latest.edge)).toBeGreaterThan(0.03);
     expect(latest.strength).toBe('LEAN'); // gate z unknown (0) in this fixture -> capped at LEAN
+    // the shadow rules ran on the same inputs and kept their decision aside
+    const shadow = await q(`select rules_version, outcome, passed from shadow_decisions where fixture_id = 9001`);
+    expect(shadow).toHaveLength(1);
+    expect(shadow[0]!.rules_version).toBe(SHADOW_RULES.version);
   });
 
   it('analysis_runs and candidates are immutable', async () => {

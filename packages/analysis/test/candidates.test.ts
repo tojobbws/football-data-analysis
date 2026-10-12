@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { closingMarket, consensus, DEFAULT_RULES, eloAgreement, generateCandidates, noVig, type CandidateInput, type OddsQuote } from '../src/index.js';
+import { biasFor, closingMarket, consensus, DEFAULT_RULES, eloAgreement, generateCandidates, noVig, type CandidateInput, type OddsQuote } from '../src/index.js';
 
 const NOW = new Date('2026-10-17T10:00:00Z');
 const KO = new Date('2026-10-18T16:30:00Z');
@@ -99,6 +99,27 @@ describe('generateCandidates', () => {
     expect(d.pick!.strength).toBe('STRONG');
     const ahHome = d.candidates.find((c) => c.market === 'ASIAN_HANDICAP' && c.selection === 'HOME')!;
     expect(ahHome.rejectReasons).toContain('EDGE_BELOW_MIN');
+  });
+
+  it('takes the usual model lean off before measuring the edge (shadow rules)', () => {
+    const modelBias = { 'OVER_UNDER|UNDER|2.5': 0.06, 'OVER_UNDER|OVER|2.5': -0.06 };
+    const d = generateCandidates(input(), { ...DEFAULT_RULES, version: 'shadow-test', modelBias });
+    const under = d.candidates.find((c) => c.market === 'OVER_UNDER' && c.selection === 'UNDER')!;
+    expect(under.bias).toBe(0.06);
+    expect(under.modelProbability).toBe(0.57); // raw model probability is kept
+    expect(under.edge!).toBeLessThan(0.03);
+    expect(under.rejectReasons).toContain('EDGE_BELOW_MIN');
+    expect(d.outcome).toBe('NO_CLEAR_SIGNAL');
+    // no table -> no correction
+    expect(generateCandidates(input()).candidates.every((c) => c.bias === 0)).toBe(true);
+  });
+
+  it('biasFor falls back to the nearest measured line, 0 when never measured', () => {
+    const t = { 'ASIAN_HANDICAP|AWAY|1': 0.05, 'ASIAN_HANDICAP|AWAY|2': 0.09 };
+    expect(biasFor(t, 'ASIAN_HANDICAP', 'AWAY', 1)).toBe(0.05);
+    expect(biasFor(t, 'ASIAN_HANDICAP', 'AWAY', 3.5)).toBe(0.09);
+    expect(biasFor(t, 'ASIAN_HANDICAP', 'HOME', 1)).toBe(0);
+    expect(biasFor(t, 'MATCH_WINNER', 'HOME', null)).toBe(0);
   });
 
   it('returns NO_CLEAR_SIGNAL when the market is gated off', () => {

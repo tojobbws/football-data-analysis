@@ -11,3 +11,4 @@ export * from './publish.js';
 export * from './win-condition.js';
 export * from './cross-league.js';
 export * from './preview.js';
+export * from './shadow-rules.js';

@@ -7,6 +7,7 @@ import { publishJob } from './publish-job.js';
 import { matchReport } from './report-job.js';
 import { settleJob } from './settle-job.js';
 import { closingJob } from './closing-job.js';
+import { shadowReport } from './shadow-report-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
 import { matchPreviewJob } from './preview-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
@@ -24,6 +25,7 @@ jobs:
   preview [--hours N] [--refresh]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48); AI text with ANTHROPIC_API_KEY, template text without; --refresh rewrites previews from an older version
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
   closing                     keep the closing market (1X2 + main AH/O/U line) of kicked-off matches for good
+  shadow-report               shadow pick rules vs the real ones on kicked-off matches: sides picked and results
   backtest [--warmup N]        walk-forward backtest on finished matches in the DB`;
 
 async function main() {
@@ -33,7 +35,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'settle', 'closing', 'report'].includes(job ?? '')) {
+  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'settle', 'closing', 'shadow-report', 'report'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -48,6 +50,14 @@ async function main() {
     else if (job === 'publish') await publishJob(ctx);
     else if (job === 'settle') await settleJob(ctx);
     else if (job === 'closing') await closingJob(ctx);
+    else if (job === 'shadow-report') {
+      const r = await shadowReport(ctx);
+      console.log(`${r.version}: ${r.matches} matches since ${r.since.toISOString().slice(0, 10)}, ${r.noClearSignal} without a pick`);
+      console.log('shadow rules');
+      console.table(r.shadow);
+      console.log('real picks, same period');
+      console.table(r.real);
+    }
     else if (job === 'ai-shadow') await aiShadowJob(ctx);
     else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, refresh: values.refresh });
     else if (job === 'report') {
