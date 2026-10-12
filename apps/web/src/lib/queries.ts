@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import type { OutcomeDistribution } from '@fp/analysis';
 import { webEnv } from './env';
 import { db } from './supabase';
@@ -199,7 +200,8 @@ export interface FormRow {
   xgAgainst: number | null;
 }
 
-export async function matchBySlug(slug: string) {
+/** One request = one read: generateMetadata and the page share it (React cache). */
+export const matchBySlug = cache(async (slug: string) => {
   const sb = db();
   const { data: f, error } = await sb
     .from('fixtures')
@@ -278,7 +280,7 @@ export async function matchBySlug(slug: string) {
     outlook: (outlook.data ?? null) as ModelOutlook | null,
     preview: (preview.data ?? null) as MatchPreview | null,
   };
-}
+});
 
 /** 📊 มุมมองโมเดล: last model probabilities computed before kickoff (information, not a 🧭 pick). */
 export interface ModelOutlook {
@@ -314,21 +316,18 @@ async function teamForm(teamId: number, before: string): Promise<FormRow[]> {
   const sb = db();
   const { data, error } = await sb
     .from('fixtures')
-    .select('id, slug, kickoff_at, home_team_id, away_team_id, ft_home, ft_away, goals_home, goals_away, home:teams!fixtures_home_team_id_fkey(name), away:teams!fixtures_away_team_id_fkey(name)')
+    // xG rides along as an embedded resource: one round trip instead of two (the DB is far away)
+    .select('id, slug, kickoff_at, home_team_id, away_team_id, ft_home, ft_away, goals_home, goals_away, home:teams!fixtures_home_team_id_fkey(name), away:teams!fixtures_away_team_id_fkey(name), xg:fixture_statistics(team_id, value_num)')
+    .eq('xg.type', 'expected_goals')
     .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
     .in('status_short', FINISHED)
     .lt('kickoff_at', before)
     .order('kickoff_at', { ascending: false })
     .limit(5);
   if (error) fail('form', error);
-  const rows = (data ?? []) as unknown as Array<{ id: number; slug: string; kickoff_at: string; home_team_id: number; away_team_id: number; ft_home: number | null; ft_away: number | null; goals_home: number | null; goals_away: number | null; home: { name: string }; away: { name: string } }>;
-  const ids = rows.map((r) => r.id);
+  const rows = (data ?? []) as unknown as Array<{ id: number; slug: string; kickoff_at: string; home_team_id: number; away_team_id: number; ft_home: number | null; ft_away: number | null; goals_home: number | null; goals_away: number | null; home: { name: string }; away: { name: string }; xg: Array<{ team_id: number; value_num: number | null }> }>;
   const xg = new Map<string, number>();
-  if (ids.length) {
-    const { data: s, error: e2 } = await sb.from('fixture_statistics').select('fixture_id, team_id, value_num').eq('type', 'expected_goals').in('fixture_id', ids);
-    if (e2) fail('xg', e2);
-    for (const x of s ?? []) if (x.value_num != null) xg.set(`${x.fixture_id}:${x.team_id}`, Number(x.value_num));
-  }
+  for (const r of rows) for (const x of r.xg ?? []) if (x.value_num != null) xg.set(`${r.id}:${x.team_id}`, Number(x.value_num));
   return rows.map((r) => {
     const home = r.home_team_id === teamId;
     const gh = r.ft_home ?? r.goals_home ?? 0;
