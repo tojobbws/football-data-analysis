@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import type { MatchRow } from '@/lib/queries';
-import { FINISHED, LIVE, selectionLabel } from '@/lib/labels';
+import { FINISHED, selectionLabel } from '@/lib/labels';
 import { timeTH } from '@/lib/time';
-import { toSeed } from '@/lib/live';
+import { isLive, toSeed } from '@/lib/live';
 import { CompassMark } from './icons';
 import { LiveGoal, LiveMinute, LiveWatch } from './live';
 import { StatusBadge, TeamLogo } from './ui';
 
-const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย' };
+// INT/SUSP reach this only once past the live window (see isLive)
+const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย', INT: 'หยุด', SUSP: 'หยุด' };
 const DONE: Record<string, string> = { FT: 'จบ', AET: 'ต่อเวลา', PEN: 'จุดโทษ' };
 
 /**
@@ -44,7 +45,7 @@ export function MatchList({ matches, compact = false }: { matches: MatchRow[]; c
 
 function MatchItem({ m, compact }: { m: MatchRow; compact: boolean }) {
   const finished = FINISHED.includes(m.status_short);
-  const live = LIVE.includes(m.status_short);
+  const live = isLive(m.status_short, m.kickoff_at);
   const off = OFF[m.status_short];
   const showScore = finished || live;
   const gh = m.goals_home;

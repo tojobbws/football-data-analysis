@@ -20,10 +20,23 @@ export interface LiveSnapshot {
   matches: LiveState[];
 }
 
+/**
+ * A live status this long after kickoff is a match the API stopped (INT/SUSP) and never closed:
+ * it stops counting as live. Same window as the live-score worker's poll gate.
+ */
+export const LIVE_WINDOW_MS = 6 * 3_600_000;
+
+/** Earliest kickoff that can still be live (ISO), for DB filters. */
+export const liveSince = (now = Date.now()) => new Date(now - LIVE_WINDOW_MS).toISOString();
+
+export function isLive(statusShort: string, kickoffAt: string, now = Date.now()): boolean {
+  return LIVE.includes(statusShort) && Date.parse(kickoffAt) > now - LIVE_WINDOW_MS;
+}
+
 /** Coarse phase: a change between these re-renders the page once (order, tabs, post-match stats). */
 export type PhaseGroup = 'pre' | 'live' | 'done';
-export function phaseGroup(statusShort: string): PhaseGroup {
-  if (LIVE.includes(statusShort)) return 'live';
+export function phaseGroup(statusShort: string, kickoffAt?: string, now = Date.now()): PhaseGroup {
+  if (LIVE.includes(statusShort)) return kickoffAt == null || isLive(statusShort, kickoffAt, now) ? 'live' : 'pre';
   if (FINISHED.includes(statusShort)) return 'done';
   return 'pre';
 }
@@ -37,7 +50,7 @@ export function minuteLabel(s: Pick<LiveState, 'status_short' | 'elapsed' | 'ela
 
 /** Poll while a match is in play, or about to kick off (so its start is noticed without a reload). */
 export function isWatchable(s: Pick<LiveState, 'status_short'>, kickoffAt: string, now = Date.now()): boolean {
-  const g = phaseGroup(s.status_short);
+  const g = phaseGroup(s.status_short, kickoffAt, now);
   if (g === 'live') return true;
   if (g === 'done') return false;
   const ko = Date.parse(kickoffAt);

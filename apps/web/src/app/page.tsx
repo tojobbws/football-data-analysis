@@ -6,7 +6,8 @@ import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { SignalCard } from '@/components/signal-card';
 import { Empty } from '@/components/ui';
-import { FINISHED, LIVE, pct } from '@/lib/labels';
+import { FINISHED, pct } from '@/lib/labels';
+import { isLive as liveNow } from '@/lib/live';
 import { latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, perfSummary, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 const noon = (d: string) => `${d}T12:00:00+07:00`;
-const isLive = (m: MatchRow) => LIVE.includes(m.status_short);
+const isLive = (m: MatchRow) => liveNow(m.status_short, m.kickoff_at);
 /** what's on now → what's next (by kickoff) → what's done */
 const phase = (m: MatchRow) => (isLive(m) ? 0 : FINISHED.includes(m.status_short) ? 2 : 1);
 const byPhase = (a: MatchRow, b: MatchRow) => phase(a) - phase(b) || Date.parse(a.kickoff_at) - Date.parse(b.kickoff_at);

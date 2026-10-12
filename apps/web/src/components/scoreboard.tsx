@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { MatchRow } from '@/lib/queries';
-import { FINISHED, LIVE, STATUS, selectionLabel } from '@/lib/labels';
+import { FINISHED, STATUS, selectionLabel } from '@/lib/labels';
 import { addDaysStr, dayMonthTH, thaiDate, timeTH, weekdayShortTH } from '@/lib/time';
 import { DatePickerButton } from './date-picker-button';
-import { toSeed } from '@/lib/live';
+import { isLive, toSeed } from '@/lib/live';
 import { CompassMark } from './icons';
 import { LiveCountBadge, LiveGoal, LiveMinute, LiveWatch } from './live';
 import { TeamLogo } from './primitives';
@@ -13,7 +13,8 @@ import { TeamLogo } from './primitives';
 // Shared by the home page and /matches. White surface, light-grey cards.
 
 const noon = (d: string) => `${d}T12:00:00+07:00`;
-const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย' };
+// INT/SUSP reach this only once past the live window (see isLive)
+const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย', INT: 'หยุด', SUSP: 'หยุด' };
 const DONE: Record<string, string> = { FT: 'จบ', AET: 'ต่อเวลา', PEN: 'จุดโทษ' };
 
 /** Band that holds the scoreboard (full width, content centred). `wide` makes room for a sidebar from `lg`. */
@@ -140,7 +141,7 @@ function Divider({ label }: { label: string }) {
 }
 
 function MatchCard({ m }: { m: MatchRow }) {
-  const live = LIVE.includes(m.status_short);
+  const live = isLive(m.status_short, m.kickoff_at);
   const finished = FINISHED.includes(m.status_short);
   const off = OFF[m.status_short];
   const showScore = live || finished;

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { SITE_NAME } from '@/lib/brand';
 import type { TickerMatch } from '@/lib/queries';
 import { IconArticle, IconCalendar, IconChart, IconChevronRight, CompassMark, IconHome, Logo } from './icons';
-import { LIVE, minuteLabel, phaseGroup, toSeed } from '@/lib/live';
+import { isLive, minuteLabel, phaseGroup, toSeed } from '@/lib/live';
 import { useLiveCount, useLiveMatch } from './live-provider';
 import { TeamLogo } from './primitives';
 
@@ -27,7 +27,7 @@ const isActive = (path: string, href: string) => (href === '/' ? path === '/' : 
  */
 export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & { clock: string }>; tickerLabel: string }) {
   const path = usePathname() ?? '/';
-  const live = useLiveCount(ticker.filter((m) => LIVE.includes(m.status_short)).length);
+  const live = useLiveCount(ticker.filter((m) => isLive(m.status_short, m.kickoff_at)).length);
   if (path.startsWith('/admin')) return <AdminBar />;
 
   return (
@@ -153,7 +153,7 @@ function ScoreStrip({ matches, label }: { matches: Array<TickerMatch & { clock: 
 /** One match on the strip; follows the live poller (minute, score, a brief highlight on a goal). */
 function StripItem({ m }: { m: TickerMatch & { clock: string } }) {
   const { state, flash } = useLiveMatch(toSeed(m));
-  const g = phaseGroup(state.status_short);
+  const g = phaseGroup(state.status_short, m.kickoff_at);
   const live = g === 'live';
   const done = g === 'done';
   return (

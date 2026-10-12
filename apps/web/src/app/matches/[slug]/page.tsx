@@ -7,8 +7,8 @@ import { MatchPreviewCard } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { Badge, Card, Note } from '@/components/sheet';
 import { TeamLogo } from '@/components/ui';
-import { FINISHED, LIVE, odds, selectionLabel, toSelection } from '@/lib/labels';
-import { toSeed } from '@/lib/live';
+import { FINISHED, odds, selectionLabel, toSelection } from '@/lib/labels';
+import { isLive, toSeed } from '@/lib/live';
 import { matchBySlug, type FormRow } from '@/lib/queries';
 import { dateTimeTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
 
@@ -153,7 +153,7 @@ const OFF: Record<string, string> = { PST: 'เลื่อนการแข่
 
 function MatchHead({ d }: { d: Data }) {
   const m = d.match;
-  const live = LIVE.includes(m.status_short);
+  const live = isLive(m.status_short, m.kickoff_at);
   const showScore = d.finished || live;
   const seed = toSeed(m);
   return (

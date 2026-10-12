@@ -99,7 +99,7 @@ class LiveStore {
     for (const w of byId.values()) {
       const cur = this.entries.get(w.id)?.state;
       if (!cur) continue;
-      const g = phaseGroup(cur.status_short);
+      const g = phaseGroup(cur.status_short, w.kickoffAt);
       const key = `${w.id}:${g}`;
       if (g !== w.group && !this.refreshed.has(key)) {
         this.refreshed.add(key);
@@ -188,7 +188,7 @@ export function useLiveMatch(seed: LiveSeed): { state: LiveState; flash: boolean
   const { id, status_short, kickoff_at, home, away } = seed;
   useEffect(() => {
     if (!store) return;
-    return store.watch({ id, group: phaseGroup(status_short), status: status_short, kickoffAt: kickoff_at, home, away });
+    return store.watch({ id, group: phaseGroup(status_short, kickoff_at), status: status_short, kickoffAt: kickoff_at, home, away });
   }, [store, id, status_short, kickoff_at, home, away]);
   const polled = store?.get(id);
   return { state: polled ?? seed, flash: store?.isFlashing(id) ?? false };

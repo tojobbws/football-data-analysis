@@ -3,7 +3,7 @@ import type { OutcomeDistribution } from '@fp/analysis';
 import { webEnv } from './env';
 import { db } from './supabase';
 import { FINISHED, LIVE, type Status } from './labels';
-import type { LiveSnapshot, LiveState } from './live';
+import { liveSince, type LiveSnapshot, type LiveState } from './live';
 import { addDaysStr, footballDayRange, thaiDate, thaiDayRange } from './time';
 
 // ---------------------------------------------------------------------------
@@ -442,7 +442,7 @@ export async function tickerMatches(limit = 24): Promise<{ day: string | null; m
     const today = thaiDate();
     const { from, to } = thaiDayRange(today);
     const [live, day] = await Promise.all([
-      sb.from('fixtures').select(sel).in('league_id', leagues).in('status_short', LIVE).order('kickoff_at'),
+      sb.from('fixtures').select(sel).in('league_id', leagues).in('status_short', LIVE).gte('kickoff_at', liveSince()).order('kickoff_at'),
       sb.from('fixtures').select(sel).in('league_id', leagues).gte('kickoff_at', from).lt('kickoff_at', to).order('kickoff_at').limit(limit),
     ]);
     let rows = (day.data ?? []) as unknown as TickerMatch[];
@@ -471,7 +471,7 @@ export async function liveSnapshot(): Promise<LiveSnapshot> {
   const sb = db();
   const leagues = webEnv().leagues;
   const [live, done] = await Promise.all([
-    sb.from('fixtures').select(sel).in('league_id', leagues).in('status_short', LIVE),
+    sb.from('fixtures').select(sel).in('league_id', leagues).in('status_short', LIVE).gte('kickoff_at', liveSince(now.getTime())),
     sb
       .from('fixtures')
       .select(sel)
@@ -492,6 +492,7 @@ export async function liveMatches(): Promise<MatchRow[]> {
     .select(MATCH_SELECT)
     .in('league_id', webEnv().leagues)
     .in('status_short', LIVE)
+    .gte('kickoff_at', liveSince())
     .order('kickoff_at')
     .order('id');
   if (error) fail('fixtures', error);
