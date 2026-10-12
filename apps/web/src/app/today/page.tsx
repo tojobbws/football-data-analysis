@@ -4,26 +4,27 @@ import { MatchList } from '@/components/match-list';
 import { SignalCard } from '@/components/signal-card';
 import { Empty, Section } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
-import { latestArticles, matchDayCounts, matchesOnDay } from '@/lib/queries';
+import { latestArticles, matchDayCounts, matchesOnFootballDay } from '@/lib/queries';
 import { SITE_NAME, siteUrl } from '@/lib/site';
-import { addDaysStr, dayTH, thaiDate } from '@/lib/time';
+import { addDaysStr, dayTH, footballDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
 const noon = (d: string) => `${d}T12:00:00+07:00`;
 
 export async function generateMetadata(): Promise<Metadata> {
-  const date = dayTH(noon(thaiDate()));
+  const date = dayTH(noon(footballDate()));
   return {
     title: `วิเคราะห์บอลวันนี้ ${date} ทุกคู่`,
-    description: `วิเคราะห์บอลวันนี้ ${date} — โปรแกรมแข่ง ผลบอล ฟอร์ม xG ตัวเจ็บ แรงตลาด และ 🧭 เข็มทิศเกม คู่น่าจับตา จาก${SITE_NAME} บันทึกก่อนเตะทุกคู่`,
+    description: `วิเคราะห์บอลวันนี้ ${date} — โปรแกรมแข่ง ผลบอล ฟอร์ม xG ตัวเจ็บ แรงตลาด และเข็มทิศเกม คู่น่าจับตา จาก${SITE_NAME} บันทึกก่อนเตะทุกคู่`,
     alternates: { canonical: '/today' },
   };
 }
 
+/** "Today" is the football day (06:00 → 06:00 Thai time), like the home scoreboard: a 01:45 kickoff is tonight's match. */
 export default async function TodayPage() {
-  const today = thaiDate();
-  const [todays, counts, articles] = await Promise.all([matchesOnDay(today), matchDayCounts(addDaysStr(today, 1), 10), latestArticles(12)]);
+  const today = footballDate();
+  const [todays, counts, articles] = await Promise.all([matchesOnFootballDay(today), matchDayCounts(addDaysStr(today, 1), 10), latestArticles(12)]);
 
   // nothing today: show the next day that has matches, and say so
   let day = today;
@@ -32,12 +33,12 @@ export default async function TodayPage() {
     const next = [...counts.keys()].sort()[0];
     if (next) {
       day = next;
-      matches = await matchesOnDay(next);
+      matches = await matchesOnFootballDay(next);
     }
   }
   const picks = matches.filter((m) => m.compass?.kind === 'SIGNAL' && !FINISHED.includes(m.status_short));
   const leagues = [...new Set(matches.map((m) => m.league.name))];
-  const todaysArticles = articles.filter((a) => thaiDate(new Date(a.published_at)) === today);
+  const todaysArticles = articles.filter((a) => footballDate(new Date(a.published_at)) === today);
   const origin = await siteUrl();
 
   const jsonLd = {

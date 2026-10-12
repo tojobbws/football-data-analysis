@@ -5,7 +5,7 @@ import { webEnv } from './env';
 import { db } from './supabase';
 import { FINISHED, LIVE, type Status } from './labels';
 import { liveSince, type LiveSnapshot, type LiveState } from './live';
-import { addDaysStr, footballDayRange, thaiDate, thaiDayRange } from './time';
+import { addDaysStr, footballDate, footballDayRange, thaiDate, thaiDayRange } from './time';
 
 // ---------------------------------------------------------------------------
 // Types (what the pages render)
@@ -122,12 +122,7 @@ async function compassFor(fixtureIds: number[]): Promise<Map<number, Compass>> {
 // Matches
 // ---------------------------------------------------------------------------
 
-export async function matchesOnDay(date: string): Promise<MatchRow[]> {
-  const { from, to } = thaiDayRange(date);
-  return matchesBetween(from, to);
-}
-
-/** Matches of one football day (06:00 → 06:00 Thai time) — the scoreboard views. */
+/** Matches of one football day (06:00 → 06:00 Thai time) — the scoreboard views and /today. */
 export async function matchesOnFootballDay(date: string): Promise<MatchRow[]> {
   const { from, to } = footballDayRange(date);
   return matchesBetween(from, to);
@@ -150,15 +145,15 @@ async function matchesBetween(from: string, to: string): Promise<MatchRow[]> {
 }
 
 /** Next days that have matches (for the date strip), starting at `date`. */
+/** Matches per football day (06:00 → 06:00 Thai time) for `days` football days from `fromDate`. */
 export async function matchDayCounts(fromDate: string, days: number): Promise<Map<string, number>> {
-  const { from } = thaiDayRange(fromDate);
+  const { from } = footballDayRange(fromDate);
   const to = new Date(new Date(from).getTime() + days * 86_400_000).toISOString();
   const { data, error } = await db().from('fixtures').select('kickoff_at').in('league_id', webEnv().leagues).gte('kickoff_at', from).lt('kickoff_at', to);
   if (error) fail('fixtures', error);
   const out = new Map<string, number>();
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' });
   for (const r of data ?? []) {
-    const d = fmt.format(new Date(r.kickoff_at as string));
+    const d = footballDate(new Date(r.kickoff_at as string));
     out.set(d, (out.get(d) ?? 0) + 1);
   }
   return out;
