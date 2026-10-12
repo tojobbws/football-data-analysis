@@ -77,21 +77,11 @@ export function SignalCard({ s }: { s: SignalCardData }) {
 
       {model != null && market != null ? (
         <div className="mt-4">
+          <p className="mb-1.5 text-right text-xs">
+            <span className="text-white/65">ส่วนต่าง </span>
+            <b className="font-semibold tabular-nums">{edge! > 0 ? '+' : ''}{edge} จุด</b>
+          </p>
           <EdgeMeter model={model} market={market} />
-          <dl className="mt-2 grid grid-cols-3 text-xs">
-            <div>
-              <dt className="text-white/65">โมเดล</dt>
-              <dd className="font-semibold tabular-nums text-[var(--color-compass-bright)]">{pct(model)}</dd>
-            </div>
-            <div className="text-center">
-              <dt className="text-white/65">ตลาด</dt>
-              <dd className="font-semibold tabular-nums">{pct(market)}</dd>
-            </div>
-            <div className="text-right">
-              <dt className="text-white/65">ส่วนต่าง</dt>
-              <dd className="font-semibold tabular-nums">{edge! > 0 ? '+' : ''}{edge} จุด</dd>
-            </div>
-          </dl>
         </div>
       ) : null}
 
@@ -123,14 +113,37 @@ export function SignalCard({ s }: { s: SignalCardData }) {
 }
 
 /** 0–100% track: the market's share in grey, the model's extra (the edge) in compass amber. */
+/**
+ * Grey fill = market, white tick = model, gold = the gap between them. Each label sits under its
+ * own mark: the lower one ends at its mark, the higher one starts at it, so they never overlap.
+ */
 function EdgeMeter({ model, market }: { model: number; market: number }) {
   const lo = Math.min(model, market) * 100;
   const hi = Math.max(model, market) * 100;
+  const label = (k: string, p: number, tone = '') => (
+    <>
+      <dt className="text-white/65">{k}</dt>
+      <dd className={`font-semibold tabular-nums ${tone}`}>{pct(p)}</dd>
+    </>
+  );
+  const modelLabel = label('โมเดล', model, 'text-[var(--color-compass-bright)]');
+  const marketLabel = label('ตลาด', market);
   return (
-    <div className="relative h-2 rounded-full bg-white/10" aria-hidden>
-      <span className="absolute inset-y-0 left-0 rounded-full bg-white/30" style={{ width: `${market * 100}%` }} />
-      <span className="absolute inset-y-0 rounded-r-full bg-[var(--color-compass-bright)]" style={{ left: `${lo}%`, width: `${hi - lo}%` }} />
-      <span className="absolute -top-1 h-4 w-0.5 -translate-x-1/2 rounded-full bg-white" style={{ left: `${model * 100}%` }} />
-    </div>
+    <>
+      <div className="relative h-2 rounded-full bg-white/10" aria-hidden>
+        <span className="absolute inset-y-0 left-0 rounded-full bg-white/30" style={{ width: `${market * 100}%` }} />
+        <span className="absolute inset-y-0 rounded-r-full bg-[var(--color-compass-bright)]" style={{ left: `${lo}%`, width: `${hi - lo}%` }} />
+        <span className="absolute -top-1 h-4 w-0.5 -translate-x-1/2 rounded-full bg-white" style={{ left: `${model * 100}%` }} />
+      </div>
+      {/* clamp keeps a label near either end inside the card */}
+      <dl className="relative mt-2 h-8 text-xs leading-4">
+        <div className="absolute top-0 whitespace-nowrap text-right" style={{ right: `clamp(0%, ${100 - lo}%, calc(100% - 3rem))` }}>
+          {model < market ? modelLabel : marketLabel}
+        </div>
+        <div className="absolute top-0 whitespace-nowrap" style={{ left: `clamp(0%, ${hi}%, calc(100% - 3rem))` }}>
+          {model < market ? marketLabel : modelLabel}
+        </div>
+      </dl>
+    </>
   );
 }
