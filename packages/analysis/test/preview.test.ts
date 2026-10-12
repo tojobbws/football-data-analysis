@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assessDataSupport,
   buildTemplateText,
+  goalBands,
   matrixExpectedGoals,
   previewScoreMatrix,
   previewStageFor,
@@ -9,6 +10,7 @@ import {
   type PreviewFacts,
   type PreviewTeam,
 } from '../src/preview.js';
+import { priceSelection } from '../src/markets.js';
 
 const team = (name: string, over: Partial<PreviewTeam> = {}): PreviewTeam => ({
   name,
@@ -87,6 +89,29 @@ describe('scorelines', () => {
     const blended = matrixExpectedGoals(previewScoreMatrix({ lambda: 1.0, mu: 1.0, rho: 0, crossLeague: { lambda: 2.0, mu: 0.5, weightCupOnly: 0.5 } }));
     expect(blended.home).toBeGreaterThan(cupOnly.home);
     expect(blended.away).toBeLessThan(cupOnly.away);
+  });
+});
+
+describe('goalBands', () => {
+  it('splits total goals into 0-1 / 2 / 3+, summing to 1', () => {
+    const b = goalBands(previewScoreMatrix({ lambda: 1.7, mu: 1.0, rho: -0.05 }));
+    expect(b.upTo1 + b.two + b.threePlus).toBeCloseTo(1, 9);
+    for (const p of [b.upTo1, b.two, b.threePlus]) expect(p).toBeGreaterThan(0);
+  });
+
+  it('3+ can be the likeliest band while the top scoreline is a low score (Liverpool–City, xG 1.48–1.57)', () => {
+    const matrix = previewScoreMatrix({ lambda: 1.48, mu: 1.57, rho: -0.05 });
+    const b = goalBands(matrix);
+    expect(topScorelines(matrix, 1)[0]!.home + topScorelines(matrix, 1)[0]!.away).toBeLessThanOrEqual(2);
+    expect(b.threePlus).toBeGreaterThan(0.5);
+    expect(b.threePlus).toBeGreaterThan(b.two);
+    expect(b.threePlus).toBeGreaterThan(b.upTo1);
+  });
+
+  it('3+ equals over 2.5 priced from the same matrix', () => {
+    const matrix = previewScoreMatrix({ lambda: 1.3, mu: 1.1, rho: -0.08 });
+    const over = priceSelection(matrix, { market: 'OVER_UNDER', selection: 'OVER', line: 2.5 });
+    expect(goalBands(matrix).threePlus).toBeCloseTo(over.probability, 6);
   });
 });
 

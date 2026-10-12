@@ -55,11 +55,15 @@ Everything on a match page besides the Game Compass — preview, model outlook, 
 _Avoid_: prediction, tip (for anything that is not the pick)
 
 **Most likely scoreline**:
-The single exact score the model rates highest; usually well under 20%, so "some other score" is far more likely.
+The single exact score the model rates highest; usually well under 20%, so "some other score" is far more likely. A secondary detail under the goal bands, never the headline: a low score like 1–1 can top the list while 3+ goals is the likelier band.
 _Avoid_: predicted score, สกอร์คาดการณ์
 
 **Gated-off market**:
-A market whose model is not enabled for picks (not yet back-tested, or failed it); it can't produce a pick, and its figures stay off fan pages.
+A market whose model is not enabled for picks (not yet back-tested, or failed it); it can't produce a pick. Its figures may appear in the model outlook of a league whose side model is tested, always with a quiet "being measured" note, never anywhere else on fan pages.
+
+**Goal band**:
+A range of total goals in the match — 0–1, 2, 3 or more — with the model's chance of each; the headline of the preview's score section, because it lines up with over/under where a single scoreline does not. Recorded with the preview, so its "3 or more" may differ a little from the model outlook's "over 2.5", which can be computed at another time; each shows when it was computed.
+_Avoid_: predicted goals
 
 **Match phase**:
 Where the match itself stands — upcoming, live, or finished. Fan pages describe an unsettled pick by its match phase, not by the bare fact that it is unsettled.

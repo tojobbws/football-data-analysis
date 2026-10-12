@@ -11,7 +11,7 @@
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.4';
+export const PREVIEW_VERSION = 'preview-v0.5';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -149,6 +149,27 @@ export function topScorelines(matrix: number[][], n = 3): Array<{ home: number; 
   const all: Array<{ home: number; away: number; p: number }> = [];
   matrix.forEach((row, home) => row.forEach((p, away) => all.push({ home, away, p })));
   return all.sort((a, b) => b.p - a.p || a.home + a.away - (b.home + b.away)).slice(0, n);
+}
+
+/** Chance of each goal band (total goals 0–1, 2, 3+); 3+ is over 2.5 of the same matrix. */
+export interface GoalBands {
+  upTo1: number;
+  two: number;
+  threePlus: number;
+}
+
+/**
+ * Goal bands of the blended matrix. Stored with the preview for the card only, never put in the
+ * facts the AI sees: 3+ is the over 2.5 figure, which the AI once wrote up as an over lean.
+ */
+export function goalBands(matrix: number[][]): GoalBands {
+  const sum = [0, 0, 0];
+  matrix.forEach((row, h) => row.forEach((p, a) => {
+    const goals = h + a;
+    sum[goals <= 1 ? 0 : goals === 2 ? 1 : 2]! += p;
+  }));
+  const total = sum[0]! + sum[1]! + sum[2]!;
+  return { upTo1: sum[0]! / total, two: sum[1]! / total, threePlus: sum[2]! / total };
 }
 
 /** Expected goals of the blended matrix (= what the scorelines are drawn from). */

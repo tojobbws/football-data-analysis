@@ -50,6 +50,10 @@ export interface MatchPreview {
   p_home: number | null;
   p_draw: number | null;
   p_away: number | null;
+  /** goal bands (total goals 0–1 / 2 / 3+); null on previews written before preview-v0.5 */
+  p_goals_0_1: number | null;
+  p_goals_2: number | null;
+  p_goals_3plus: number | null;
   overview_th: string;
   home_th: string;
   away_th: string;
@@ -58,7 +62,8 @@ export interface MatchPreview {
 }
 
 const PREVIEW_SELECT = `fixture_id, stage, text_source, ai_status, data_support, data_notes, predicted_home, predicted_away, predicted_p,
-  expected_home, expected_away, p_home, p_draw, p_away, overview_th, home_th, away_th, score_th, created_at`;
+  expected_home, expected_away, p_home, p_draw, p_away, overview_th, home_th, away_th, score_th, created_at,
+  p_goals_0_1, p_goals_2, p_goals_3plus`;
 
 async function previewsFor(fixtureIds: number[]): Promise<Map<number, MatchRow['preview']>> {
   const out = new Map<number, MatchRow['preview']>();

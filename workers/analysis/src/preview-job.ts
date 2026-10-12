@@ -19,11 +19,13 @@ import {
   buildTemplateText,
   DIXON_COLES_VERSION,
   formSummary,
+  goalBands,
   matrixExpectedGoals,
   PREVIEW_VERSION,
   previewScoreMatrix,
   previewStageFor,
   topScorelines,
+  type GoalBands,
   type PreviewFacts,
   type PreviewFormRow,
   type PreviewModel,
@@ -72,7 +74,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
       const prev = await ctx.repo.previewAttempts(f.id, stage, opts.refresh ? PREVIEW_VERSION : undefined);
       if (prev.aiOk || (!writer && prev.attempts > 0) || prev.attempts >= MAX_ATTEMPTS_PER_STAGE) continue;
 
-      const facts = await collectFacts(ctx, f, stage);
+      const { facts, bands } = await collectFacts(ctx, f, stage);
       const support = assessDataSupport(facts);
       const template = buildTemplateText(facts, support);
       const input: Record<string, unknown> = { ...facts, data_support: { level: support.level, notes_th: support.notes } };
@@ -123,6 +125,9 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
           p_home: m ? r4(m.p.home) : null,
           p_draw: m ? r4(m.p.draw) : null,
           p_away: m ? r4(m.p.away) : null,
+          p_goals_0_1: bands ? r4(bands.upTo1) : null,
+          p_goals_2: bands ? r4(bands.two) : null,
+          p_goals_3plus: bands ? r4(bands.threePlus) : null,
           overview_th: text.overview_th,
           home_th: text.home_th,
           away_th: text.away_th,
@@ -150,7 +155,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
 
 type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[number];
 
-async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<PreviewFacts> {
+async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<{ facts: PreviewFacts; bands: GoalBands | null }> {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
   const [formHome, formAway, standings, injuries, lineup, probs, apiPred, h2h, qHome, qDraw, qAway] = await Promise.all([
     ctx.repo.teamForm(f.homeTeamId, f.kickoffAt),
@@ -181,6 +186,8 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
     | undefined;
 
   let model: PreviewModel | null = null;
+  // card only, kept out of the facts the AI sees (see goalBands)
+  let bands: GoalBands | null = null;
   if (inputs && dc.length) {
     const ensemble = probs.filter((p) => p.modelVersionId === ENSEMBLE_VERSION && p.market === 'MATCH_WINNER');
     const oneXTwo = ensemble.length === 3 ? ensemble : dc.filter((p) => p.market === 'MATCH_WINNER');
@@ -192,6 +199,7 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
       crossLeague: inputs.crossLeague ? { lambda: Number(inputs.crossLeague.lambda), mu: Number(inputs.crossLeague.mu), weightCupOnly: Number(inputs.crossLeague.weightCupOnly) } : null,
     });
     const eg = matrixExpectedGoals(matrix);
+    bands = goalBands(matrix);
     model = {
       modelVersionId: ensemble.length === 3 ? ENSEMBLE_VERSION : DIXON_COLES_VERSION,
       computedAt: dc[0]!.computedAt.toISOString(),
@@ -231,7 +239,7 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
   const quote = (q: Awaited<ReturnType<JobContext['repo']['selectionMovement']>>) => (q && q.bookmakers >= 2 ? { opening: q.opening, current: q.current, bookmakers: q.bookmakers } : null);
   const market = qHome || qDraw || qAway ? { home: quote(qHome), draw: quote(qDraw), away: quote(qAway) } : null;
 
-  return {
+  const facts: PreviewFacts = {
     fixture: {
       home: header.home,
       away: header.away,
@@ -256,4 +264,5 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
       : null,
     h2h,
   };
+  return { facts, bands };
 }

@@ -134,10 +134,13 @@ describe('matchPreviewJob', () => {
     expect(writer.calls).toBe(3);
 
     const a = await one(`select * from match_previews where fixture_id = 101`);
-    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: 'preview-ai-v0.4', version: 'preview-v0.4', predicted_home: 1, predicted_away: 0 });
+    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: 'preview-ai-v0.5', version: 'preview-v0.5', predicted_home: 1, predicted_away: 0 });
     expect(a.overview_th).toContain('50%');
     expect(Number(a.p_home)).toBe(0.5); // ensemble, like 📊 มุมมองโมเดล
     expect(Number(a.expected_home)).toBeCloseTo(1.6, 1);
+    // goal bands from the same matrix, stored for the card
+    expect(Number(a.p_goals_0_1) + Number(a.p_goals_2) + Number(a.p_goals_3plus)).toBeCloseTo(1, 3);
+    expect(Number(a.p_goals_3plus)).toBeGreaterThan(0);
     // both teams have fewer than 5 recent results in the DB -> LIMITED; no odds is a minor note
     expect(a.data_notes).toEqual([expect.stringContaining('Home A มีผลการแข่งขันล่าสุดในระบบเพียง 4 นัด'), expect.stringContaining('Away A มีผลการแข่งขันล่าสุดในระบบเพียง 3 นัด'), expect.stringContaining('ไม่มีราคาตลาด')]);
 
@@ -151,6 +154,8 @@ describe('matchPreviewJob', () => {
     expect((seen.h2h as unknown[]).length).toBe(2);
     expect((seen.model as { scorelines: unknown[] }).scorelines).toHaveLength(3);
     expect((seen.data_support as { level: string }).level).toBe('LIMITED');
+    // the AI never sees the goal bands (3+ is over 2.5, once written up as an over lean)
+    expect(JSON.stringify(seen)).not.toMatch(/threePlus|upTo1|p_goals/);
 
     const b = await one(`select * from match_previews where fixture_id = 102`);
     expect(b).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'INVALID', data_support: 'THIN' });
