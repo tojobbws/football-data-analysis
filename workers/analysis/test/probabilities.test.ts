@@ -192,7 +192,7 @@ describe('candidate generator job (Phase 5)', () => {
     expect(Number(latest.edge)).toBeGreaterThan(0.03);
     expect(latest.strength).toBe('LEAN'); // gate z unknown (0) in this fixture -> capped at LEAN
     // the shadow rules ran on the same inputs and kept their decision aside
-    const shadow = await q(`select rules_version, outcome, passed from shadow_decisions where fixture_id = 9001`);
+    const shadow = await q(`select rules_version, outcome, passed from shadow_decisions where fixture_id = 9001 and publish_round = 'LATEST'`);
     expect(shadow).toHaveLength(1);
     expect(shadow[0]!.rules_version).toBe(SHADOW_RULES.version);
   });
@@ -312,6 +312,11 @@ describe('publish (Phase 6)', () => {
     expect(String(lu.reason)).toContain('🧭 เข็มทิศเกม: Team 1 -1.25');
     expect(String(lu.reason)).toContain('ปรับตามผู้เล่นที่ขาดแล้ว');
     expect(lu.status).toBe('PENDING');
+
+    // shadow trial: the shadow pick of the same round is locked beside it, under the same conditions
+    const locked = await q(`select publish_round, locked_at from shadow_decisions where fixture_id = 9001 and rules_version = '${SHADOW_RULES.version}' and publish_round = 'LINEUP'`);
+    expect(locked).toHaveLength(1);
+    expect(locked[0]!.locked_at).not.toBeNull();
 
     const snap = (await q(`select lineup_snapshot from analysis_snapshots where analysis_prediction_id = ${lu.id}`))[0]!;
     expect(snap.lineup_snapshot as unknown[]).toHaveLength(22);

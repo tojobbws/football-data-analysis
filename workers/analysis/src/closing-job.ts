@@ -3,8 +3,10 @@
  * snapshots it comes from expire (ADR 0002). Per match: the 1X2 and the main AH and O/U line,
  * each side with its median closing odds, no-vig probability, and the model probability the last
  * pre-kickoff candidates run used. Lets model-vs-market be measured over the whole history.
+ * Also fills in the closing odds and CLV of locked shadow picks (shadow trial, ADR 0003), the same
+ * way settlement does for real picks.
  */
-import { closingMarket } from '@fp/analysis';
+import { closingLineValue, closingMarket } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 
 const lineKey = (x: number | null) => (x === null ? '' : String(Math.round(x * 4) / 4));
@@ -39,7 +41,14 @@ export function closingJob(ctx: JobContext) {
         }),
       );
     }
-    ctx.log.info('closing market recorded', { fixtures: fixtures.length, rows: written, noQuotes });
+    let shadowClv = 0;
+    for (const s of await ctx.repo.shadowPicksNeedingClosing()) {
+      const c = closingLineValue(s.odds, await ctx.repo.closingOdds(s.fixtureId, s.market, s.selection, s.line));
+      if (!c) continue;
+      await ctx.repo.setShadowClosing(s.fixtureId, s.rulesVersion, s.round, c.closingOdds, c.clv);
+      shadowClv++;
+    }
+    ctx.log.info('closing market recorded', { fixtures: fixtures.length, rows: written, noQuotes, shadowClv });
     return written;
   });
 }

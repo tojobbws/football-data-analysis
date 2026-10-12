@@ -107,22 +107,35 @@ describe('closing market', () => {
   });
 });
 
-describe('shadow report', () => {
-  it('tallies the shadow picks of kicked-off matches by side and settles finished ones', async () => {
+describe('shadow trial', () => {
+  const shadow = (fixture: number, round: string, sel: string | null, line: number | null, odds: number | null = null) =>
+    db.query(
+      `insert into shadow_decisions (fixture_id, rules_version, publish_round, locked_at, evaluated_at, outcome, market, selection, line, odds, passed)
+       values ($1, 'shadow-test', $2, now(), $3, $4, $5, $6, $7, $8, 1)`,
+      [fixture, round, at(-1), sel ? 'SIGNAL' : 'NO_CLEAR_SIGNAL', sel ? 'ASIAN_HANDICAP' : null, sel, line, odds],
+    );
+
+  it('a locked shadow pick is immutable except for filling in closing odds and CLV once', async () => {
+    await shadow(201, 'LINEUP', 'HOME', -0.5, 2.0);
+    await expect(db.query(`update shadow_decisions set selection = 'AWAY' where fixture_id = 201 and publish_round = 'LINEUP'`)).rejects.toThrow(/immutable/);
+    await expect(db.query(`delete from shadow_decisions where fixture_id = 201 and publish_round = 'LINEUP'`)).rejects.toThrow(/immutable/);
+    // closing job: median of the last pre-kickoff quotes for Home -0.5 is 1.95 -> clv 2.0/1.95 - 1
+    await closingJob(ctx);
+    const row = (await db.query<Record<string, unknown>>(`select closing_odds, clv from shadow_decisions where fixture_id = 201 and publish_round = 'LINEUP'`)).rows[0]!;
+    expect(Number(row.closing_odds)).toBe(1.95);
+    expect(Number(row.clv)).toBeCloseTo(2.0 / 1.95 - 1, 4);
+    await expect(db.query(`update shadow_decisions set clv = 0.5 where fixture_id = 201 and publish_round = 'LINEUP'`)).rejects.toThrow(/immutable/);
+  });
+
+  it('reports sides, results and CLV by round and keeps collecting below the minimum', async () => {
     await db.query(`update fixtures set status_short = 'FT', ft_home = 1, ft_away = 1 where id = 202`);
-    const shadow = (fixture: number, outcome: string, sel: string | null, line: number | null) =>
-      db.query(
-        `insert into shadow_decisions (fixture_id, rules_version, evaluated_at, outcome, market, selection, line, passed)
-         values ($1, 'shadow-test', $2, $3, $4, $5, $6, 1)`,
-        [fixture, at(-1), outcome, sel ? 'ASIAN_HANDICAP' : null, sel, line],
-      );
-    await shadow(201, 'SIGNAL', 'HOME', -0.5); // still playing
-    await shadow(202, 'SIGNAL', 'AWAY', 0.5); // 1-1 -> away +0.5 wins
+    await shadow(202, 'LINEUP', 'AWAY', 0.5); // 1-1 -> away +0.5 wins
+    await shadow(202, 'EARLY', null, null);
     const r = await shadowReport(ctx, { rulesVersion: 'shadow-test' });
-    expect(r.matches).toBe(2);
-    expect(r.shadow).toEqual([
-      { side: 'AH ต่อ', picks: 1, win: 0, halfWin: 0, push: 0, halfLoss: 0, loss: 0, open: 1 },
-      { side: 'AH รอง', picks: 1, win: 1, halfWin: 0, push: 0, halfLoss: 0, loss: 0, open: 0 },
-    ]);
+    const lineup = r.rounds.find((x) => x.round === 'LINEUP')!;
+    expect(lineup.shadow).toMatchObject({ picks: 2, settled: 1, fairHitRate: 1, clvN: 1, sides: { 'AH ต่อ': 1, 'AH รอง': 1 } });
+    expect(r.rounds.find((x) => x.round === 'EARLY')!.shadow.picks).toBe(0);
+    expect(r.noClearSignal).toBe(0);
+    expect(r.verdict).toBe('COLLECTING');
   });
 });

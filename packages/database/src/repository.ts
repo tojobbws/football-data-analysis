@@ -1047,17 +1047,71 @@ export class Repository {
     }));
   }
 
-  /** Latest pre-kickoff decision of a shadow rules version (overwritten on each evaluation). */
+  /** The latest evaluation of a shadow rules version (one LATEST row per match, overwritten each time). */
   upsertShadowDecision(row: Row) {
-    return writeRows(this.db, 'shadow_decisions', [row], { conflict: ['fixture_id', 'rules_version'], update: 'all' });
+    return writeRows(this.db, 'shadow_decisions', [{ ...row, publish_round: 'LATEST' }], { conflict: ['fixture_id', 'rules_version', 'publish_round'], update: 'all' });
   }
 
-  /** Shadow decisions of matches that have kicked off, with the match state needed to settle them. */
+  async latestShadowEvaluation(fixtureId: number, rulesVersion: string): Promise<Date | null> {
+    const res = await this.db.query<{ evaluated_at: string | Date }>(
+      `select evaluated_at from shadow_decisions where fixture_id = $1 and rules_version = $2 and publish_round = 'LATEST'`,
+      [fixtureId, rulesVersion],
+    );
+    const t = res.rows[0]?.evaluated_at;
+    return t ? new Date(t) : null;
+  }
+
+  /** Lock the LATEST shadow evaluation as the shadow pick of a publish round (once; DB trigger keeps it). */
+  async lockShadowDecision(fixtureId: number, rulesVersion: string, round: string): Promise<boolean> {
+    const res = await this.db.query<{ fixture_id: string | number }>(
+      `insert into shadow_decisions (fixture_id, rules_version, publish_round, locked_at, evaluated_at, outcome, market, selection, line, odds,
+                                     model_probability, bias, market_probability, edge, strength, passed)
+       select fixture_id, rules_version, $3, now(), evaluated_at, outcome, market, selection, line, odds,
+              model_probability, bias, market_probability, edge, strength, passed
+         from shadow_decisions where fixture_id = $1 and rules_version = $2 and publish_round = 'LATEST'
+       on conflict do nothing returning fixture_id`,
+      [fixtureId, rulesVersion, round],
+    );
+    return res.rows.length > 0;
+  }
+
+  async isShadowLocked(fixtureId: number, rulesVersion: string, round: string): Promise<boolean> {
+    const res = await this.db.query('select 1 from shadow_decisions where fixture_id = $1 and rules_version = $2 and publish_round = $3', [fixtureId, rulesVersion, round]);
+    return res.rows.length > 0;
+  }
+
+  /** Locked shadow picks of matches that kicked off in the last 8 days and have no closing odds yet. */
+  async shadowPicksNeedingClosing() {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select s.fixture_id, s.rules_version, s.publish_round, s.market, s.selection, s.line, s.odds
+         from shadow_decisions s join fixtures f on f.id = s.fixture_id
+        where s.publish_round <> 'LATEST' and s.outcome = 'SIGNAL' and s.closing_odds is null
+          and f.kickoff_at < now() and f.kickoff_at > now() - interval '8 days'`,
+    );
+    return res.rows.map((r) => ({
+      fixtureId: Number(r.fixture_id),
+      rulesVersion: String(r.rules_version),
+      round: String(r.publish_round),
+      market: String(r.market),
+      selection: String(r.selection),
+      line: r.line == null ? null : Number(r.line),
+      odds: r.odds == null ? null : Number(r.odds),
+    }));
+  }
+
+  async setShadowClosing(fixtureId: number, rulesVersion: string, round: string, closingOdds: number, clv: number | null) {
+    await this.db.query(
+      `update shadow_decisions set closing_odds = $4, clv = $5 where fixture_id = $1 and rules_version = $2 and publish_round = $3`,
+      [fixtureId, rulesVersion, round, closingOdds, clv],
+    );
+  }
+
+  /** Locked shadow decisions of matches that have kicked off, with the match state needed to settle them. */
   async shadowDecisionsToReview(rulesVersion: string) {
     const res = await this.db.query<Record<string, unknown>>(
       `select s.*, f.kickoff_at, f.status_short, f.ft_home, f.ft_away, f.goals_home, f.goals_away, f.synced_at
          from shadow_decisions s join fixtures f on f.id = s.fixture_id
-        where s.rules_version = $1 and f.kickoff_at < now()
+        where s.rules_version = $1 and s.publish_round <> 'LATEST' and f.kickoff_at < now()
         order by f.kickoff_at`,
       [rulesVersion],
     );
@@ -1067,11 +1121,18 @@ export class Repository {
   /** Published picks of matches that kicked off since `since` (to set beside a shadow rules version). */
   async publishedPicksSince(since: Date) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select p.market, p.selection, p.line, p.status from analysis_predictions p join fixtures f on f.id = p.fixture_id
+      `select p.publish_round, p.market, p.selection, p.line, p.status, p.clv from analysis_predictions p join fixtures f on f.id = p.fixture_id
         where p.kind = 'SIGNAL' and f.kickoff_at >= $1 and f.kickoff_at < now()`,
       [since.toISOString()],
     );
-    return res.rows.map((r) => ({ market: String(r.market), selection: String(r.selection), line: r.line == null ? null : Number(r.line), status: String(r.status) }));
+    return res.rows.map((r) => ({
+      round: String(r.publish_round),
+      market: String(r.market),
+      selection: String(r.selection),
+      line: r.line == null ? null : Number(r.line),
+      status: String(r.status),
+      clv: r.clv == null ? null : Number(r.clv),
+    }));
   }
 
   /** Write-once: a match's closing market is never changed. */

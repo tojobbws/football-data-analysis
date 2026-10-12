@@ -52,11 +52,23 @@ async function main() {
     else if (job === 'closing') await closingJob(ctx);
     else if (job === 'shadow-report') {
       const r = await shadowReport(ctx);
-      console.log(`${r.version}: ${r.matches} matches since ${r.since.toISOString().slice(0, 10)}, ${r.noClearSignal} without a pick`);
-      console.log('shadow rules');
-      console.table(r.shadow);
-      console.log('real picks, same period');
-      console.table(r.real);
+      const pct = (x: number | null) => (x === null ? '-' : `${(x * 100).toFixed(1)}%`);
+      console.log(`shadow trial ${r.version} since ${r.since.toISOString().slice(0, 10)} — verdict: ${r.verdict}`);
+      console.log(`criteria: ${JSON.stringify(r.criteria)} · CLV diff ${pct(r.clvDiff)} ± ${pct(r.clvSe)} (SE)`);
+      console.table(
+        r.rounds.flatMap((x) =>
+          (['shadow', 'real'] as const).map((who) => ({
+            round: x.round,
+            rules: who,
+            picks: x[who].picks,
+            settled: x[who].settled,
+            fairHitRate: pct(x[who].fairHitRate),
+            clvN: x[who].clvN,
+            clvMean: pct(x[who].clvMean),
+            sides: JSON.stringify(x[who].sides),
+          })),
+        ),
+      );
     }
     else if (job === 'ai-shadow') await aiShadowJob(ctx);
     else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, refresh: values.refresh });

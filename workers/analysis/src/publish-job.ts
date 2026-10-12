@@ -10,13 +10,15 @@
  *   LINEUP — 15–80 min before kickoff, after confirmed lineups (Player Impact uses real lineups)
  * 🌫️ NO_CLEAR_SIGNAL is published too: coverage and honesty count as much as hits.
  */
-import { buildReason, DEFAULT_RULES, IMPACT_VERSION, publishRoundFor, selectionLabel, type MissingPlayer, type OutcomeDistribution, type PublishRound } from '@fp/analysis';
+import { buildReason, DEFAULT_RULES, IMPACT_VERSION, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PublishRound } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours } from '@fp/shared';
 
 export interface PublishOptions {
   now?: Date;
   rulesVersion?: string;
+  /** shadow trial: lock this shadow rules version's pick at each round too (null = off) */
+  shadowRulesVersion?: string | null;
   /** decision must be at most this old (minutes) */
   maxRunAgeMinutes?: Partial<Record<PublishRound, number>>;
 }
@@ -25,6 +27,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;
   const rulesVersion = opts.rulesVersion ?? DEFAULT_RULES.version;
   const maxAge = { EARLY: 240, LINEUP: 75, ...opts.maxRunAgeMinutes };
+  const shadowVersion = opts.shadowRulesVersion === undefined ? SHADOW_RULES.version : opts.shadowRulesVersion;
   return runJob(ctx, 'publish', { leagues, rulesVersion }, async () => {
     const now = opts.now ?? new Date();
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, 24).toISOString());
@@ -36,6 +39,15 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
       const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
       const round = publishRoundFor(f.kickoffAt, now, hasLineups);
       if (!round) continue;
+
+      // Shadow trial (ADR 0003): lock the shadow pick of this round under the same conditions as a real pick.
+      if (shadowVersion && !(await ctx.repo.isShadowLocked(f.id, shadowVersion, round))) {
+        const evaluatedAt = await ctx.repo.latestShadowEvaluation(f.id, shadowVersion);
+        const lineupAt = round === 'LINEUP' ? await ctx.repo.lineupSyncedAt(f.id) : null;
+        if (evaluatedAt && now.getTime() - evaluatedAt.getTime() <= maxAge[round] * 60_000 && !(lineupAt && evaluatedAt < lineupAt)) {
+          await ctx.repo.lockShadowDecision(f.id, shadowVersion, round);
+        }
+      }
       if (await ctx.repo.isPublished(f.id, round)) continue;
 
       const run = await ctx.repo.latestRun(f.id, rulesVersion);

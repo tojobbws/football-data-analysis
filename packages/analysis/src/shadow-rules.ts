@@ -2,7 +2,7 @@
  * Shadow pick rules (never published): rules-v0.3 with the model's usual lean against the
  * market taken off first. The model is less sharp than the market, so its edge leans to whoever
  * gets the start (AH) and to unders (O/U) on almost every match; only a disagreement beyond that
- * usual lean should count. Measured beside the real rules by `model:shadow-report`.
+ * usual lean should count. Judged by the shadow trial (ADR 0003, `model:shadow-report`).
  */
 import { DEFAULT_RULES, type DecisionRules } from './candidates.js';
 
@@ -93,3 +93,65 @@ export const SHADOW_RULES: DecisionRules = {
   version: 'rules-v0.4-shadow',
   modelBias: MODEL_BIAS_2026_10_12,
 };
+
+/**
+ * Shadow trial (ADR 0003): criteria fixed before any result was seen. Judged on LINEUP-round picks,
+ * one per match; EARLY is reported beside it but never decides.
+ */
+export const SHADOW_TRIAL = {
+  rulesVersion: SHADOW_RULES.version,
+  round: 'LINEUP',
+  minPicks: 300,
+  extendTo: 600,
+  /** shadow mean CLV must beat the real rules' by more than this many standard errors */
+  clvZ: 2,
+  /** shadow fair hit rate may be at most this far below the real rules' */
+  maxFairDrop: 0.05,
+} as const;
+
+export interface TrialPick {
+  /** settled outcome; null = not settled yet, VOID never counts */
+  status: 'WIN' | 'HALF_WIN' | 'PUSH' | 'HALF_LOSS' | 'LOSS' | 'VOID' | null;
+  clv: number | null;
+}
+
+export interface TrialSide {
+  picks: number;
+  settled: number;
+  fairHitRate: number | null;
+  clvN: number;
+  clvMean: number | null;
+  clvSe: number | null;
+}
+
+export function trialSide(picks: readonly TrialPick[]): TrialSide {
+  const settled = picks.filter((p) => p.status && p.status !== 'VOID');
+  const n = (s: TrialPick['status']) => settled.filter((p) => p.status === s).length;
+  const up = n('WIN') + n('HALF_WIN') / 2;
+  const down = n('LOSS') + n('HALF_LOSS') / 2;
+  const clv = picks.map((p) => p.clv).filter((x): x is number => x !== null);
+  const mean = clv.length ? clv.reduce((a, b) => a + b, 0) / clv.length : null;
+  const se = clv.length >= 2 ? Math.sqrt(clv.reduce((a, x) => a + (x - mean!) ** 2, 0) / (clv.length - 1) / clv.length) : null;
+  return { picks: picks.length, settled: settled.length, fairHitRate: up + down > 0 ? up / (up + down) : null, clvN: clv.length, clvMean: mean, clvSe: se };
+}
+
+export type TrialVerdict = 'COLLECTING' | 'PASS' | 'EXTEND' | 'FAIL';
+
+/** COLLECTING below minPicks; then PASS when all criteria hold, else EXTEND until extendTo, then FAIL. */
+export function trialVerdict(shadow: TrialSide, real: TrialSide, t: typeof SHADOW_TRIAL = SHADOW_TRIAL) {
+  const clvDiff = shadow.clvMean !== null && real.clvMean !== null ? shadow.clvMean - real.clvMean : null;
+  const clvSe = shadow.clvSe !== null && real.clvSe !== null ? Math.sqrt(shadow.clvSe ** 2 + real.clvSe ** 2) : null;
+  const criteria = {
+    enoughPicks: shadow.settled >= t.minPicks,
+    clvBetter: clvDiff !== null && clvSe !== null && clvSe > 0 && clvDiff > t.clvZ * clvSe,
+    fairNotWorse: shadow.fairHitRate !== null && real.fairHitRate !== null && shadow.fairHitRate >= real.fairHitRate - t.maxFairDrop,
+  };
+  const verdict: TrialVerdict = !criteria.enoughPicks
+    ? 'COLLECTING'
+    : criteria.clvBetter && criteria.fairNotWorse
+      ? 'PASS'
+      : shadow.settled < t.extendTo
+        ? 'EXTEND'
+        : 'FAIL';
+  return { verdict, criteria, clvDiff, clvSe };
+}
