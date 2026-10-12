@@ -118,6 +118,43 @@ async function compassFor(fixtureIds: number[]): Promise<Map<number, Compass>> {
   return out;
 }
 
+/** A match's written preview as a card (home "บทวิเคราะห์ล่าสุด", /analysis). */
+export interface PreviewCard {
+  slug: string;
+  kickoff_at: string;
+  league: string;
+  home: string;
+  away: string;
+  overview_th: string;
+  data_support: DataSupport;
+}
+
+/**
+ * Matches that have a written preview: `upcoming` = kicking off from now, soonest first;
+ * `recent` = already kicked off, latest first. Only the leagues the site shows.
+ */
+export async function previewCards(when: 'upcoming' | 'recent', limit: number): Promise<PreviewCard[]> {
+  const now = new Date().toISOString();
+  let q = db().from('fixtures').select(MATCH_SELECT).in('league_id', webEnv().leagues);
+  q = when === 'upcoming' ? q.gte('kickoff_at', now).order('kickoff_at') : q.lt('kickoff_at', now).order('kickoff_at', { ascending: false });
+  const { data, error } = await q.limit(Math.max(60, limit * 4));
+  if (error) fail('fixtures', error);
+  const rows = (data ?? []) as unknown as MatchRow[];
+  const previews = await previewsFor(rows.map((r) => r.id));
+  return rows
+    .filter((r) => previews.get(r.id))
+    .slice(0, limit)
+    .map((r) => ({
+      slug: r.slug,
+      kickoff_at: r.kickoff_at,
+      league: r.league.name,
+      home: r.home.name,
+      away: r.away.name,
+      overview_th: previews.get(r.id)!.overview_th,
+      data_support: previews.get(r.id)!.data_support,
+    }));
+}
+
 // ---------------------------------------------------------------------------
 // Matches
 // ---------------------------------------------------------------------------

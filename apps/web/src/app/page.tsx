@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { COMPASS_LINE, CompassExplainer } from '@/components/compass-explainer';
-import { ArticleGrid, MoreLink, Rail, RailItem } from '@/components/home';
+import { ArticleGrid, MoreLink, PreviewGrid, Rail, RailItem } from '@/components/home';
 import { IconChevronRight, CompassMark, IconLock } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
@@ -9,7 +9,7 @@ import { SignalCard } from '@/components/signal-card';
 import { Empty } from '@/components/ui';
 import { FINISHED, pct } from '@/lib/labels';
 import { isLive as liveNow } from '@/lib/live';
-import { latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, perfSummary, upcomingSignals, type MatchRow } from '@/lib/queries';
+import { latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, perfSummary, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
@@ -37,14 +37,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, live, signals, perf, articles, leagues] = await Promise.all([
+  const [shown, live, signals, perf, articles, leagues, upcomingPreviews] = await Promise.all([
     date ? matchesOnFootballDay(date) : liveMatches(),
     liveMatches(),
     upcomingSignals(4),
     perfSummary(),
     latestArticles(4),
     leagueWidgets(5),
+    previewCards('upcoming', 4),
   ]);
+  // the matches' written previews; between match days, the latest ones written
+  const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
   // on today: live first, then upcoming, then finished; other days keep kickoff order
   const ordered = onToday ? [...shown].sort(byPhase) : shown;
 
@@ -164,11 +167,17 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
       <div className="mx-auto mt-8 grid max-w-5xl grid-cols-1 gap-8 px-4">
         <div className="space-y-8">
-          {/* ---------------- 3: articles ---------------- */}
-          <section aria-labelledby="articles-h">
-            <DayHeading id="articles-h" kicker="อ่านต่อ" title="บทวิเคราะห์ล่าสุด" href="/analysis" />
-            {articles.length ? <ArticleGrid articles={articles} /> : <Empty>ยังไม่มีบทความ</Empty>}
+          {/* ---------------- 3: match previews, then editorial articles when there are some ---------------- */}
+          <section aria-labelledby="previews-h">
+            <DayHeading id="previews-h" kicker="อ่านต่อ" title="บทวิเคราะห์ล่าสุด" href="/analysis" />
+            {previews.length ? <PreviewGrid previews={previews} /> : <Empty>บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</Empty>}
           </section>
+          {articles.length ? (
+            <section aria-labelledby="articles-h">
+              <DayHeading id="articles-h" kicker="อ่านต่อ" title="บทความ" href="/analysis" />
+              <ArticleGrid articles={articles} />
+            </section>
+          ) : null}
         </div>
 
         {/* ---------------- widgets (below lg; on lg they sit beside the scoreboard) ---------------- */}

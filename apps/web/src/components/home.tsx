@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import type { ArticleCard } from '@/lib/queries';
-import { dayTH } from '@/lib/time';
+import type { ArticleCard, PreviewCard } from '@/lib/queries';
+import { dayTH, shortDayTH, timeTH } from '@/lib/time';
 import { IconChevronRight } from './icons';
 
 export function MoreLink({ href, label }: { href: string; label: string }) {
@@ -52,6 +52,37 @@ export function ArticleGrid({ articles }: { articles: ArticleCard[] }) {
               {a.description ? <p className="mt-1 line-clamp-2 text-sm text-slate-600">{a.description}</p> : null}
               <p className="mt-auto pt-3 text-xs text-slate-500">{dayTH(a.published_at)}</p>
             </div>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Each match's written preview as a card: the match is the headline, the preview's first lines the
+ * teaser; opens the match page at its analysis.
+ */
+export function PreviewGrid({ previews }: { previews: PreviewCard[] }) {
+  return (
+    <ul className="grid gap-3 sm:grid-cols-2">
+      {previews.map((p) => (
+        <li key={p.slug}>
+          <Link
+            href={`/matches/${p.slug}#analysis`}
+            className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 transition-shadow duration-200 hover:shadow-md"
+          >
+            <p className="truncate text-xs text-slate-500">
+              {p.league} · {shortDayTH(p.kickoff_at)} {timeTH(p.kickoff_at)}
+            </p>
+            <p className="mt-1 text-base font-semibold leading-snug">
+              {p.home} <span className="font-normal text-slate-400">vs</span> {p.away}
+            </p>
+            <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-slate-600">{p.overview_th}</p>
+            <p className="mt-auto inline-flex items-center gap-0.5 pt-3 text-sm font-medium text-[var(--color-pitch)]">
+              อ่านบทวิเคราะห์
+              <IconChevronRight size={16} />
+            </p>
           </Link>
         </li>
       ))}
