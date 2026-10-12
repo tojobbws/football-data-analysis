@@ -6,6 +6,7 @@ The database hit 498 MB of the 500 MB Supabase Free limit five days after launch
 - Other raw responses are kept 3 days (`db:prune`, daily).
 - Odds snapshots of a match are deleted 7 days after kickoff once none of its picks or AI shadow picks is unsettled. Settlement has by then copied the price at publish, closing odds and CLV onto the pick, and backtest/tune do not read odds. The `odds_history` trigger still forbids every UPDATE and any other DELETE.
 - An odds quote is stored only when its price differs from the last stored price for that selection, or that was stored 6 h or more before (a heartbeat, since pick selection ignores quotes older than 12 h). Added 2026-10-12 at 411 MB: `odds_history` had grown to 152 MB at ~150k rows/day, 71% of them a new API timestamp on an unchanged price. Opening, current and closing prices are unaffected; "last updated" times can lag by up to 6 h.
+- Before its snapshots go, each match's closing market is kept for good in `market_closing` (`model:closing`, hourly and daily): the 1X2 and the main Asian handicap and over/under line (sides closest to 50/50), each side's median closing odds and no-vig probability, beside the model probability the last pre-kickoff candidates run used. ~7 rows per match. Added 2026-10-12: the model's edge leaned to the underdog on almost every match (+9 points at the main AH line) because the model is less sharp than the market, and without a market history that bias can be neither measured over time nor corrected.
 - `raw_response_id` is a plain reference, not an FK: with `on delete set null`, pruning raw rows rewrote every linked odds row and bloated the table while the database was full.
 - `fixtures.raw` is dropped; nothing read it.
 
@@ -14,5 +15,5 @@ Settled picks, match results and match detail tables (events, statistics, lineup
 ## Considered Options
 
 - **Upgrade to Supabase Pro (8 GB)**: fixes it at once, rejected to stay free while traffic is small.
-- **Keep opening and closing odds per selection before deleting snapshots**: would allow using market prices as a model feature later. Rejected for now; nothing reads them, and it can be added before the next deletion if that changes — deleted snapshots cannot be recovered.
+- **Keep opening and closing odds per selection before deleting snapshots**: would allow using market prices as a model feature later. Rejected at first because nothing read them; superseded on 2026-10-12 by the compact closing market above (main lines only, not every selection or the opening price).
 - **Prune old `probability_predictions` runs and unpublished `analysis_candidates`** (~33 MB): deferred; they are the audit trail of what the model said and when.

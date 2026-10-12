@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consensus, DEFAULT_RULES, eloAgreement, generateCandidates, noVig, type CandidateInput, type OddsQuote } from '../src/index.js';
+import { closingMarket, consensus, DEFAULT_RULES, eloAgreement, generateCandidates, noVig, type CandidateInput, type OddsQuote } from '../src/index.js';
 
 const NOW = new Date('2026-10-17T10:00:00Z');
 const KO = new Date('2026-10-18T16:30:00Z');
@@ -180,5 +180,41 @@ describe('eloAgreement', () => {
     expect(eloAgreement('ASIAN_HANDICAP', 'AWAY', elo, mw, 0.5)).toBe(false);
     expect(eloAgreement('ASIAN_HANDICAP', 'HOME', elo, null, 0.5)).toBeNull();
     expect(eloAgreement('OVER_UNDER', 'OVER', elo, mw, 0.5)).toBeNull();
+  });
+});
+
+describe('closingMarket', () => {
+  it('keeps the 1X2 and the main AH and O/U line (sides closest to 50/50)', () => {
+    const qs = [
+      ...quotes(),
+      // a second AH line and O/U line, further from evens
+      q(1, 'ASIAN_HANDICAP', 'HOME', -1, -1, 2.6),
+      q(1, 'ASIAN_HANDICAP', 'AWAY', 1, -1, 1.5),
+      q(2, 'ASIAN_HANDICAP', 'HOME', -1, -1, 2.55),
+      q(2, 'ASIAN_HANDICAP', 'AWAY', 1, -1, 1.52),
+      q(1, 'OVER_UNDER', 'OVER', 3.5, null, 3.2),
+      q(1, 'OVER_UNDER', 'UNDER', 3.5, null, 1.33),
+      q(2, 'OVER_UNDER', 'OVER', 3.5, null, 3.1),
+      q(2, 'OVER_UNDER', 'UNDER', 3.5, null, 1.35),
+    ];
+    const rows = closingMarket(qs.map((x) => ({ ...x, updatedAt: new Date(KO.getTime() - 3_600_000) })), KO);
+    expect(rows.map((r) => `${r.market}|${r.selection}|${r.line}`).sort()).toEqual([
+      'ASIAN_HANDICAP|AWAY|0.5',
+      'ASIAN_HANDICAP|HOME|-0.5',
+      'MATCH_WINNER|AWAY|null',
+      'MATCH_WINNER|DRAW|null',
+      'MATCH_WINNER|HOME|null',
+      'OVER_UNDER|OVER|2.5',
+      'OVER_UNDER|UNDER|2.5',
+    ]);
+    const home = rows.find((r) => r.market === 'ASIAN_HANDICAP' && r.selection === 'HOME')!;
+    expect(home.nBookmakers).toBe(2);
+    expect(home.marketProbability).toBeGreaterThan(0.49);
+    expect(home.marketProbability).toBeLessThan(0.51);
+  });
+
+  it('uses only quotes from the 24 hours before kickoff', () => {
+    expect(closingMarket(quotes(new Date(KO.getTime() - 30 * 3_600_000)), KO)).toEqual([]);
+    expect(closingMarket(quotes(new Date(KO.getTime() - 3_600_000)), KO)).toHaveLength(7);
   });
 });

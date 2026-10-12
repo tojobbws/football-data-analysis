@@ -6,6 +6,7 @@ import { playerImpactJob } from './impact-job.js';
 import { publishJob } from './publish-job.js';
 import { matchReport } from './report-job.js';
 import { settleJob } from './settle-job.js';
+import { closingJob } from './closing-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
 import { matchPreviewJob } from './preview-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
@@ -22,6 +23,7 @@ jobs:
   ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs ANTHROPIC_API_KEY
   preview [--hours N] [--refresh]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48); AI text with ANTHROPIC_API_KEY, template text without; --refresh rewrites previews from an older version
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
+  closing                     keep the closing market (1X2 + main AH/O/U line) of kicked-off matches for good
   backtest [--warmup N]        walk-forward backtest on finished matches in the DB`;
 
 async function main() {
@@ -31,7 +33,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'settle', 'report'].includes(job ?? '')) {
+  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'settle', 'closing', 'report'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -45,6 +47,7 @@ async function main() {
       });
     else if (job === 'publish') await publishJob(ctx);
     else if (job === 'settle') await settleJob(ctx);
+    else if (job === 'closing') await closingJob(ctx);
     else if (job === 'ai-shadow') await aiShadowJob(ctx);
     else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, refresh: values.refresh });
     else if (job === 'report') {

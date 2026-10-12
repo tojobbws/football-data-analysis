@@ -381,3 +381,35 @@ export function eloAgreement(
 function round(x: number, d: number) {
   return Math.round(x * 10 ** d) / 10 ** d;
 }
+
+/** How long before kickoff a quote may be and still count as the closing market. */
+export const CLOSING_MAX_AGE_HOURS = 24;
+
+/**
+ * The market at kickoff, compactly: the 1X2 and, for Asian handicap and over/under, only the main
+ * line (the one whose sides are closest to 50/50). Quotes from kickoff onwards are ignored.
+ */
+export function closingMarket(quotes: readonly OddsQuote[], kickoffAt: Date) {
+  const cons = consensus(
+    quotes.filter((q) => q.updatedAt < kickoffAt),
+    kickoffAt,
+    CLOSING_MAX_AGE_HOURS,
+  );
+  type Side = (typeof cons)[number];
+  const mainLine = (market: MarketCode, first: string, second: string, pair: (line: number | null) => number | null) => {
+    let best: [Side, Side] | null = null;
+    for (const a of cons.filter((c) => c.market === market && c.selection === first)) {
+      const b = cons.find((c) => c.market === market && c.selection === second && lineKey(c.line) === lineKey(pair(a.line)));
+      if (!b) continue;
+      const off = Math.abs(a.marketProbability - 0.5);
+      const bestOff = best ? Math.abs(best[0].marketProbability - 0.5) : Infinity;
+      if (off < bestOff || (off === bestOff && a.nBookmakers > best![0].nBookmakers)) best = [a, b];
+    }
+    return best ?? [];
+  };
+  return [
+    ...cons.filter((c) => c.market === 'MATCH_WINNER'),
+    ...mainLine('ASIAN_HANDICAP', 'HOME', 'AWAY', (l) => (l === null || l === 0 ? l : -l)),
+    ...mainLine('OVER_UNDER', 'OVER', 'UNDER', (l) => l),
+  ];
+}

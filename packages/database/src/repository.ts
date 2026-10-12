@@ -992,6 +992,66 @@ export class Repository {
     }));
   }
 
+  /** Matches that kicked off in the last 8 days, still have odds snapshots, and have no closing market yet. */
+  async fixturesNeedingClosing(): Promise<Array<{ id: number; kickoffAt: Date }>> {
+    const res = await this.db.query<{ id: string | number; kickoff_at: string | Date }>(
+      `select f.id, f.kickoff_at from fixtures f
+        where f.kickoff_at < now() and f.kickoff_at > now() - interval '8 days'
+          and exists (select 1 from odds_history o where o.fixture_id = f.id)
+          and not exists (select 1 from market_closing c where c.fixture_id = f.id)
+        order by f.kickoff_at`,
+    );
+    return res.rows.map((r) => ({ id: Number(r.id), kickoffAt: new Date(r.kickoff_at) }));
+  }
+
+  /** Last quote per (bookmaker, bet, value) before kickoff. */
+  async closingQuotes(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select distinct on (o.bookmaker_id, o.api_bet_id, o.raw_value)
+              o.bookmaker_id, o.market, o.selection, o.line, o.home_line, o.odds, o.source_updated_at
+         from odds_history o join fixtures f on f.id = o.fixture_id
+        where o.fixture_id = $1 and o.source_updated_at < f.kickoff_at and o.market in ('MATCH_WINNER','ASIAN_HANDICAP','OVER_UNDER')
+        order by o.bookmaker_id, o.api_bet_id, o.raw_value, o.source_updated_at desc`,
+      [fixtureId],
+    );
+    return res.rows.map((r) => ({
+      bookmakerId: Number(r.bookmaker_id),
+      market: String(r.market) as 'MATCH_WINNER' | 'ASIAN_HANDICAP' | 'OVER_UNDER',
+      selection: String(r.selection),
+      line: r.line == null ? null : Number(r.line),
+      homeLine: r.home_line == null ? null : Number(r.home_line),
+      odds: Number(r.odds),
+      updatedAt: new Date(r.source_updated_at as string),
+    }));
+  }
+
+  /** Model probabilities of the last candidates run that started before kickoff. */
+  async preKickoffCandidates(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `with run as (
+         select r.id from analysis_runs r join fixtures f on f.id = r.fixture_id
+          where r.fixture_id = $1 and r.started_at < f.kickoff_at
+          order by r.started_at desc limit 1
+       )
+       select c.run_id, c.market, c.selection, c.line, c.model_probability
+         from analysis_candidates c join run on run.id = c.run_id
+        where c.model_probability is not null`,
+      [fixtureId],
+    );
+    return res.rows.map((r) => ({
+      runId: String(r.run_id),
+      market: String(r.market),
+      selection: String(r.selection),
+      line: r.line == null ? null : Number(r.line),
+      probability: Number(r.model_probability),
+    }));
+  }
+
+  /** Write-once: a match's closing market is never changed. */
+  insertMarketClosing(rows: Row[]) {
+    return writeRows(this.db, 'market_closing', rows, { conflict: ['fixture_id', 'market', 'selection'], update: 'nothing' });
+  }
+
   async lastAnalysisRun(fixtureId: number, rulesVersion: string): Promise<{ inputs: Record<string, unknown>; startedAt: Date } | null> {
     const res = await this.db.query<{ inputs: unknown; started_at: string | Date }>(
       `select inputs, started_at from analysis_runs where fixture_id = $1 and decision_rule_version = $2 order by started_at desc, id desc limit 1`,

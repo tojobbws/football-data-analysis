@@ -54,6 +54,7 @@ jobs:
           npm run sync:odds
           npm run sync:results
           npm run model:settle
+          npm run model:closing
           npm run sync:details
           npm run model:probabilities -- --days 2
           npm run model:impact -- --hours 36
@@ -74,6 +75,7 @@ jobs:
           npm run sync:standings
           npm run sync:support
           npm run model:probabilities -- --days 7
+          npm run model:closing
           npm run db:prune
 
       - name: Weekly

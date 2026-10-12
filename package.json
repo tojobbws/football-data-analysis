@@ -39,6 +39,7 @@
     "model:ai-shadow": "npm run job -w @fp/analysis-worker -- ai-shadow",
     "model:preview": "npm run job -w @fp/analysis-worker -- preview",
     "model:settle": "npm run job -w @fp/analysis-worker -- settle",
+    "model:closing": "npm run job -w @fp/analysis-worker -- closing",
     "model:report": "npm run job -w @fp/analysis-worker -- report"
   },
   "devDependencies": {

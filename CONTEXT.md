@@ -53,6 +53,10 @@ _Avoid_: odds history (as something kept for good)
 **Closing odds**:
 The median of each bookmaker's last pre-kickoff price for the pick's selection; recorded on the pick at settlement and kept for good.
 
+**Closing market**:
+The market's view of a match at kickoff — the 1X2 and the main Asian handicap and over/under line (sides closest to 50/50), with the model's probability beside each side; kept for good after the odds snapshots expire, so the model can be measured against the market over time.
+_Avoid_: closing odds (that is the price recorded on a pick)
+
 **CLV (closing line value)**:
 How much better the price at publish was than the closing odds; recorded on the pick at settlement, so it survives the odds snapshots it came from.
 
