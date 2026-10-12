@@ -5,6 +5,7 @@ The database hit 498 MB of the 500 MB Supabase Free limit five days after launch
 - `sync:odds` no longer stores its raw pages; every quote is already in `odds_history`.
 - Other raw responses are kept 3 days (`db:prune`, daily).
 - Odds snapshots of a match are deleted 7 days after kickoff once none of its picks or AI shadow picks is unsettled. Settlement has by then copied the price at publish, closing odds and CLV onto the pick, and backtest/tune do not read odds. The `odds_history` trigger still forbids every UPDATE and any other DELETE.
+- An odds quote is stored only when its price differs from the last stored price for that selection, or that was stored 6 h or more before (a heartbeat, since pick selection ignores quotes older than 12 h). Added 2026-10-12 at 411 MB: `odds_history` had grown to 152 MB at ~150k rows/day, 71% of them a new API timestamp on an unchanged price. Opening, current and closing prices are unaffected; "last updated" times can lag by up to 6 h.
 - `raw_response_id` is a plain reference, not an FK: with `on delete set null`, pruning raw rows rewrote every linked odds row and bloated the table while the database was full.
 - `fixtures.raw` is dropped; nothing read it.
 

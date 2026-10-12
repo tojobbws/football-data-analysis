@@ -3,6 +3,9 @@ import { LIVE_STATUSES } from '@fp/shared';
 import type { Db, Queryable } from './db.js';
 import { insertReturning, insertRows, toParam, writeRows, type Row } from './upsert.js';
 
+/** An unchanged odds quote is stored again only this often (see insertOddsHistory). */
+export const ODDS_HEARTBEAT_HOURS = 6;
+
 export interface FinishedMatchRow {
   fixtureId: number;
   kickoffAt: Date;
@@ -233,11 +236,29 @@ export class Repository {
   }
 
   /** Append-only. Same (fixture, bookmaker, bet, value, update-time) is skipped. Returns rows actually inserted. */
-  insertOddsHistory(rows: OddsRow[], rawResponseId: number | null) {
+  /**
+   * Append quotes, skipping one whose price equals the last stored price for that selection unless
+   * that was stored ODDS_HEARTBEAT_HOURS ago or more (pick selection drops quotes older than 12 h).
+   */
+  async insertOddsHistory(rows: OddsRow[], rawResponseId: number | null) {
+    if (!rows.length) return 0;
+    const { rows: last } = await this.db.query<{ k: string; odds: string | number; at: string | Date }>(
+      `select distinct on (fixture_id, bookmaker_id, api_bet_id, raw_value)
+              concat_ws('|', fixture_id, bookmaker_id, api_bet_id, raw_value) as k, odds, source_updated_at as at
+         from odds_history
+        where fixture_id = any($1::bigint[]) and bookmaker_id = any($2::int[])
+        order by fixture_id, bookmaker_id, api_bet_id, raw_value, source_updated_at desc`,
+      [[...new Set(rows.map((r) => r.fixtureId))], [...new Set(rows.map((r) => r.bookmakerId))]],
+    );
+    const stored = new Map(last.map((r) => [r.k, { odds: Number(r.odds), at: new Date(r.at).getTime() }]));
+    const fresh = rows.filter((r) => {
+      const prev = stored.get([r.fixtureId, r.bookmakerId, r.apiBetId, r.rawValue].join('|'));
+      return !prev || prev.odds !== r.odds || Date.parse(r.sourceUpdatedAt) - prev.at >= ODDS_HEARTBEAT_HOURS * 3_600_000;
+    });
     return writeRows(
       this.db,
       'odds_history',
-      rows.map((r) => ({
+      fresh.map((r) => ({
         fixture_id: r.fixtureId,
         bookmaker_id: r.bookmakerId,
         market: r.market,

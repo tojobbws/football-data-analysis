@@ -21,6 +21,8 @@ const upcomingFixture = {
 };
 const { events: _e, lineups: _l, statistics: _s, players: _p, ...finishedListItem } = detail;
 
+const oddsQuote = { update: '2026-10-06T10:00:00+00:00', home: '1.95' };
+
 const routes: Record<string, (p: URLSearchParams) => unknown[]> = {
   '/leagues': () => [
     {
@@ -41,8 +43,8 @@ const routes: Record<string, (p: URLSearchParams) => unknown[]> = {
     {
       league: { id: 39, season: 2026 },
       fixture: { id: 2002 },
-      update: '2026-10-06T10:00:00+00:00',
-      bookmakers: [{ id: 8, name: 'Bet365', bets: [{ id: 4, name: 'Asian Handicap', values: [{ value: 'Home -0.75', odd: '1.95' }, { value: 'Away -0.75', odd: '1.95' }] }] }],
+      update: oddsQuote.update,
+      bookmakers: [{ id: 8, name: 'Bet365', bets: [{ id: 4, name: 'Asian Handicap', values: [{ value: 'Home -0.75', odd: oddsQuote.home },{ value: 'Away -0.75', odd: '1.95' }] }] }],
     },
     { league: { id: 39, season: 2026 }, fixture: { id: 777777 }, update: '2026-10-06T10:00:00+00:00', bookmakers: [] }, // unknown fixture
   ],
@@ -134,6 +136,23 @@ describe('sync pipeline', () => {
     expect(Number(away.line)).toBe(0.75);
     expect(Number(away.home_line)).toBe(-0.75);
     expect(away.raw_response_id).not.toBeNull();
+  });
+
+  it('odds: an unchanged price is re-stored only as a 6-hourly heartbeat, a changed price at once', async () => {
+    const count = async () => Number((await one(`select count(*) n from odds_history where fixture_id = 2002`)).n);
+    const before = await count();
+    oddsQuote.update = '2026-10-06T15:00:00+00:00'; // same prices, new API timestamp, 5h after the stored one
+    await syncOdds(ctx);
+    expect(await count()).toBe(before);
+    oddsQuote.update = '2026-10-06T16:00:00+00:00'; // 6h: re-store so the quote still counts as fresh
+    await syncOdds(ctx);
+    expect(await count()).toBe(before + 2);
+    oddsQuote.update = '2026-10-06T16:30:00+00:00';
+    oddsQuote.home = '1.90'; // only the side that moved is stored
+    await syncOdds(ctx);
+    expect(await count()).toBe(before + 3);
+    const latest = await one(`select odds from odds_history where raw_value = 'Home -0.75' order by source_updated_at desc limit 1`);
+    expect(Number(latest.odds)).toBe(1.9);
   });
 
   it('results: refreshes a kicked-off match that is not final yet, leaves future matches alone', async () => {
