@@ -41,9 +41,22 @@ export const KNOWN_LEAGUES = {
  * `sync:support` keeps results of the domestic leagues that are not in TRACKED_LEAGUES fresh
  * (results only, never shown on the site). Brunei has no league in API-Football.
  */
+const UEFA_DOMESTIC = [
+  // tracked
+  39, 140, 61, 78, 135, 207, 113, 179, 88, 103, 144, 94, 119, 203, 218,
+  // support (results only)
+  106, 345, 116, 172, 261, 286, 333, 362, 393, 408, 110, 164, 197, 244, 271, 310, 318, 327, 332, 371, 373, 383, 389, 419, 664,
+  210, 283, 315, 329, 342, 355, 357, 365, 367, 312, 394, 404, 758,
+] as const;
+
 export const CROSS_LEAGUE_CUPS: Readonly<Record<number, readonly number[]>> = {
   // ASEAN Club Championship: TH, MY, SG, VN, ID, MM, KH, LA, PH
   1129: [296, 278, 368, 340, 274, 588, 410, 647, 765],
+  // UEFA club cups: top divisions of the clubs that played them 2023-2026
+  // (API-Football /leagues?team=ID for each of the 354 clubs, 2026-10-15)
+  2: UEFA_DOMESTIC,
+  3: UEFA_DOMESTIC,
+  848: UEFA_DOMESTIC,
 };
 
 /** Fixture status codes from API-Football */

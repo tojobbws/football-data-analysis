@@ -4,6 +4,8 @@ import {
   calibrateImpact,
   computeElo,
   crossLeagueExpectedGoals,
+  crossLeagueGate,
+  UNKNOWN_LEAGUE,
   CROSS_LEAGUE_VERSION,
   dcWalkForward,
   fitCrossLeague,
@@ -76,6 +78,7 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
   return runJob(ctx, 'tune', { leagues }, async () => {
     const results: Record<number, TuneResult | { skipped: string }> = {};
     const impacts: Record<number, ImpactCalibration | string> = {};
+    const crossGates: Record<number, ReturnType<typeof crossLeagueGate>> = {};
     let written = 0;
     for (const league of leagues) {
       const log = ctx.log.child({ league });
@@ -90,6 +93,22 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
       log.info('tuned', { ms: Date.now() - started, combos: r.combosTried });
       results[league] = r;
 
+      // A cup priced with the cross-league mix is gated on that mix, not on the cup-only fit.
+      const domesticLeagues = CROSS_LEAGUE_CUPS[league];
+      let crossGate: ReturnType<typeof crossLeagueGate> | null = null;
+      if (domesticLeagues) {
+        const domestic = new Map<number, MatchRecord[]>();
+        for (const l of domesticLeagues) domestic.set(l, await ctx.repo.finishedMatches(l));
+        crossGate = crossLeagueGate(history, domestic, {
+          dixonColes: r.sides.params,
+          blend: CROSS_LEAGUE_BLEND,
+          leaguePrior: CROSS_LEAGUE_PRIOR,
+          warmupMatches: Math.min(150, Math.floor(history.length * 0.25)),
+        });
+        log.info('cross-league gate', { holdout: crossGate.holdoutN, z: crossGate.test.z, cupOnlyZ: r.sides.test.z, enabled: crossGate.enabled });
+        crossGates[league] = crossGate;
+      }
+
       const common = { matchesEvaluated: r.matchesEvaluated, leagueId: league };
       const split = { tuneN: r.tuneN, holdoutN: r.holdoutN };
       written += await ctx.repo.insertModelConfigs([
@@ -98,8 +117,18 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
           purpose: 'SIDES',
           modelVersionId: DIXON_COLES_VERSION,
           params: r.sides.params,
-          metrics: { ...split, tune: r.sides.tune, holdout: r.sides.holdout, baselineHoldout: r.sides.baselineHoldout, skill: r.sides.skill, test: r.sides.test, redCard: r.redCard.sides, matchesWithRedCard: r.redCard.matchesWithRedCard },
-          enabled: r.sides.enabled,
+          metrics: {
+            ...split,
+            tune: r.sides.tune,
+            holdout: r.sides.holdout,
+            baselineHoldout: r.sides.baselineHoldout,
+            skill: r.sides.skill,
+            test: crossGate?.test ?? r.sides.test,
+            ...(crossGate ? { cupOnlyTest: r.sides.test, crossLeague: crossGate } : {}),
+            redCard: r.redCard.sides,
+            matchesWithRedCard: r.redCard.matchesWithRedCard,
+          },
+          enabled: crossGate ? crossGate.enabled : r.sides.enabled,
         },
         {
           ...common,
@@ -164,12 +193,16 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
         ]);
       }
     }
-    printTune(results, impacts);
+    printTune(results, impacts, crossGates);
     return written;
   });
 }
 
-function printTune(results: Record<number, TuneResult | { skipped: string }>, impacts: Record<number, ImpactCalibration | string> = {}) {
+function printTune(
+  results: Record<number, TuneResult | { skipped: string }>,
+  impacts: Record<number, ImpactCalibration | string> = {},
+  crossGates: Record<number, ReturnType<typeof crossLeagueGate>> = {},
+) {
   const pct = (x: number) => `${round(x * 100, 2)}%`;
   console.table(
     Object.entries(results).map(([league, r]) =>
@@ -187,7 +220,8 @@ function printTune(results: Record<number, TuneResult | { skipped: string }>, im
             'O/U skill (z)': `${pct(r.totals.skill)} (${round(r.totals.test.z, 1)})`,
             'O/U untuned→tuned': r.totals.untunedHoldoutBrier == null ? '-' : `${round(r.totals.untunedHoldoutBrier, 4)}→${round(r.totals.holdoutBrier, 4)}`,
             '1X2': r.ensemble.enabled ? 'ON' : 'off',
-            AH: r.sides.enabled ? 'ON' : 'off',
+            AH: (crossGates[Number(league)]?.enabled ?? r.sides.enabled) ? 'ON' : 'off',
+            'cross-league z': crossGates[Number(league)] ? `${round(crossGates[Number(league)]!.test.z, 1)} (cup only ${round(r.sides.test.z, 1)})` : '-',
             Impact: impactCell(impacts[Number(league)]),
             'O/U': r.totals.enabled ? 'ON' : 'off',
           },
@@ -280,6 +314,8 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
         }
 
         const computedAt = now.toISOString();
+        // data behind a team's strength: its cup matches, plus its domestic league's when the cross-league mix prices it
+        const weighted = (team: number) => (sides.teamMatches.get(team) ?? 0) + (cross ? (cross.within.get(cross.teamLeague.get(team) ?? UNKNOWN_LEAGUE)?.teamMatches.get(team) ?? 0) : 0);
 
         const gs = expectedGoals(sides, f.homeTeamId, f.awayTeamId);
         const gx = cross ? crossLeagueExpectedGoals(cross, f.homeTeamId, f.awayTeamId) : null;
@@ -301,8 +337,8 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
           rho: sides.rho,
           homeAdv: round(sides.homeAdv, 4),
           leagueMeanTotal: round(totals.leagueMeanTotal, 3),
-          home: { attack: round(sides.attack.get(f.homeTeamId) ?? 1, 4), defence: round(sides.defence.get(f.homeTeamId) ?? 1, 4), weightedMatches: round(sides.teamMatches.get(f.homeTeamId) ?? 0, 2) },
-          away: { attack: round(sides.attack.get(f.awayTeamId) ?? 1, 4), defence: round(sides.defence.get(f.awayTeamId) ?? 1, 4), weightedMatches: round(sides.teamMatches.get(f.awayTeamId) ?? 0, 2) },
+          home: { attack: round(sides.attack.get(f.homeTeamId) ?? 1, 4), defence: round(sides.defence.get(f.homeTeamId) ?? 1, 4), weightedMatches: round(weighted(f.homeTeamId), 2) },
+          away: { attack: round(sides.attack.get(f.awayTeamId) ?? 1, 4), defence: round(sides.defence.get(f.awayTeamId) ?? 1, 4), weightedMatches: round(weighted(f.awayTeamId), 2) },
           params: { sides: sidesP, totals: { ...totalsP, totalsShrink } },
           configIds,
           gates,

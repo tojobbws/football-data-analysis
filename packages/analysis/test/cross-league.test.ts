@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crossLeagueExpectedGoals, fitCrossLeague, mixScoreMatrices, scoreMatrix, UNKNOWN_LEAGUE, type MatchRecord } from '../src/index.js';
+import { crossLeagueExpectedGoals, crossLeagueGate, fitCrossLeague, mixScoreMatrices, scoreMatrix, UNKNOWN_LEAGUE, type MatchRecord } from '../src/index.js';
 
 function rng(seed: number) {
   let s = seed >>> 0;
@@ -102,5 +102,20 @@ describe('mixScoreMatrices', () => {
     const home = (mx: number[][]) => mx.reduce((s, row, i) => s + row.reduce((t, p, j) => t + (i > j ? p : 0), 0), 0);
     expect(home(mix)).toBeCloseTo((home(a) + home(b)) / 2, 12);
     expect(mix.flat().reduce((s, p) => s + p, 0)).toBeCloseTo(1, 12);
+  });
+});
+
+describe('crossLeagueGate', () => {
+  it('tests the production mix on the most recent 30% of the cup, walk-forward, with the usual holdout minimum', () => {
+    const { domestic, cup } = world();
+    const opts = { dixonColes: { priorStrength: 8, halfLifeDays: 365, xgWeight: 0 }, blend: 0.5, warmupMatches: 10 };
+    const g = crossLeagueGate(cup, domestic, opts);
+    // 40 cup matches - 10 warm-up = 30 evaluated, last 30% = 9 in the holdout
+    expect(g.holdoutN).toBe(9);
+    expect(g.test.n).toBe(9);
+    expect(g.enabled).toBe(false); // fewer than 100 holdout matches
+    // the league gap is learnable only from the cup: the mix beats the cup base rates here
+    expect(g.test.meanImprovement).toBeGreaterThan(0);
+    expect(crossLeagueGate(cup, domestic, { ...opts, minHoldout: 5, zRequired: -Infinity }).enabled).toBe(true);
   });
 });

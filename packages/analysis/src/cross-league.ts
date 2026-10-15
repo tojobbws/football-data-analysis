@@ -12,7 +12,10 @@
  * with a shrinkage prior toward 1. Naively pooling all matches into one fit was worse than the
  * cup alone in the backtest (scripts/backtest-pooled.ts); this two-level split was better.
  */
-import { fitDixonColes, type DixonColesModel, type DixonColesOptions, type MatchRecord } from './dixon-coles.js';
+import { lossesLogLoss1x2, matchContexts, pairedTest, score1x2, sortByTime, Z_90 } from './backtest.js';
+import { expectedGoals, fitDixonColes, scoreMatrix, type DixonColesModel, type DixonColesOptions, type MatchRecord } from './dixon-coles.js';
+import { priceSelection } from './markets.js';
+import type { Probs3 } from './metrics.js';
 
 export const CROSS_LEAGUE_VERSION = 'cross-league-v0.1';
 
@@ -165,4 +168,62 @@ export function mixScoreMatrices(a: number[][], b: number[][], w: number): numbe
 
 function add(map: Map<number, number>, key: number, v: number) {
   map.set(key, (map.get(key) ?? 0) + v);
+}
+
+export interface CrossLeagueGateOptions {
+  /** tuned sides settings of the cup (the same ones production prices with) */
+  dixonColes: DixonColesOptions;
+  /** weight of the cup-only score matrix in the production mix */
+  blend: number;
+  leaguePrior?: number;
+  warmupMatches: number;
+  refitEveryDays?: number;
+  holdoutShare?: number;
+  minHoldout?: number;
+  zRequired?: number;
+}
+
+/**
+ * The sides gate for a cup priced with the cross-league mix: the same holdout as `tuneLeague`
+ * (the most recent 30% after warm-up), the same test (1X2 log loss vs the cup's base rates, paired,
+ * z >= 1.28 with >= 100 holdout matches), but on what production actually publishes — the 50/50 mix
+ * of the cup-only fit and the cross-league fit. Walk-forward: every fit sees only earlier matches.
+ */
+export function crossLeagueGate(cup: readonly MatchRecord[], domestic: ReadonlyMap<number, readonly MatchRecord[]>, opts: CrossLeagueGateOptions) {
+  const matches = sortByTime(cup);
+  const ctxs = matchContexts(matches, opts.warmupMatches);
+  const split = Math.floor(ctxs.length * (1 - (opts.holdoutShare ?? 0.3)));
+  const refitMs = (opts.refitEveryDays ?? 14) * 86_400_000;
+  const holdIdx: number[] = [];
+  const preds: Probs3[] = [];
+  let alone: DixonColesModel | null = null;
+  let cross: CrossLeagueModel | null = null;
+  let lastFit = -Infinity;
+  for (let i = split; i < ctxs.length; i++) {
+    const m = matches[ctxs[i]!.index]!;
+    if (!alone || !cross || m.kickoffAt.getTime() - lastFit >= refitMs) {
+      alone = fitDixonColes(matches, m.kickoffAt, opts.dixonColes, alone ?? undefined);
+      cross = fitCrossLeague(matches, domestic, m.kickoffAt, { dixonColes: opts.dixonColes, leaguePrior: opts.leaguePrior });
+      lastFit = m.kickoffAt.getTime();
+    }
+    const ga = expectedGoals(alone, m.homeTeamId, m.awayTeamId);
+    const gc = crossLeagueExpectedGoals(cross, m.homeTeamId, m.awayTeamId);
+    const mx = mixScoreMatrices(scoreMatrix(ga.lambda, ga.mu, alone.rho), scoreMatrix(gc.lambda, gc.mu, alone.rho), opts.blend);
+    const p = (selection: 'HOME' | 'DRAW' | 'AWAY') => priceSelection(mx, { market: 'MATCH_WINNER', selection }).probability;
+    preds[i] = [p('HOME'), p('DRAW'), p('AWAY')];
+    holdIdx.push(i);
+  }
+  const base = ctxs.map((c) => c.base);
+  const test = pairedTest(lossesLogLoss1x2(preds, ctxs, holdIdx), lossesLogLoss1x2(base, ctxs, holdIdx));
+  const holdout = score1x2(preds, ctxs, holdIdx);
+  const baseline = score1x2(base, ctxs, holdIdx);
+  return {
+    version: CROSS_LEAGUE_VERSION,
+    holdoutN: holdIdx.length,
+    test,
+    holdout,
+    baselineHoldout: baseline,
+    skill: baseline.logLoss > 0 ? 1 - holdout.logLoss / baseline.logLoss : 0,
+    enabled: holdIdx.length >= (opts.minHoldout ?? 100) && test.z >= (opts.zRequired ?? Z_90),
+  };
 }
