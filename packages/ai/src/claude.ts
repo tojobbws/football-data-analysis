@@ -9,7 +9,7 @@ import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
 export interface RankerResult {
   /** parsed JSON answer, or null on refusal / unparseable text */
   output: unknown;
-  /** model that actually answered (differs from AI_MODEL when the server-side fallback ran) */
+  /** model that answered (as reported by the API) */
   model: string;
   stopReason: string | null;
   refusal: { category: string | null; explanation: string | null } | null;
@@ -37,12 +37,10 @@ export function createStructuredCall(opts: StructuredCallOptions): (input: Recor
   const client = new Anthropic({ apiKey: opts.apiKey });
   const model = opts.model ?? AI_MODEL;
   return async (input) => {
-    const response = await client.beta.messages.create({
+    // Claude Haiku 5.5 has no server-side refusal fallback: a refusal comes back as data (below)
+    const response = await client.messages.create({
       model,
       max_tokens: 16000,
-      // refusals are re-run on Anthropic's recommended fallback model server-side
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
       thinking: { type: 'adaptive' },
       output_config: { effort: opts.effort ?? 'medium', format: { type: 'json_schema', schema: opts.schema } },
       system: opts.system,

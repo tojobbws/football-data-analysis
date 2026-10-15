@@ -5,7 +5,7 @@
 export const PROMPT_VERSION = 'ai-shadow-v0.2';
 // Sonnet: the preview and shadow ranking are short structured writing over given facts, guarded after;
 // half Opus's price. Rows record the model that answered, so the switch stays traceable.
-export const AI_MODEL = 'claude-sonnet-5-5';
+export const AI_MODEL = 'claude-haiku-5-5';
 
 /** Kept byte-stable (no dates, no per-request values) so it caches across fixtures. */
 export const SYSTEM_PROMPT = `You are the analyst layer of a Thai football data & analysis brand. You receive one upcoming match as JSON and rank the candidate selections by how well the data supports them.
