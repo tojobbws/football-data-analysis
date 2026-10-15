@@ -50,6 +50,14 @@ export interface ModelConfig extends ModelConfigInput {
   tunedAt: Date;
 }
 
+interface OutcomeDistributionRow {
+  win: number;
+  halfWin: number;
+  push: number;
+  halfLoss: number;
+  loss: number;
+}
+
 function parseJson(v: unknown): Record<string, unknown> {
   if (typeof v === 'string') return JSON.parse(v) as Record<string, unknown>;
   return (v ?? {}) as Record<string, unknown>;
@@ -1150,4 +1158,73 @@ export class Repository {
     const t = res.rows[0]?.t;
     return t ? new Date(t) : null;
   }
+
+  // ---------- daily featured list (ADR 0004) ----------
+
+  /** Matches of a football day with their latest published prediction (LINEUP over EARLY) and its support score. */
+  async featuredDayMatches(leagueIds: number[], from: string, to: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.id as fixture_id, f.league_id, f.kickoff_at, p.id as prediction_id, p.publish_round, p.kind, p.model_distribution, c.support_score
+         from fixtures f
+         left join lateral (
+           select id, publish_round, kind, model_distribution, candidate_id from analysis_predictions
+            where fixture_id = f.id order by (publish_round = 'LINEUP') desc, published_at desc limit 1
+         ) p on true
+         left join analysis_candidates c on c.id = p.candidate_id
+        where f.league_id = any($1::int[]) and f.kickoff_at >= $2 and f.kickoff_at < $3
+        order by f.kickoff_at, f.id`,
+      [leagueIds, from, to],
+    );
+    return res.rows.map((r) => ({
+      fixtureId: Number(r.fixture_id),
+      leagueId: Number(r.league_id),
+      kickoffAt: new Date(r.kickoff_at as string),
+      predictionId: r.prediction_id == null ? null : Number(r.prediction_id),
+      round: r.publish_round == null ? null : String(r.publish_round),
+      kind: r.kind == null ? null : String(r.kind),
+      distribution: r.model_distribution == null ? null : (parseJson(r.model_distribution) as unknown as OutcomeDistributionRow),
+      supportScore: r.support_score == null ? null : Number(r.support_score),
+    }));
+  }
+
+  async featuredRows(footballDate: string, version: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      'select fixture_id, league_id, phase, rank, locked_at from featured_selections where football_date = $1 and version = $2',
+      [footballDate, version],
+    );
+    return res.rows.map((r) => ({
+      fixtureId: Number(r.fixture_id),
+      leagueId: Number(r.league_id),
+      phase: String(r.phase) as 'RESERVED' | 'CONFIRMED' | 'DROPPED' | 'SKIPPED',
+      rank: r.rank == null ? null : Number(r.rank),
+      locked: r.locked_at != null,
+    }));
+  }
+
+  /** Current reservation of a match not locked yet (rank null = reserved earlier, outside the list now). */
+  async reserveFeatured(row: { footballDate: string; version: string; fixtureId: number; leagueId: number; rank: number | null; predictionId: number | null; supportScore: number | null; fairProbability: number | null }) {
+    await this.db.query(
+      `insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, prediction_id, support_score, fair_probability, first_reserved_at, first_rank)
+       values ($1, $2, $3, $4, 'RESERVED', $5, $6, $7, $8, now(), $5)
+       on conflict (football_date, version, fixture_id) do update
+         set rank = excluded.rank, updated_at = now(),
+             prediction_id = coalesce(excluded.prediction_id, featured_selections.prediction_id),
+             support_score = coalesce(excluded.support_score, featured_selections.support_score),
+             fair_probability = coalesce(excluded.fair_probability, featured_selections.fair_probability)`,
+      [row.footballDate, row.version, row.fixtureId, row.leagueId, row.rank, row.predictionId, row.supportScore, row.fairProbability],
+    );
+  }
+
+  async lockFeatured(row: { footballDate: string; version: string; fixtureId: number; leagueId: number; phase: 'CONFIRMED' | 'DROPPED' | 'SKIPPED'; rank: number | null; predictionId: number | null; supportScore: number | null; fairProbability: number | null }) {
+    await this.db.query(
+      `insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, prediction_id, support_score, fair_probability, locked_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+       on conflict (football_date, version, fixture_id) do update
+         set phase = excluded.phase, rank = excluded.rank, prediction_id = excluded.prediction_id,
+             support_score = excluded.support_score, fair_probability = excluded.fair_probability,
+             locked_at = excluded.locked_at, updated_at = now()`,
+      [row.footballDate, row.version, row.fixtureId, row.leagueId, row.phase, row.rank, row.predictionId, row.supportScore, row.fairProbability],
+    );
+  }
+
 }

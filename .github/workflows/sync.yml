@@ -60,6 +60,7 @@ jobs:
           npm run model:impact -- --hours 36
           npm run model:candidates -- --hours 36
           npm run model:publish
+          npm run model:featured
           npm run model:ai-shadow
           npm run model:preview -- --hours 48
 
