@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReason, publishRoundFor, selectionLabel } from '../src/index.js';
+import { buildReason, prematchDue, publishRoundFor, selectionLabel } from '../src/index.js';
 
 describe('selectionLabel', () => {
   it('formats every market', () => {
@@ -58,5 +58,32 @@ describe('publishRoundFor', () => {
     expect(publishRoundFor(ko, at(60), true)).toBe('LINEUP');
     expect(publishRoundFor(ko, at(60), false)).toBeNull();
     expect(publishRoundFor(ko, at(10), true)).toBeNull();
+  });
+});
+
+describe('prematchDue', () => {
+  const ko = new Date('2026-10-15T16:45:00Z');
+  const base = {
+    kickoffAt: ko,
+    now: new Date('2026-10-15T13:00:00Z'),
+    early: { kind: 'NO_CLEAR_SIGNAL', publishedAt: new Date('2026-10-14T17:00:00Z') },
+    gateTunedAt: new Date('2026-10-15T09:47:00Z'),
+    lineupPublished: false,
+    prematchPublished: false,
+  };
+  it('is due once when EARLY was fog published before the league re-tune', () => {
+    expect(prematchDue(base)).toBe(true);
+    expect(prematchDue({ ...base, prematchPublished: true })).toBe(false);
+  });
+  it('never replaces a pick, never comes after LINEUP, never without EARLY or a later re-tune', () => {
+    expect(prematchDue({ ...base, early: { ...base.early, kind: 'SIGNAL' } })).toBe(false);
+    expect(prematchDue({ ...base, lineupPublished: true })).toBe(false);
+    expect(prematchDue({ ...base, early: null })).toBe(false);
+    expect(prematchDue({ ...base, gateTunedAt: new Date('2026-10-14T16:00:00Z') })).toBe(false);
+    expect(prematchDue({ ...base, gateTunedAt: null })).toBe(false);
+  });
+  it('needs at least 15 minutes before kickoff', () => {
+    expect(prematchDue({ ...base, now: new Date('2026-10-15T16:31:00Z') })).toBe(false);
+    expect(prematchDue({ ...base, now: new Date('2026-10-15T16:30:00Z') })).toBe(true);
   });
 });

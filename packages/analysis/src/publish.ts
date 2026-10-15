@@ -4,7 +4,7 @@
  * can never contain a claim the data does not support. (AI wording = Phase 6b.)
  */
 
-export type PublishRound = 'EARLY' | 'LINEUP';
+export type PublishRound = 'EARLY' | 'PREMATCH' | 'LINEUP';
 
 export const BRAND = {
   SIGNAL: '🧭 เข็มทิศเกม',
@@ -82,7 +82,7 @@ function impactLine(team: string, t: { attackLoss: number; defenceLoss: number; 
 /** Thai explanation, built only from stored numbers. */
 export function buildReason(r: ReasonInput): string {
   const lines: string[] = [];
-  const when = r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : 'ล่วงหน้าก่อนเกม';
+  const when = r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : r.round === 'PREMATCH' ? 'ก่อนเตะ หลังปรับโมเดลของลีก' : 'ล่วงหน้าก่อนเกม';
 
   if (r.kind === 'SIGNAL' && r.pick) {
     const p = r.pick;
@@ -123,6 +123,26 @@ export function buildReason(r: ReasonInput): string {
  * EARLY  : kickoff within (earlyMinHours, earlyHours]
  * LINEUP : lineups of both teams known and kickoff within [lineupMinMinutes, lineupMaxMinutes]
  */
+/**
+ * PREMATCH (docs/adr/0005-prematch-round.md): one extra round, only for a match whose EARLY round
+ * was fog published before the league's gates were re-tuned. It is published whatever the decision
+ * (pick or fog), once, at least 15 minutes before kickoff and before any LINEUP round, from a
+ * decision made after the re-tune. It adds a row to the record; nothing published is changed.
+ */
+export function prematchDue(p: {
+  kickoffAt: Date;
+  now: Date;
+  early: { kind: string; publishedAt: Date } | null;
+  gateTunedAt: Date | null;
+  lineupPublished: boolean;
+  prematchPublished: boolean;
+  minMinutes?: number;
+}): boolean {
+  if (p.prematchPublished || p.lineupPublished || !p.early || p.early.kind !== 'NO_CLEAR_SIGNAL' || !p.gateTunedAt) return false;
+  if (p.gateTunedAt.getTime() <= p.early.publishedAt.getTime()) return false;
+  return (p.kickoffAt.getTime() - p.now.getTime()) / 60_000 >= (p.minMinutes ?? 15);
+}
+
 export function publishRoundFor(
   kickoffAt: Date,
   now: Date,

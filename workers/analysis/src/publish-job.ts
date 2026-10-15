@@ -8,9 +8,11 @@
  * Two rounds per fixture:
  *   EARLY  — within 24h of kickoff (before lineups)
  *   LINEUP — 15–80 min before kickoff, after confirmed lineups (Player Impact uses real lineups)
+ *   PREMATCH — once, only when EARLY was fog published before the league's gates were re-tuned
+ *              (docs/adr/0005-prematch-round.md)
  * 🌫️ NO_CLEAR_SIGNAL is published too: coverage and honesty count as much as hits.
  */
-import { buildReason, DEFAULT_RULES, IMPACT_VERSION, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PublishRound } from '@fp/analysis';
+import { buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchDue, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PublishRound } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours } from '@fp/shared';
 
@@ -26,7 +28,7 @@ export interface PublishOptions {
 export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;
   const rulesVersion = opts.rulesVersion ?? DEFAULT_RULES.version;
-  const maxAge = { EARLY: 240, LINEUP: 75, ...opts.maxRunAgeMinutes };
+  const maxAge = { EARLY: 240, PREMATCH: 240, LINEUP: 75, ...opts.maxRunAgeMinutes };
   const shadowVersion = opts.shadowRulesVersion === undefined ? SHADOW_RULES.version : opts.shadowRulesVersion;
   return runJob(ctx, 'publish', { leagues, rulesVersion }, async () => {
     const now = opts.now ?? new Date();
@@ -37,11 +39,28 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
     for (const f of fixtures) {
       const lineups = await ctx.repo.lineupsForFixture(f.id);
       const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
-      const round = publishRoundFor(f.kickoffAt, now, hasLineups);
+      let round: PublishRound | null = publishRoundFor(f.kickoffAt, now, hasLineups);
+      let gateTunedAt: Date | null = null;
+      if (round !== 'LINEUP') {
+        // also inside the EARLY window: EARLY is already published there, so its round is used up
+        const early = await ctx.repo.publication(f.id, 'EARLY');
+        if (early) {
+          gateTunedAt = await ctx.repo.gateTunedAt(f.leagueId);
+          const due = prematchDue({
+            kickoffAt: f.kickoffAt,
+            now,
+            early,
+            gateTunedAt,
+            lineupPublished: await ctx.repo.isPublished(f.id, 'LINEUP'),
+            prematchPublished: await ctx.repo.isPublished(f.id, 'PREMATCH'),
+          });
+          if (due) round = 'PREMATCH';
+        }
+      }
       if (!round) continue;
 
       // Shadow trial (ADR 0003): lock the shadow pick of this round under the same conditions as a real pick.
-      if (shadowVersion && !(await ctx.repo.isShadowLocked(f.id, shadowVersion, round))) {
+      if (shadowVersion && round !== 'PREMATCH' && !(await ctx.repo.isShadowLocked(f.id, shadowVersion, round))) {
         const evaluatedAt = await ctx.repo.latestShadowEvaluation(f.id, shadowVersion);
         const lineupAt = round === 'LINEUP' ? await ctx.repo.lineupSyncedAt(f.id) : null;
         if (evaluatedAt && now.getTime() - evaluatedAt.getTime() <= maxAge[round] * 60_000 && !(lineupAt && evaluatedAt < lineupAt)) {
@@ -58,6 +77,10 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
       }
       if (now.getTime() - run.startedAt.getTime() > maxAge[round] * 60_000) {
         skip('decision too old (run model:candidates)');
+        continue;
+      }
+      if (round === 'PREMATCH' && gateTunedAt && run.startedAt < gateTunedAt) {
+        skip('decision older than the league re-tune');
         continue;
       }
       if (round === 'LINEUP') {

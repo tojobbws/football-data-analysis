@@ -712,6 +712,19 @@ export class Repository {
 
   // ---------- publish ----------
 
+  async publication(fixtureId: number, round: string): Promise<{ kind: string; publishedAt: Date } | null> {
+    const res = await this.db.query<{ kind: string; published_at: string | Date }>('select kind, published_at from analysis_predictions where fixture_id = $1 and publish_round = $2', [fixtureId, round]);
+    const r = res.rows[0];
+    return r ? { kind: String(r.kind), publishedAt: new Date(r.published_at) } : null;
+  }
+
+  /** When the league's pick gates (sides / totals) were last tuned. */
+  async gateTunedAt(leagueId: number): Promise<Date | null> {
+    const res = await this.db.query<{ t: string | Date | null }>(`select max(tuned_at) as t from model_configs_latest where league_id = $1 and purpose in ('SIDES','TOTALS')`, [leagueId]);
+    const t = res.rows[0]?.t;
+    return t ? new Date(t) : null;
+  }
+
   async isPublished(fixtureId: number, round: string): Promise<boolean> {
     const res = await this.db.query('select 1 from analysis_predictions where fixture_id = $1 and publish_round = $2', [fixtureId, round]);
     return res.rows.length > 0;
