@@ -11,28 +11,45 @@ export function LeagueWidgets({ widgets }: { widgets: LeagueWidget[] }) {
   const w = widgets.find((x) => x.league.id === id);
   if (!w) return null;
   const table = all ? w.standings : w.standings.slice(0, 10);
+  const groups = [
+    { label: 'ลีก', items: widgets.filter((x) => x.league.type !== 'Cup') },
+    { label: 'ถ้วย', items: widgets.filter((x) => x.league.type === 'Cup') },
+  ].filter((g) => g.items.length);
+  // e.g. two "Bundesliga" (Germany, Austria): show the country under the name
+  const names = widgets.map((x) => x.league.name);
+  const dup = new Set(names.filter((n, i) => names.indexOf(n) !== i));
 
   return (
     <>
-      <Section title="ลีกที่เราวิเคราะห์" aside={`${widgets.length} ลีก`}>
-        <div className="grid grid-cols-4 gap-1.5" role="group" aria-label="เลือกลีก">
-          {widgets.map(({ league: l }) => (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => {
-                setId(l.id);
-                setAll(false);
-              }}
-              aria-pressed={l.id === id}
-              title={l.name}
-              className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-xs leading-tight transition-colors ${
-                l.id === id ? 'border-[var(--color-pitch)] bg-[var(--color-pitch-soft)] font-semibold text-[var(--color-ink)]' : 'border-transparent text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <TeamLogo src={l.logo_url} alt="" size={28} />
-              <span className="line-clamp-2 text-center">{l.name}</span>
-            </button>
+      <Section title="ลีกที่เราวิเคราะห์" aside={groups.map((g) => `${g.label} ${g.items.length}`).join(' · ')}>
+        <div className="space-y-3">
+          {groups.map((g) => (
+            <div key={g.label}>
+              <h3 className="mb-1.5 text-xs font-medium text-slate-500">
+                {g.label} <span className="tabular-nums">({g.items.length})</span>
+              </h3>
+              <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={`เลือก${g.label}`}>
+                {g.items.map(({ league: l }) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => {
+                      setId(l.id);
+                      setAll(false);
+                    }}
+                    aria-pressed={l.id === id}
+                    title={l.country && l.type !== 'Cup' ? `${l.name} (${l.country})` : l.name}
+                    className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-xs leading-tight transition-colors ${
+                      l.id === id ? 'border-[var(--color-pitch)] bg-[var(--color-pitch-soft)] font-semibold text-[var(--color-ink)]' : 'border-transparent text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <TeamLogo src={l.logo_url} alt="" size={28} />
+                    <span className="line-clamp-2 text-center">{l.name}</span>
+                    {dup.has(l.name) && l.country ? <span className="-mt-0.5 text-[10px] text-slate-500">{l.country}</span> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </Section>

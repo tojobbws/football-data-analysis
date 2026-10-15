@@ -617,6 +617,8 @@ export interface LeagueInfo {
   name: string;
   logo_url: string | null;
   country: string | null;
+  /** API-Football league type: 'League' or 'Cup' */
+  type: string | null;
 }
 
 export interface StandingRow {
@@ -649,7 +651,7 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
   const sb = db();
   const ids = webEnv().leagues;
   const [leagues, seasons] = await Promise.all([
-    sb.from('leagues').select('id, name, logo_url, country').in('id', ids),
+    sb.from('leagues').select('id, name, logo_url, country, type').in('id', ids),
     sb.from('league_seasons').select('league_id, season').eq('is_current', true).in('league_id', ids),
   ]);
   for (const [name, r] of Object.entries({ leagues, seasons })) if (r.error) fail(name, r.error);
