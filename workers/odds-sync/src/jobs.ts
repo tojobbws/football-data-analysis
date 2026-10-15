@@ -1,4 +1,4 @@
-import { runJob, type JobContext } from '@fp/database';
+import { runJob, trackedLeagueSeasons, type JobContext } from '@fp/database';
 import { normaliseOdds, type Market, type OddsItem } from '@fp/football';
 
 const VALID_MARKETS: readonly Market[] = ['MATCH_WINNER', 'ASIAN_HANDICAP', 'OVER_UNDER', 'OTHER'];
@@ -16,13 +16,13 @@ export interface OddsSyncResult {
  * by the API's `update` timestamp, so frequent polling is cheap on storage.
  */
 export function syncOdds(ctx: JobContext, opts: { fixture?: number } = {}) {
-  const { TRACKED_LEAGUES: leagues, SEASON: season } = ctx.env;
+  const leagues = ctx.env.TRACKED_LEAGUES;
   const markets = ctx.env.ODDS_MARKETS.filter((m): m is Market => (VALID_MARKETS as readonly string[]).includes(m));
   const bookmakers = ctx.env.ODDS_BOOKMAKERS.length ? ctx.env.ODDS_BOOKMAKERS : [undefined];
 
-  return runJob(ctx, 'odds', { leagues, season, markets, bookmakers: ctx.env.ODDS_BOOKMAKERS, ...opts }, async () => {
+  return runJob(ctx, 'odds', { leagues, markets, bookmakers: ctx.env.ODDS_BOOKMAKERS, ...opts }, async () => {
     const total: OddsSyncResult = { inserted: 0, unchanged: 0, skippedValues: 0, unknownFixtures: 0 };
-    const scopes = opts.fixture ? [{ fixture: opts.fixture }] : leagues.map((league) => ({ league, season }));
+    const scopes = opts.fixture ? [{ fixture: opts.fixture }] : await trackedLeagueSeasons(ctx);
 
     for (const scope of scopes) {
       for (const bookmaker of bookmakers) {

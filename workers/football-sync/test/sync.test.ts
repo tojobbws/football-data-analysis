@@ -2,7 +2,7 @@
  * End-to-end: fake API-Football -> real job code -> PGlite (real Postgres) with all migrations.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Repository, type JobContext } from '@fp/database';
+import { Repository, trackedLeagueSeasons, type JobContext } from '@fp/database';
 import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
@@ -199,5 +199,15 @@ describe('sync pipeline', () => {
     expect(await pruneStorage(ctx)).toBe(0);
     expect(Number((await one(`select count(*) n from odds_history where fixture_id = 2002`)).n)).toBe(odds);
     await expect(db.query(`delete from odds_history where fixture_id = 2002`)).rejects.toThrow(/append-only/);
+  });
+
+  it('each league syncs its own current season, env SEASON only as fallback', async () => {
+    await db.query(`insert into leagues (id, name) values (253, 'MLS') on conflict do nothing`);
+    await db.query(`insert into league_seasons (league_id, season, is_current) values (253, 2025, false), (253, 2027, true)`);
+    expect(await trackedLeagueSeasons(ctx, [39, 253, 98])).toEqual([
+      { league: 39, season: 2026 },
+      { league: 253, season: 2027 },
+      { league: 98, season: 2026 },
+    ]);
   });
 });

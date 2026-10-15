@@ -35,6 +35,16 @@ export function createJobContext(
   return { env, db, repo, api: new ApiFootball(client), client, log };
 }
 
+/**
+ * Tracked leagues with their own current season: calendar-year leagues (MLS, J1, Allsvenskan, ...)
+ * change season in Feb-Mar while European ones change in August. Falls back to env SEASON for a
+ * league `sync:leagues` has not stored yet.
+ */
+export async function trackedLeagueSeasons(ctx: Pick<JobContext, 'env' | 'repo'>, leagues = ctx.env.TRACKED_LEAGUES) {
+  const current = await ctx.repo.currentSeasons(leagues);
+  return leagues.map((league) => ({ league, season: current.get(league) ?? ctx.env.SEASON }));
+}
+
 /** Runs a job with a sync_runs audit row and API request accounting. */
 export async function runJob(
   ctx: JobContext,

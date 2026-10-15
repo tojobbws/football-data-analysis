@@ -1,4 +1,4 @@
-import { runJob, type JobContext } from '@fp/database';
+import { runJob, trackedLeagueSeasons, type JobContext } from '@fp/database';
 import {
   MAX_FIXTURE_IDS_PER_CALL,
   toApiPredictionRow,
@@ -32,10 +32,9 @@ export function syncLeagues(ctx: JobContext) {
 }
 
 export function syncTeams(ctx: JobContext) {
-  const { TRACKED_LEAGUES: leagues, SEASON: season } = ctx.env;
-  return runJob(ctx, 'teams', { leagues, season }, async () => {
+  return runJob(ctx, 'teams', { leagues: ctx.env.TRACKED_LEAGUES }, async () => {
     let n = 0;
-    for (const league of leagues) {
+    for (const { league, season } of await trackedLeagueSeasons(ctx)) {
       const { data } = await ctx.api.teams({ league, season });
       n += await ctx.repo.upsertVenues(data.map(toVenueRow).filter((v): v is Record<string, unknown> => v !== null));
       n += await ctx.repo.upsertTeams(data.map(toTeamRow));
@@ -45,13 +44,13 @@ export function syncTeams(ctx: JobContext) {
   });
 }
 
-/** Whole season (1 request per league) or a date window. */
+/** Whole season (1 request per league) or a date window. Each league's current season unless `season` is given. */
 export function syncFixtures(ctx: JobContext, opts: { from?: string; to?: string; season?: number } = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;
-  const season = opts.season ?? ctx.env.SEASON;
-  return runJob(ctx, 'fixtures', { leagues, ...opts, season }, async () => {
+  return runJob(ctx, 'fixtures', { leagues, ...opts }, async () => {
     let n = 0;
-    for (const league of leagues) {
+    const scopes = opts.season ? leagues.map((league) => ({ league, season: opts.season! })) : await trackedLeagueSeasons(ctx);
+    for (const { league, season } of scopes) {
       const { data } = await ctx.api.fixtures({ league, season, from: opts.from, to: opts.to });
       n += await persistFixtures(ctx.repo, data, { withDetails: false });
     }
@@ -149,11 +148,10 @@ export function syncPrematchLineups(ctx: JobContext, opts: { withinMinutes?: num
 }
 
 export function syncInjuries(ctx: JobContext, opts: { days?: number } = {}) {
-  const { TRACKED_LEAGUES: leagues, SEASON: season } = ctx.env;
   const days = opts.days ?? 3;
-  return runJob(ctx, 'injuries', { leagues, season, days }, async () => {
+  return runJob(ctx, 'injuries', { leagues: ctx.env.TRACKED_LEAGUES, days }, async () => {
     let n = 0;
-    for (const league of leagues) {
+    for (const { league, season } of await trackedLeagueSeasons(ctx)) {
       for (let d = 0; d <= days; d++) {
         const date = toDateString(addDays(new Date(), d));
         const { data } = await ctx.api.injuries({ league, season, date });
@@ -189,10 +187,9 @@ export function syncApiPredictions(ctx: JobContext, opts: { hours?: number; minG
 }
 
 export function syncStandings(ctx: JobContext) {
-  const { TRACKED_LEAGUES: leagues, SEASON: season } = ctx.env;
-  return runJob(ctx, 'standings', { leagues, season }, async () => {
+  return runJob(ctx, 'standings', { leagues: ctx.env.TRACKED_LEAGUES }, async () => {
     let n = 0;
-    for (const league of leagues) {
+    for (const { league, season } of await trackedLeagueSeasons(ctx)) {
       const { data } = await ctx.api.standings({ league, season });
       for (const item of data) n += await ctx.repo.upsertStandings(toStandingRows(item));
     }
@@ -202,10 +199,9 @@ export function syncStandings(ctx: JobContext) {
 
 /** Heavy (many pages per league) — run weekly. */
 export function syncPlayers(ctx: JobContext, opts: { maxPages?: number } = {}) {
-  const { TRACKED_LEAGUES: leagues, SEASON: season } = ctx.env;
-  return runJob(ctx, 'players', { leagues, season, ...opts }, async () => {
+  return runJob(ctx, 'players', { leagues: ctx.env.TRACKED_LEAGUES, ...opts }, async () => {
     let n = 0;
-    for (const league of leagues) {
+    for (const { league, season } of await trackedLeagueSeasons(ctx)) {
       const { data } = await ctx.api.players({ league, season }, opts.maxPages ?? 100);
       const mapped = data.map(toPlayerRows);
       n += await ctx.repo.upsertPlayers(mapped.map((m) => m.player));

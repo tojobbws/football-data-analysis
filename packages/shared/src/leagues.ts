@@ -14,6 +14,25 @@ export const KNOWN_LEAGUES = {
   3: { name: 'UEFA Europa League', country: 'World' },
   848: { name: 'UEFA Europa Conference League', country: 'World' },
   1129: { name: 'ASEAN Club Championship', country: 'World' },
+  // added 2026-10-15 for the daily featured list (.scratch/daily-featured)
+  40: { name: 'Championship', country: 'England' },
+  88: { name: 'Eredivisie', country: 'Netherlands' },
+  94: { name: 'Primeira Liga', country: 'Portugal' },
+  144: { name: 'Jupiler Pro League', country: 'Belgium' },
+  203: { name: 'Süper Lig', country: 'Turkey' },
+  179: { name: 'Premiership', country: 'Scotland' },
+  119: { name: 'Superliga', country: 'Denmark' },
+  218: { name: 'Bundesliga', country: 'Austria' },
+  207: { name: 'Super League', country: 'Switzerland' },
+  103: { name: 'Eliteserien', country: 'Norway' },
+  113: { name: 'Allsvenskan', country: 'Sweden' },
+  292: { name: 'K League 1', country: 'South-Korea' },
+  98: { name: 'J1 League', country: 'Japan' },
+  253: { name: 'Major League Soccer', country: 'USA' },
+  262: { name: 'Liga MX', country: 'Mexico' },
+  128: { name: 'Liga Profesional Argentina', country: 'Argentina' },
+  307: { name: 'Pro League', country: 'Saudi-Arabia' },
+  188: { name: 'A-League', country: 'Australia' },
 } as const satisfies Record<number, { name: string; country: string }>;
 
 /**

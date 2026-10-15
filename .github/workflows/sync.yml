@@ -5,7 +5,7 @@ name: data-sync
 # job=hourly by the live-score Worker's "5 * * * *" cron: GitHub's own hourly schedule fired only every 4–7 hours.
 on:
   schedule:
-    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings, prune raw responses
+    - cron: '30 22 * * *'   # daily 05:30 TH: league seasons, fixtures window, injuries, API predictions, standings, prune raw responses
     - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats, prune + reclaim disk (vacuum full)
   workflow_dispatch:
     inputs:
@@ -66,6 +66,7 @@ jobs:
       - name: Daily
         if: github.event.schedule == '30 22 * * *'
         run: |
+          npm run sync:leagues
           npm run sync:fixtures -- --from "$(date -u +%F)" --to "$(date -u -d '+10 days' +%F)"
           npm run sync:results
           npm run model:settle

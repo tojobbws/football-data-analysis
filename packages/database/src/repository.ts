@@ -130,6 +130,14 @@ export class Repository {
   upsertLeagueSeasons(rows: Row[]) {
     return writeRows(this.db, 'league_seasons', rows, { conflict: ['league_id', 'season'], touch: 'synced_at' });
   }
+  /** league -> its current season (league_seasons.is_current, from `sync:leagues`). */
+  async currentSeasons(leagueIds: number[]): Promise<Map<number, number>> {
+    const res = await this.db.query<{ league_id: string | number; season: string | number }>(
+      'select league_id, max(season) as season from league_seasons where is_current and league_id = any($1::int[]) group by league_id',
+      [leagueIds],
+    );
+    return new Map(res.rows.map((r) => [Number(r.league_id), Number(r.season)]));
+  }
   upsertVenues(rows: Row[]) {
     return writeRows(this.db, 'venues', rows, { conflict: ['id'], touch: 'synced_at' });
   }
