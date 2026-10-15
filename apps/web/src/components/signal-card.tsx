@@ -122,7 +122,8 @@ export function SignalCard({ s }: { s: SignalCardData }) {
  */
 function TeamRow({ name, logo, state }: { name: string; logo: string | null; state: 'picked' | 'other' | 'plain' }) {
   return (
-    <li className={`flex items-center gap-2.5 ${state === 'other' ? 'opacity-55' : ''}`}>
+    // relative: keeps the sr-only label inside the card (absolute text escaped the rail and widened the page on phones)
+    <li className={`relative flex items-center gap-2.5 ${state === 'other' ? 'opacity-55' : ''}`}>
       <span
         className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white ${state === 'picked' ? 'ring-2 ring-[var(--color-compass-bright)] ring-offset-2 ring-offset-[var(--color-ink)]' : ''}`}
       >
