@@ -60,6 +60,10 @@ _Avoid_: calling it a pick on fan pages
 A fixed-length comparison of shadow pick rules against the real ones, judged on criteria set before any result is seen; the shadow rules are frozen for its length, and only its verdict can change the rules behind the published picks.
 _Avoid_: tweaking shadow rules mid-trial (that starts a new trial)
 
+**Daily featured list (คู่เด่นประจำวัน)**:
+Up to 5 of a football day's picks, chosen from real picks only (never a separate opinion), ranked by support score with at most one per match and two per league; a slot is reserved from the EARLY pick and confirmed or dropped by the LINEUP pick. Runs in shadow until ADR 0004's verdict. Fan-facing name: "เข็มทิศฟุตบอลชี้ คู่เด่นประจำวัน".
+_Avoid_: best bets, sure picks, ฟันธง (as fan-facing copy); filling the list by relaxing thresholds
+
 **Closing market**:
 The market's view of a match at kickoff — the 1X2 and the main Asian handicap and over/under line (sides closest to 50/50), with the model's probability beside each side; kept for good, so the model can be measured against the market over time.
 _Avoid_: closing odds (that is the price recorded on a pick)
