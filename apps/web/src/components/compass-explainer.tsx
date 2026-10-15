@@ -3,6 +3,9 @@ import Link from 'next/link';
 /** The one-line framing of the Game Compass, shared by every place that introduces it. */
 export const COMPASS_LINE = '1 ตัวเลือกต่อคู่ ตรงจุดที่โมเดลมองต่างจากตลาดชัดที่สุด · ล็อกก่อนเตะ';
 
+/** Under the เข็มทิศเกม คู่น่าจับตา title on the home page. */
+export const COMPASS_HOME_LINE = 'คู่ที่โมเดลมองต่างจากตลาดชัดที่สุด คู่ละ 1 ตัวเลือก ล็อกก่อนเตะ แก้ไขไม่ได้ และวัดผลให้ดูทุกคู่';
+
 /** "เลือกยังไง?" — tap to unfold why the Game Compass follows the gap with the market, not the likeliest result. */
 export function CompassExplainer({ className = '' }: { className?: string }) {
   return (

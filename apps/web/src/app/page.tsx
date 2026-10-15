@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { COMPASS_LINE, CompassExplainer } from '@/components/compass-explainer';
+import { COMPASS_HOME_LINE, CompassExplainer } from '@/components/compass-explainer';
 import { ArticleGrid, MoreLink, PreviewGrid, Rail, RailItem } from '@/components/home';
 import { IconChevronRight, CompassPicksTitle, IconLock } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
@@ -90,7 +90,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <h2 id="compass-h" className="leading-none">
                 <CompassPicksTitle className="h-16 sm:h-20" />
               </h2>
-              <p className="mt-1 text-xs leading-relaxed text-slate-600">{COMPASS_LINE}</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">{COMPASS_HOME_LINE}</p>
               <CompassExplainer />
             </div>
             <MoreLink href="/today" label="ทุกคู่" />
