@@ -9,14 +9,18 @@
  * The AI never produces numbers: probabilities/odds come from the snapshot; Thai text is checked
  * so every number in it traces back to the input (see @fp/ai guards).
  */
-import { buildShadowInput, createClaudeRanker, isPersistentApiError, PROMPT_VERSION, validateShadowOutput, type ShadowRanker, type SnapshotCandidate } from '@fp/ai';
+import { buildShadowInput, createClaudeRanker, createOpenAIRanker, isPersistentApiError, PROMPT_VERSION, validateShadowOutput, type ShadowRanker, type SnapshotCandidate } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
 
 export function aiShadowJob(ctx: JobContext, opts: { now?: Date; ranker?: ShadowRanker; limit?: number } = {}) {
   return runJob(ctx, 'ai-shadow', { promptVersion: PROMPT_VERSION }, async () => {
-    const ranker = opts.ranker ?? (ctx.env.ANTHROPIC_API_KEY ? createClaudeRanker({ apiKey: ctx.env.ANTHROPIC_API_KEY }) : null);
+    const { OPENAI_API_KEY, OPENAI_MODEL, ANTHROPIC_API_KEY } = ctx.env;
+    // OpenAI when both OPENAI_* are set, else Claude
+    const ranker =
+      opts.ranker ??
+      (OPENAI_API_KEY && OPENAI_MODEL ? createOpenAIRanker({ apiKey: OPENAI_API_KEY, model: OPENAI_MODEL }) : ANTHROPIC_API_KEY ? createClaudeRanker({ apiKey: ANTHROPIC_API_KEY }) : null);
     if (!ranker) {
-      ctx.log.warn('ANTHROPIC_API_KEY not set — AI shadow ranking skipped');
+      ctx.log.warn('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY) — AI shadow ranking skipped');
       return 0;
     }
     const now = opts.now ?? new Date();

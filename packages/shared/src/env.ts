@@ -37,6 +37,9 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   /** Optional: without it the AI shadow ranking job skips (nothing else depends on it). */
   ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
+  /** Optional: with both set, the AI jobs (previews, shadow ranking) use OpenAI instead of Claude. */
+  OPENAI_API_KEY: z.string().optional().transform((v) => v || undefined),
+  OPENAI_MODEL: z.string().optional().transform((v) => v || undefined),
 });
 
 export type Env = z.infer<typeof envSchema>;

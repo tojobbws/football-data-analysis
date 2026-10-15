@@ -212,7 +212,7 @@ select * from ai_shadow_comparison;   -- กฎ vs AI บนคู่เดี�
 
 - **กฎเป็นคนเลือก 🧭** — AI จัดอันดับ candidate ชุดเดียวกันคู่ขนาน เก็บใน `ai_shadow_rankings` **ก่อนเตะ** และ**ไม่ถูก publish**
 - AI เห็นเฉพาะ snapshot ตอน publish (form, xG, ตัวเจ็บ, lineup, Player Impact, API prediction, ราคาโมเดล, candidates + เหตุผลที่กฎไม่รับ) — **ไม่เห็นว่ากฎเลือกตัวไหน** เพื่อให้เป็นความเห็นอิสระ
-- `claude-haiku-5-5`, structured output, effort `medium` (ไม่มี server-side fallback: ถูกปฏิเสธ = เก็บเป็น refusal) — prompt version อยู่ในทุกแถว (`ai-shadow-v0.1`)
+- OpenAI (`OPENAI_API_KEY` + `OPENAI_MODEL`, Responses API + strict JSON schema) เมื่อตั้งไว้ ไม่งั้น `claude-haiku-5-5` (structured output, effort `medium`); ถูกปฏิเสธ = เก็บเป็น refusal — prompt version อยู่ในทุกแถว (`ai-shadow-v0.1`)
 - Guard: index ต้องมีจริง, **ทุกตัวเลขในข้อความไทยต้องมาจาก input** (AI สร้างตัวเลขเองไม่ได้), ห้ามคำพนัน → ผิดกฎ = `INVALID` (เก็บไว้พร้อมเหตุผล ไม่นับในการเทียบ)
 - `model:settle` ตัดสิน pick ของ AI ด้วยกฎเดียวกัน; DB บังคับ: insert ก่อนเตะเท่านั้น, เนื้อหาแก้ไม่ได้, settle ครั้งเดียว
 - ต้นทุนโดยประมาณ ~2 calls ต่อคู่ (EARLY + LINEUP)
@@ -231,7 +231,7 @@ select * from web_match_previews;    -- ที่เว็บแสดง: stage
 - **ทุกคู่** ในลีกที่ติดตามได้บทวิเคราะห์ — ไม่ใช่ pick, ไม่นับใน 🧭: ภาพรวม, มุมมองเจ้าบ้าน/ทีมเยือน, **สกอร์คาดการณ์** (scoreline ที่โมเดลให้โอกาสสูงสุด จาก score matrix เดียวกับ Probability Engine รวม cross-league blend) และหมายเหตุเรื่องข้อมูล
 - 2 stage ต่อคู่: **EARLY** (ภายใน 48 ชม.) และ **LINEUP** (หลังตัวจริงออก ≤ 80 นาทีก่อนเตะ); เขียนก่อนเตะเท่านั้น (DB trigger) และแก้ไม่ได้ — ผู้อ่านเห็นข้อความเดิมเสมอ
 - **Data support** ตัดสินโดยกฎ ไม่ใช่ AI (`assessDataSupport()` ใน `packages/analysis/src/preview.ts`): `GOOD` / `LIMITED` / `THIN` พร้อมเหตุผลภาษาไทย เช่น *บอลถ้วยที่ทีมมาจากคนละลีก นัดในถ้วยที่ใช้คำนวณมีเพียง N นัด*, ทีมมีข้อมูลน้อย, โมเดลยังไม่ผ่านการทดสอบ, ไม่มี xG, ไม่มีโมเดลสำหรับรายการนี้ — ช่องว่างเล็ก ๆ (ไม่มีราคา, ไม่มีรายงานตัวเจ็บ, ไม่มี H2H) บันทึกไว้แต่ไม่ลดระดับ
-- AI (`claude-haiku-5-5`, prompt `preview-ai-v0.2`) เห็นเฉพาะ facts ใน `facts` และ**เขียนได้แค่ร้อยแก้ว**: ตัวเลขทุกตัวต้องมาจาก input (รวมผลรวมฟอร์ม 5 นัดและเส้น O/U ที่ใส่ไว้เป็น fact), scoreline ต้องเป็นของโมเดล / ผล H2H / ผลในฟอร์มล่าสุด, ห้ามคำพนัน → ไม่ผ่าน = เก็บเป็น `INVALID` พร้อมเหตุผล แล้วใช้**ข้อความ template** (`buildTemplateText()`) แทน — ไม่มี API key ก็ได้ template เช่นกัน ดังนั้น coverage ไม่ขึ้นกับ AI
+- AI (OpenAI ตาม `OPENAI_MODEL` หรือ `claude-haiku-5-5`, prompt `preview-ai-v0.2`) เห็นเฉพาะ facts ใน `facts` และ**เขียนได้แค่ร้อยแก้ว**: ตัวเลขทุกตัวต้องมาจาก input (รวมผลรวมฟอร์ม 5 นัดและเส้น O/U ที่ใส่ไว้เป็น fact), scoreline ต้องเป็นของโมเดล / ผล H2H / ผลในฟอร์มล่าสุด, ห้ามคำพนัน → ไม่ผ่าน = เก็บเป็น `INVALID` พร้อมเหตุผล แล้วใช้**ข้อความ template** (`buildTemplateText()`) แทน — ไม่มี API key ก็ได้ template เช่นกัน ดังนั้น coverage ไม่ขึ้นกับ AI
 - รอบที่ AI ไม่ผ่าน (INVALID/REFUSED) ลองใหม่ได้ **อีก 1 ครั้ง** ต่อ stage: แถวเป็น append-only (ข้อความแรกยังอยู่ใน `match_previews`) เว็บแสดงแถวล่าสุด (`web_match_previews`); AI สร้างตัวเลขจากการคำนวณเอง (เช่น บวกประตู 5 นัด) ก็ถือว่าไม่ผ่าน — โดยตั้งใจ
 - หน้าแมตช์แสดงการ์ด "🔎 วิเคราะห์เกม" (ป้ายระดับข้อมูล + หมายเหตุ, ข้อความ, สกอร์คาดการณ์ + ผลจริงเมื่อจบ); หน้า /today และรายการแมตช์แสดงภาพรวม 2 บรรทัด
 - ต้นทุน ≈ 2 calls ต่อคู่ (EARLY + LINEUP) เหมือน shadow ranking

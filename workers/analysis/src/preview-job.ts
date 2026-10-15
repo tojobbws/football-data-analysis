@@ -11,6 +11,7 @@
 import {
   isPersistentApiError,
   createClaudePreviewWriter,
+  createOpenAIPreviewWriter,
   PREVIEW_PROMPT_VERSION,
   validatePreviewOutput,
   type PreviewWriter,
@@ -53,13 +54,20 @@ export const MAX_ATTEMPTS_PER_STAGE = 2;
 const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
+/** OpenAI when OPENAI_API_KEY and OPENAI_MODEL are set, else Claude when ANTHROPIC_API_KEY is, else none (template text). */
+function defaultPreviewWriter(ctx: JobContext): PreviewWriter | null {
+  const { OPENAI_API_KEY, OPENAI_MODEL, ANTHROPIC_API_KEY } = ctx.env;
+  if (OPENAI_API_KEY && OPENAI_MODEL) return createOpenAIPreviewWriter({ apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
+  return ANTHROPIC_API_KEY ? createClaudePreviewWriter({ apiKey: ANTHROPIC_API_KEY }) : null;
+}
+
 export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;
   const hours = opts.hours ?? 48;
   return runJob(ctx, 'preview', { leagues, hours, version: PREVIEW_VERSION, refresh: Boolean(opts.refresh) }, async () => {
     const now = opts.now ?? new Date();
-    let writer = opts.writer === undefined ? (ctx.env.ANTHROPIC_API_KEY ? createClaudePreviewWriter({ apiKey: ctx.env.ANTHROPIC_API_KEY }) : null) : opts.writer;
-    if (!writer) ctx.log.warn('ANTHROPIC_API_KEY not set — previews use the template text');
+    let writer = opts.writer === undefined ? defaultPreviewWriter(ctx) : opts.writer;
+    if (!writer) ctx.log.warn('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY) — previews use the template text');
 
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, hours).toISOString());
     const report: Array<Record<string, unknown>> = [];

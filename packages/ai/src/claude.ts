@@ -3,6 +3,7 @@
  * `ShadowRanker` / `PreviewWriter` interfaces, so tests run with fakes and never call the API.
  */
 import Anthropic from '@anthropic-ai/sdk';
+import { isPersistentOpenAIError } from './openai.js';
 import { AI_MODEL, OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
 
@@ -69,7 +70,7 @@ export function createStructuredCall(opts: StructuredCallOptions): (input: Recor
  * waiting on every fixture. Rate limits, overload and network errors are not.
  */
 export function isPersistentApiError(err: unknown): boolean {
-  return err instanceof Anthropic.BadRequestError || err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError;
+  return err instanceof Anthropic.BadRequestError || err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError || isPersistentOpenAIError(err);
 }
 
 export function createClaudeRanker(opts: { apiKey?: string; model?: string } = {}): ShadowRanker {
