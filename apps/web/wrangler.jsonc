@@ -8,6 +8,6 @@
   // non-secret config; SUPABASE_ANON_KEY is set with `wrangler secret put` (or .dev.vars locally)
   "vars": {
     "SUPABASE_URL": "https://tblynxlstpnxslzlvpol.supabase.co",
-    "WEB_LEAGUES": "39,140,135,78,61,296,5,2,3,848,1129"
+    "WEB_LEAGUES": "39,140,135,78,61,296,5,2,3,848,1129,40,88,94,144,203,179,119,218,207,103,113,292,98,253,262,128,307,188"
   }
 }
