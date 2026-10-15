@@ -33,7 +33,7 @@ jobs:
   support  [--last N]             results of untracked domestic leagues behind cross-league cups (last N per league, default 30)
   players  [--max-pages N]        player season stats (heavy, weekly)
   bootstrap                       leagues -> teams -> fixtures -> standings
-  prune    [--days N] [--vacuum]  delete raw API responses older than N days (default 3) + odds snapshots of settled matches >7 days old; --vacuum frees the raw table's disk space`;
+  prune    [--days N] [--vacuum]  delete raw API responses older than N days (default 3; odds snapshots are kept); --vacuum frees the raw table's disk space`;
 
 async function main() {
   loadDotEnvFile();

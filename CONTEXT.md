@@ -47,8 +47,7 @@ _Avoid_: presenting it as the chance the win condition happens
 The act of deciding a pick's outcome from the match result; it is separate from the match finishing and may lag behind full time.
 
 **Odds snapshot**:
-One bookmaker's quoted price for one selection at one moment. Snapshots feed pick selection and settlement only, and are discarded 7 days after a match whose picks are all settled.
-_Avoid_: odds history (as something kept for good)
+One bookmaker's quoted price for one selection at one moment. Snapshots feed pick selection and settlement, and are kept for good so that price movement can become a model input later.
 
 **Closing odds**:
 The median of each bookmaker's last pre-kickoff price for the pick's selection; recorded on the pick at settlement and kept for good.
@@ -62,7 +61,7 @@ A fixed-length comparison of shadow pick rules against the real ones, judged on 
 _Avoid_: tweaking shadow rules mid-trial (that starts a new trial)
 
 **Closing market**:
-The market's view of a match at kickoff — the 1X2 and the main Asian handicap and over/under line (sides closest to 50/50), with the model's probability beside each side; kept for good after the odds snapshots expire, so the model can be measured against the market over time.
+The market's view of a match at kickoff — the 1X2 and the main Asian handicap and over/under line (sides closest to 50/50), with the model's probability beside each side; kept for good, so the model can be measured against the market over time.
 _Avoid_: closing odds (that is the price recorded on a pick)
 
 **CLV (closing line value)**:

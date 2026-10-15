@@ -5,7 +5,7 @@ name: data-sync
 # job=hourly by the live-score Worker's "5 * * * *" cron: GitHub's own hourly schedule fired only every 4–7 hours.
 on:
   schedule:
-    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings, prune raw responses + expired odds snapshots
+    - cron: '30 22 * * *'   # daily 05:30 TH: fixtures window, injuries, API predictions, standings, prune raw responses
     - cron: '0 20 * * 1'    # weekly Tue 03:00 TH: player season stats, prune + reclaim disk (vacuum full)
   workflow_dispatch:
     inputs:

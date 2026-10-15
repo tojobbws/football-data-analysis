@@ -191,16 +191,13 @@ describe('sync pipeline', () => {
     expect(await pruneStorage(ctx)).toBe(0);
   });
 
-  it('prune: odds snapshots expire 7 days after kickoff, never earlier', async () => {
+  it('prune: odds snapshots are kept for good, however old the match', async () => {
     const odds = Number((await one(`select count(*) n from odds_history where fixture_id = 2002`)).n);
     expect(odds).toBeGreaterThan(0);
-    await expect(db.query(`delete from odds_history where fixture_id = 2002`)).rejects.toThrow(/append-only/);
 
-    await db.query(`update fixtures set kickoff_at = now() - interval '6 days' where id = 2002`);
+    await db.query(`update fixtures set kickoff_at = now() - interval '60 days' where id = 2002`);
     expect(await pruneStorage(ctx)).toBe(0);
-
-    await db.query(`update fixtures set kickoff_at = now() - interval '8 days' where id = 2002`);
-    expect(await pruneStorage(ctx)).toBe(odds);
-    expect(Number((await one(`select count(*) n from odds_history`)).n)).toBe(0);
+    expect(Number((await one(`select count(*) n from odds_history where fixture_id = 2002`)).n)).toBe(odds);
+    await expect(db.query(`delete from odds_history where fixture_id = 2002`)).rejects.toThrow(/append-only/);
   });
 });

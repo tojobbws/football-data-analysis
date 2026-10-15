@@ -99,27 +99,6 @@ export class Repository {
     }
   }
 
-  /**
-   * Delete the odds snapshots of matches that kicked off over 7 days ago and have no unsettled
-   * pick or AI shadow pick (the odds_history trigger allows exactly these). One match per statement.
-   */
-  async pruneOddsSnapshots(): Promise<number> {
-    const { rows: fixtures } = await this.db.query<{ fixture_id: string | number }>(
-      `select distinct o.fixture_id from odds_history o
-         join fixtures f on f.id = o.fixture_id
-        where f.kickoff_at < now() - interval '7 days' and fp_odds_snapshot_expired(o.fixture_id)`,
-    );
-    let total = 0;
-    for (const { fixture_id } of fixtures) {
-      const { rows } = await this.db.query<{ n: string | number }>(
-        `with gone as (delete from odds_history where fixture_id = $1 returning 1) select count(*) as n from gone`,
-        [fixture_id],
-      );
-      total += Number(rows[0]?.n ?? 0);
-    }
-    return total;
-  }
-
   /** Give the freed space back to the OS (plain DELETE only marks it reusable). Locks the table briefly. */
   async vacuumRawResponses(): Promise<void> {
     await this.db.exec('vacuum full api_raw_responses');

@@ -216,19 +216,18 @@ export function syncPlayers(ctx: JobContext, opts: { maxPages?: number } = {}) {
 }
 
 /**
- * Retention (ADR 0002): drop raw API audit rows older than N days (default 3) and the odds snapshots
- * of fully settled matches that kicked off over 7 days ago; --vacuum also returns the raw table's space to the OS.
+ * Retention (ADR 0002): drop raw API audit rows older than N days (default 3); odds snapshots are kept for good.
+ * --vacuum also returns the raw table's space to the OS.
  */
 export function pruneStorage(ctx: JobContext, opts: { days?: number; vacuum?: boolean } = {}) {
   const days = opts.days ?? 3;
   return runJob(ctx, 'prune', { days, vacuum: !!opts.vacuum }, async () => {
     const before = await ctx.repo.databaseSizeBytes();
     const raw = await ctx.repo.pruneRawResponses(days);
-    const odds = await ctx.repo.pruneOddsSnapshots();
     if (opts.vacuum) await ctx.repo.vacuumRawResponses();
     const after = await ctx.repo.databaseSizeBytes();
     const mb = (b: number) => Math.round(b / 1048576);
-    ctx.log.info('storage pruned', { rawDeleted: raw, oddsDeleted: odds, dbSizeMbBefore: mb(before), dbSizeMbAfter: mb(after) });
-    return raw + odds;
+    ctx.log.info('storage pruned', { rawDeleted: raw, dbSizeMbBefore: mb(before), dbSizeMbAfter: mb(after) });
+    return raw;
   });
 }
