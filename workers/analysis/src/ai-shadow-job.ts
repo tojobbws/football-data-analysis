@@ -9,7 +9,7 @@
  * The AI never produces numbers: probabilities/odds come from the snapshot; Thai text is checked
  * so every number in it traces back to the input (see @fp/ai guards).
  */
-import { buildShadowInput, createClaudeRanker, PROMPT_VERSION, validateShadowOutput, type ShadowRanker, type SnapshotCandidate } from '@fp/ai';
+import { buildShadowInput, createClaudeRanker, isPersistentApiError, PROMPT_VERSION, validateShadowOutput, type ShadowRanker, type SnapshotCandidate } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
 
 export function aiShadowJob(ctx: JobContext, opts: { now?: Date; ranker?: ShadowRanker; limit?: number } = {}) {
@@ -36,9 +36,14 @@ export function aiShadowJob(ctx: JobContext, opts: { now?: Date; ranker?: Shadow
       try {
         res = await ranker.rank(input);
       } catch (err) {
-        // transient API problem: no row, so the next run retries (until kickoff)
-        ctx.log.warn('AI call failed', { predictionId: p.predictionId, error: String(err) });
+        // no row, so the next run retries (until kickoff)
         report.push({ match, result: 'ERROR', note: String(err).slice(0, 80) });
+        if (isPersistentApiError(err)) {
+          // e.g. no credit: every other call this run would fail the same way
+          ctx.log.error('AI shadow stopped for this run', { predictionId: p.predictionId, error: String(err) });
+          break;
+        }
+        ctx.log.warn('AI call failed', { predictionId: p.predictionId, error: String(err) });
         continue;
       }
 

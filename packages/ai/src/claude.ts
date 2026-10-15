@@ -63,6 +63,15 @@ export function createStructuredCall(opts: StructuredCallOptions): (input: Recor
   };
 }
 
+/**
+ * An API error that the next request would hit too (bad request incl. "credit balance is too low",
+ * bad key, no permission): a job stops calling the API for the rest of its run instead of
+ * waiting on every fixture. Rate limits, overload and network errors are not.
+ */
+export function isPersistentApiError(err: unknown): boolean {
+  return err instanceof Anthropic.BadRequestError || err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError;
+}
+
 export function createClaudeRanker(opts: { apiKey?: string; model?: string } = {}): ShadowRanker {
   return { rank: createStructuredCall({ ...opts, system: SYSTEM_PROMPT, schema: OUTPUT_SCHEMA }) };
 }

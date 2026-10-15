@@ -9,6 +9,7 @@
  * AI answer fails, the deterministic template text is stored instead — so every match has a preview.
  */
 import {
+  isPersistentApiError,
   createClaudePreviewWriter,
   PREVIEW_PROMPT_VERSION,
   validatePreviewOutput,
@@ -57,7 +58,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
   const hours = opts.hours ?? 48;
   return runJob(ctx, 'preview', { leagues, hours, version: PREVIEW_VERSION, refresh: Boolean(opts.refresh) }, async () => {
     const now = opts.now ?? new Date();
-    const writer = opts.writer === undefined ? (ctx.env.ANTHROPIC_API_KEY ? createClaudePreviewWriter({ apiKey: ctx.env.ANTHROPIC_API_KEY }) : null) : opts.writer;
+    let writer = opts.writer === undefined ? (ctx.env.ANTHROPIC_API_KEY ? createClaudePreviewWriter({ apiKey: ctx.env.ANTHROPIC_API_KEY }) : null) : opts.writer;
     if (!writer) ctx.log.warn('ANTHROPIC_API_KEY not set — previews use the template text');
 
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, hours).toISOString());
@@ -86,13 +87,22 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
         try {
           res = await writer.write(input);
         } catch (err) {
-          // transient API problem: no row, so the next run retries (until kickoff)
-          ctx.log.warn('AI preview call failed', { fixtureId: f.id, error: String(err) });
-          report.push({ match: `${facts.fixture.home} vs ${facts.fixture.away}`, stage, result: 'ERROR', note: String(err).slice(0, 80) });
-          continue;
+          if (isPersistentApiError(err)) {
+            // e.g. no credit: stop asking for this run; this match and the rest get the template text now
+            // (one attempt used, so a later run with a working API asks the AI once more)
+            ctx.log.error('AI preview disabled for this run', { fixtureId: f.id, error: String(err) });
+            writer = null;
+          } else {
+            // transient API problem: no row, so the next run retries (until kickoff)
+            ctx.log.warn('AI preview call failed', { fixtureId: f.id, error: String(err) });
+            report.push({ match: `${facts.fixture.home} vs ${facts.fixture.away}`, stage, result: 'ERROR', note: String(err).slice(0, 80) });
+            continue;
+          }
         }
-        const base = { prompt_version: PREVIEW_PROMPT_VERSION, model: res.model, output: res.output, usage: res.usage };
-        if (res.refusal) {
+        const base = res ? { prompt_version: PREVIEW_PROMPT_VERSION, model: res.model, output: res.output, usage: res.usage } : null;
+        if (!res || !base) {
+          // AI turned off above: template row (ai_status SKIPPED)
+        } else if (res.refusal) {
           row = { ...base, text_source: 'TEMPLATE', ai_status: 'REFUSED', guard_violations: [`refusal: ${res.refusal.category ?? 'unknown'}`] };
         } else if (res.output === null) {
           row = { ...base, text_source: 'TEMPLATE', ai_status: 'INVALID', guard_violations: [`unparseable output (stop_reason ${res.stopReason})`] };

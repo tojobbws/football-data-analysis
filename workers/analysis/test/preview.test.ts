@@ -3,6 +3,7 @@
  * The real Claude client is never called here.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import Anthropic from '@anthropic-ai/sdk';
 import type { PreviewWriter, RankerResult } from '@fp/ai';
 import { Repository, type JobContext } from '@fp/database';
 import { ApiFootball, ApiFootballClient } from '@fp/football';
@@ -244,5 +245,28 @@ describe('matchPreviewJob', () => {
          values (103, 'LINEUP', now(), 'v', 'TEMPLATE', 'SKIPPED', 'THIN', 'a', 'b', 'c', 'd', '{}')`,
       ),
     ).rejects.toThrow(/before kickoff/);
+  });
+
+  it('a persistent API error (e.g. no credit) stops the AI for the run; every match still gets the template', async () => {
+    await db.query(`insert into teams (id, name) values (11, 'Home E'), (12, 'Away E'), (13, 'Home F'), (14, 'Away F')`);
+    await db.query(
+      `insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short, slug) values
+        (105, 39, 2026, $1, 11, 12, 'NS', 'm105'), (106, 39, 2026, $1, 13, 14, 'NS', 'm106')`,
+      [KO.toISOString()],
+    );
+    const broke = {
+      calls: 0,
+      async write(): Promise<RankerResult> {
+        broke.calls++;
+        throw new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low' } }, 'credit balance is too low', new Headers());
+      },
+    };
+    expect(await matchPreviewJob(ctx, { now: NOW, writer: broke })).toBe(2);
+    expect(broke.calls).toBe(1);
+    const rows = (await db.query<Record<string, unknown>>(`select fixture_id, text_source, ai_status, model from match_previews where fixture_id in (105, 106) order by fixture_id`)).rows;
+    expect(rows).toEqual([
+      { fixture_id: 105, text_source: 'TEMPLATE', ai_status: 'SKIPPED', model: null },
+      { fixture_id: 106, text_source: 'TEMPLATE', ai_status: 'SKIPPED', model: null },
+    ]);
   });
 });
