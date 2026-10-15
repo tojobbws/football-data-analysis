@@ -7,7 +7,7 @@
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   // non-secret config; SUPABASE_ANON_KEY is set with `wrangler secret put` (or .dev.vars locally)
   "vars": {
-    "SUPABASE_URL": "https://mlbmwllpbaaekryklwrs.supabase.co",
+    "SUPABASE_URL": "https://tblynxlstpnxslzlvpol.supabase.co",
     "WEB_LEAGUES": "39,140,135,78,61,296,5,2,3,848,1129"
   }
 }
