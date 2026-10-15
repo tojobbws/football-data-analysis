@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FEATURED_V1, isFeaturedEligible, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
+import { FEATURED_V1, featuredVerdict, isFeaturedEligible, trialSide, type TrialPick, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
 
 const at = (h: number) => new Date(Date.UTC(2026, 9, 17, h));
 const pick = (fixtureId: number, leagueId: number, supportScore: number, over: Partial<FeaturedCandidate> = {}): FeaturedCandidate => ({
@@ -62,5 +62,15 @@ describe('daily featured list', () => {
     expect(lockFeatured(1, run)).toBe('DROPPED');
     expect(ids(run)).toEqual([2, 3, 4, 5, 6]);
     expect(lockFeatured(2, run)).toBe('CONFIRMED');
+  });
+
+  it('verdict: collect 150, then both CLV and fair hit rate must beat all LINEUP picks; extend once to 300', () => {
+    const side = (n: number, win: number, clv: number) =>
+      trialSide(Array.from({ length: n }, (_, i): TrialPick => ({ status: i < win ? 'WIN' : 'LOSS', clv })));
+    expect(featuredVerdict(side(149, 100, 0.05), side(1000, 500, 0)).verdict).toBe('COLLECTING');
+    expect(featuredVerdict(side(150, 90, 0.02), side(1000, 500, 0.01)).verdict).toBe('PASS');
+    expect(featuredVerdict(side(150, 90, 0.0), side(1000, 500, 0.01)).verdict).toBe('EXTEND'); // CLV not better
+    expect(featuredVerdict(side(150, 70, 0.02), side(1000, 500, 0.01)).verdict).toBe('EXTEND'); // hit rate not better
+    expect(featuredVerdict(side(300, 140, 0.02), side(1000, 500, 0.01)).verdict).toBe('FAIL');
   });
 });

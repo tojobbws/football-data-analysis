@@ -41,6 +41,7 @@
     "model:settle": "npm run job -w @fp/analysis-worker -- settle",
     "model:closing": "npm run job -w @fp/analysis-worker -- closing",
     "model:featured": "npm run job -w @fp/analysis-worker -- featured",
+    "model:featured-report": "npm run job -w @fp/analysis-worker -- featured-report",
     "model:shadow-report": "npm run job -w @fp/analysis-worker -- shadow-report",
     "model:report": "npm run job -w @fp/analysis-worker -- report"
   },

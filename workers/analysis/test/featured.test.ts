@@ -7,6 +7,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { addHours, createLogger, footballDay, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { featuredJob } from '../src/featured-job.js';
+import { featuredReport } from '../src/featured-report-job.js';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -129,5 +130,12 @@ describe('featuredJob', () => {
     // 307 now has a slot (303/304 out) and its LINEUP pick is in -> confirmed
     expect(r.get(307)).toEqual(['CONFIRMED', 4]);
     expect(r.get(305)).toEqual(['RESERVED', 2]);
+  });
+
+  it('report: counts confirmed selections and drops, verdict still collecting', async () => {
+    const r = await featuredReport(ctx);
+    expect(r.featured.picks).toBe(2);
+    expect(r.dropped).toBe(3);
+    expect(r.verdict).toBe('COLLECTING');
   });
 });

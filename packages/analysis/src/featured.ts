@@ -7,6 +7,7 @@
  * matches keep their slot and count towards the caps; a locked match never comes back.
  */
 import { fairProbability, type OutcomeDistribution } from './settlement.js';
+import type { TrialSide, TrialVerdict } from './shadow-rules.js';
 
 export interface FeaturedConfig {
   version: string;
@@ -79,4 +80,24 @@ export function reserveFeatured(candidates: FeaturedCandidate[], confirmed: Lock
 /** Decision for a match reaching its LINEUP lock, given the slots reserved in the same run. */
 export function lockFeatured(fixtureId: number, reserved: FeaturedCandidate[]): 'CONFIRMED' | 'DROPPED' {
   return reserved.some((r) => r.fixtureId === fixtureId) ? 'CONFIRMED' : 'DROPPED';
+}
+
+/** Criteria fixed before any result (ADR 0004), judged on confirmed LINEUP selections. */
+export const FEATURED_TRIAL = { minPicks: 150, extendTo: 300 } as const;
+
+/** Featured selections against all LINEUP picks of the same period: CLV and fair hit rate must both be higher. */
+export function featuredVerdict(featured: TrialSide, all: TrialSide, t: typeof FEATURED_TRIAL = FEATURED_TRIAL) {
+  const criteria = {
+    enoughPicks: featured.settled >= t.minPicks,
+    clvBetter: featured.clvMean !== null && all.clvMean !== null && featured.clvMean > all.clvMean,
+    fairBetter: featured.fairHitRate !== null && all.fairHitRate !== null && featured.fairHitRate > all.fairHitRate,
+  };
+  const verdict: TrialVerdict = !criteria.enoughPicks
+    ? 'COLLECTING'
+    : criteria.clvBetter && criteria.fairBetter
+      ? 'PASS'
+      : featured.settled < t.extendTo
+        ? 'EXTEND'
+        : 'FAIL';
+  return { verdict, criteria };
 }

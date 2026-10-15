@@ -1116,7 +1116,7 @@ export class Repository {
   /** Published picks of matches that kicked off since `since` (to set beside a shadow rules version). */
   async publishedPicksSince(since: Date) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select p.publish_round, p.market, p.selection, p.line, p.status, p.clv from analysis_predictions p join fixtures f on f.id = p.fixture_id
+      `select p.publish_round, p.market, p.selection, p.line, p.status, p.clv, f.league_id from analysis_predictions p join fixtures f on f.id = p.fixture_id
         where p.kind = 'SIGNAL' and f.kickoff_at >= $1 and f.kickoff_at < now()`,
       [since.toISOString()],
     );
@@ -1127,6 +1127,7 @@ export class Repository {
       line: r.line == null ? null : Number(r.line),
       status: String(r.status),
       clv: r.clv == null ? null : Number(r.clv),
+      leagueId: Number(r.league_id),
     }));
   }
 
@@ -1184,6 +1185,24 @@ export class Repository {
       kind: r.kind == null ? null : String(r.kind),
       distribution: r.model_distribution == null ? null : (parseJson(r.model_distribution) as unknown as OutcomeDistributionRow),
       supportScore: r.support_score == null ? null : Number(r.support_score),
+    }));
+  }
+
+  /** Every locked row of a list version, with the outcome of its prediction (read, never copied). */
+  async featuredLocked(version: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select fs.football_date::text as football_date, fs.phase, f.kickoff_at, p.status, p.clv
+         from featured_selections fs join fixtures f on f.id = fs.fixture_id
+         left join analysis_predictions p on p.id = fs.prediction_id
+        where fs.version = $1 and fs.locked_at is not null`,
+      [version],
+    );
+    return res.rows.map((r) => ({
+      footballDate: String(r.football_date),
+      phase: String(r.phase),
+      kickoffAt: new Date(r.kickoff_at as string),
+      status: r.status == null ? null : String(r.status),
+      clv: r.clv == null ? null : Number(r.clv),
     }));
   }
 
