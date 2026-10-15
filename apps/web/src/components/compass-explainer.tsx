@@ -4,7 +4,7 @@ import Link from 'next/link';
 export const COMPASS_LINE = '1 ตัวเลือกต่อคู่ ตรงจุดที่โมเดลมองต่างจากตลาดชัดที่สุด · ล็อกก่อนเตะ';
 
 /** Under the เข็มทิศเกม คู่น่าจับตา title on the home page. */
-export const COMPASS_HOME_LINE = 'คู่ที่โมเดลมองต่างจากตลาดชัดที่สุด คู่ละ 1 ตัวเลือก ล็อกก่อนเตะ แก้ไขไม่ได้ และวัดผลให้ดูทุกคู่';
+export const COMPASS_HOME_LINE = 'คู่ที่คัดมาแล้ว เมื่อข้อมูลเห็นโอกาสมากกว่าที่ตลาดให้ไว้ ล็อกก่อนเตะ แก้ไขไม่ได้ และวัดผลให้ดูทุกคู่';
 
 /** "เลือกยังไง?" — tap to unfold why the Game Compass follows the gap with the market, not the likeliest result. */
 export function CompassExplainer({ className = '' }: { className?: string }) {
