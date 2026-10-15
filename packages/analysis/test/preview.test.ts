@@ -143,7 +143,7 @@ describe('assessDataSupport', () => {
     expect(none.notes[0]).toContain('ยังไม่มีตัวเลขจากโมเดล');
   });
 
-  it('team history and xG gaps lower the level; odds / injuries / h2h gaps are only noted', () => {
+  it('team history and xG gaps lower the level; odds / injuries / h2h gaps are not noted at all', () => {
     const one = assessDataSupport(facts({ away: team('Chelsea', { modelMatches: 2 }) }));
     expect(one.level).toBe('LIMITED');
     expect(one.notes[0]).toContain('Chelsea');
@@ -157,7 +157,7 @@ describe('assessDataSupport', () => {
 
     const minor = assessDataSupport(facts({ market: null, h2h: [], home: team('Arsenal', { injuries: [] }), away: team('Chelsea', { injuries: [] }) }));
     expect(minor.level).toBe('GOOD');
-    expect(minor.notes).toHaveLength(3);
+    expect(minor.notes).toEqual([]);
   });
 
   it('short or missing recent form', () => {

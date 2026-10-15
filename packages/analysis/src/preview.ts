@@ -11,7 +11,7 @@
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.5';
+export const PREVIEW_VERSION = 'preview-v0.6';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -196,7 +196,8 @@ const FEW_CUP_MATCHES = 60;
  *  LIMITED — the model exists but is short on history for one team / blind to xG
  *  (whether the model passed `model:tune` is not a data gap: fan pages gate model numbers on it instead)
  *  GOOD    — everything the preview normally uses is present
- * Minor gaps (no odds, no injury report, no H2H) are noted but do not lower the level.
+ * Gaps that do not limit the analysis (no odds, no injury report, no H2H) are not noted: they read as
+ * "the data is not ready" on the fan page (owner, 2026-10-15). The prompt keeps the AI from filling them in.
  */
 export function assessDataSupport(f: PreviewFacts): { level: DataSupport; notes: string[] } {
   const notes: Array<{ level: DataSupport; text: string }> = [];
@@ -230,10 +231,6 @@ export function assessDataSupport(f: PreviewFacts): { level: DataSupport; notes:
   }
   const anyXg = [...f.home.form, ...f.away.form].some((r) => r.xgFor != null);
   if (!anyXg && (f.home.form.length || f.away.form.length)) add('LIMITED', 'ไม่มีข้อมูล xG ของรายการนี้ ประเมินจากประตูจริงเท่านั้น');
-
-  if (!f.market) add('GOOD', 'ไม่มีราคาตลาดให้เทียบกับมุมมองของโมเดล');
-  if (!f.home.injuries.length && !f.away.injuries.length) add('GOOD', 'ไม่มีรายงานตัวเจ็บในระบบ (อาจเป็นเพราะไม่มีข้อมูล ไม่ได้แปลว่าครบทีม)');
-  if (!f.h2h.length) add('GOOD', 'ไม่มีประวัติการพบกันในฐานข้อมูล');
 
   const level: DataSupport = notes.some((n) => n.level === 'THIN') ? 'THIN' : notes.some((n) => n.level === 'LIMITED') ? 'LIMITED' : 'GOOD';
   return { level, notes: notes.map((n) => n.text) };
