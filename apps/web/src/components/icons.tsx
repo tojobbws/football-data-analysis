@@ -75,6 +75,14 @@ export function CompassMark({ size = 20, className = '' }: { size?: number; clas
   );
 }
 
+/** Lettered title "เข็มทิศเกม คู่น่าจับตา" (emblem + wordmark). The alt text carries the heading for screen readers. */
+export function CompassPicksTitle({ className = '' }: { className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/brand/compass-picks-title.webp" width={720} height={235} alt="เข็มทิศเกม คู่น่าจับตา" decoding="async" className={`block w-auto max-w-full select-none ${className}`} draggable={false} />
+  );
+}
+
 /** Brand mark = the compass emblem. */
 export function Logo({ size = 32 }: { size?: number }) {
   return <CompassMark size={size} />;

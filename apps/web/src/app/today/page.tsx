@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { ArticleGrid, MoreLink } from '@/components/home';
 import { MatchList } from '@/components/match-list';
+import { CompassPicksTitle } from '@/components/icons';
 import { SignalCard } from '@/components/signal-card';
 import { Empty, Section } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
@@ -70,7 +71,7 @@ export default async function TodayPage() {
         </p>
       </header>
 
-      <Section title="เข็มทิศเกม คู่น่าจับตา" aside="ล็อกก่อนเตะ แก้ไขไม่ได้">
+      <Section title={<CompassPicksTitle className="h-14 sm:h-16" />} aside="ล็อกก่อนเตะ แก้ไขไม่ได้">
         {picks.length ? (
           <ul className="grid gap-3 sm:grid-cols-2">
             {picks.map((m) => (

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { COMPASS_LINE, CompassExplainer } from '@/components/compass-explainer';
 import { ArticleGrid, MoreLink, PreviewGrid, Rail, RailItem } from '@/components/home';
-import { IconChevronRight, CompassMark, IconLock } from '@/components/icons';
+import { IconChevronRight, CompassPicksTitle, IconLock } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { SignalCard } from '@/components/signal-card';
@@ -87,9 +87,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <section id="compass" className="mx-auto max-w-5xl scroll-mt-28 px-4 pb-6 pt-6" aria-labelledby="compass-h">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div className="min-w-0">
-              <h2 id="compass-h" className="flex items-center gap-2.5 text-lg font-bold leading-tight">
-                <CompassMark size={40} />
-                เข็มทิศเกม คู่น่าจับตา
+              <h2 id="compass-h" className="leading-none">
+                <CompassPicksTitle className="h-16 sm:h-20" />
               </h2>
               <p className="mt-1 text-xs leading-relaxed text-slate-600">{COMPASS_LINE}</p>
               <CompassExplainer />
