@@ -238,7 +238,8 @@ export const matchBySlug = cache(async (slug: string) => {
   const { data: f, error } = await sb
     .from('fixtures')
     .select(`${MATCH_SELECT}, season, round, referee, league_id, home_team_id, away_team_id, ht_home, ht_away, ft_home, ft_away,
-      venue:venues!fixtures_venue_id_fkey(name, city, image_url)`)
+      venue:venues!fixtures_venue_id_fkey(name, city, image_url),
+      home_ground:teams!fixtures_home_team_id_fkey(venue:venues(image_url))`)
     .eq('slug', slug)
     .maybeSingle();
   if (error) fail('fixture', error);
@@ -255,6 +256,8 @@ export const matchBySlug = cache(async (slug: string) => {
     ft_home: number | null;
     ft_away: number | null;
     venue: { name: string | null; city: string | null; image_url: string | null } | null;
+    /** The home team's own stadium; backs the header photo when the fixture venue has none. */
+    home_ground: { venue: { image_url: string | null } | null } | null;
   };
 
   const finished = FINISHED.includes(m.status_short);

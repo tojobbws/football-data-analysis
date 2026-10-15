@@ -149,7 +149,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
 const OFF: Record<string, string> = { PST: 'เลื่อนการแข่งขัน', CANC: 'ยกเลิก', ABD: 'ยุติการแข่งขัน' };
 
 // ---------------------------------------------------------------------------
-// Header: type on white, no hero box
+// Header: type on white; the home ground's photo, washed pale, sits behind it when we have one
 // ---------------------------------------------------------------------------
 
 function MatchHead({ d }: { d: Data }) {
@@ -157,8 +157,21 @@ function MatchHead({ d }: { d: Data }) {
   const live = isLive(m.status_short, m.kickoff_at);
   const showScore = d.finished || live;
   const seed = toSeed(m);
+  const ground = m.venue?.image_url ?? m.home_ground?.venue?.image_url ?? null;
   return (
-    <header className="border-b border-zinc-200 pb-6">
+    <header
+      className={
+        ground
+          ? 'relative isolate overflow-hidden rounded-xl border border-zinc-200 px-4 py-5 shadow-xs sm:px-8 sm:py-7'
+          : 'border-b border-zinc-200 pb-6'
+      }
+    >
+      {ground ? (
+        <>
+          <img src={ground} alt="" aria-hidden className="absolute inset-0 -z-20 h-full w-full object-cover saturate-[.6]" />
+          <div className="absolute inset-0 -z-10 bg-white/[.86]" aria-hidden />
+        </>
+      ) : null}
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
         <span className="inline-flex items-center gap-1.5 font-medium text-zinc-700">
           <TeamLogo src={m.league.logo_url} alt="" size={16} />
