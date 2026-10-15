@@ -107,6 +107,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
                       kickoff_at: s.kickoff_at,
                       home: s.home_team,
                       away: s.away_team,
+                      home_logo: s.home_logo,
+                      away_logo: s.away_logo,
                       market: s.market!,
                       selection: s.selection!,
                       line: s.line,

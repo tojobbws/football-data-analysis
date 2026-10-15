@@ -82,6 +82,8 @@ export default async function TodayPage() {
                     kickoff_at: m.kickoff_at,
                     home: m.home.name,
                     away: m.away.name,
+                    home_logo: m.home.logo_url,
+                    away_logo: m.away.logo_url,
                     market: m.compass!.market!,
                     selection: m.compass!.selection!,
                     line: m.compass!.line,

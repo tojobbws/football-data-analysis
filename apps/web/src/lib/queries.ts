@@ -213,7 +213,19 @@ export async function upcomingSignals(limit = 6) {
     const prev = seen.get(r.fixture_slug);
     if (!prev || r.publish_round === 'LINEUP') seen.set(r.fixture_slug, r);
   }
-  return [...seen.values()].slice(0, limit);
+  const rows = [...seen.values()].slice(0, limit);
+  // team logos for the card (the published view carries names only)
+  const logos = new Map<string, { home: string | null; away: string | null }>();
+  if (rows.length) {
+    const fx = await db()
+      .from('fixtures')
+      .select('slug, home:teams!fixtures_home_team_id_fkey(logo_url), away:teams!fixtures_away_team_id_fkey(logo_url)')
+      .in('slug', rows.map((r) => r.fixture_slug));
+    if (fx.error) fail('fixtures', fx.error);
+    for (const f of (fx.data ?? []) as unknown as Array<{ slug: string; home: { logo_url: string | null } | null; away: { logo_url: string | null } | null }>)
+      logos.set(f.slug, { home: f.home?.logo_url ?? null, away: f.away?.logo_url ?? null });
+  }
+  return rows.map((r) => ({ ...r, home_logo: logos.get(r.fixture_slug)?.home ?? null, away_logo: logos.get(r.fixture_slug)?.away ?? null }));
 }
 
 // ---------------------------------------------------------------------------

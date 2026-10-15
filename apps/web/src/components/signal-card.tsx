@@ -9,6 +9,8 @@ export interface SignalCardData {
   kickoff_at: string;
   home: string;
   away: string;
+  home_logo?: string | null;
+  away_logo?: string | null;
   market: string;
   selection: string;
   line: number | null;
@@ -47,6 +49,8 @@ export function SignalCard({ s }: { s: SignalCardData }) {
   const market = s.market_probability == null ? null : Number(s.market_probability);
   const edge = model != null && market != null ? Math.round((model - market) * 100) : null;
   const strength = STRENGTH_STEP[s.signal_strength ?? ''];
+  // a side pick (handicap / 1X2) names one team: that row leads, the other steps back; totals name neither
+  const picked = s.market !== 'OVER_UNDER' && (s.selection === 'HOME' || s.selection === 'AWAY') ? s.selection : null;
 
   return (
     <Link
@@ -54,12 +58,12 @@ export function SignalCard({ s }: { s: SignalCardData }) {
       className="group flex h-full flex-col rounded-2xl bg-[var(--color-ink)] p-4 text-white shadow-[0_10px_24px_-14px_rgb(11_19_36/0.7)] ring-1 ring-white/5 transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-14px_rgb(11_19_36/0.8)] focus-visible:outline-[var(--color-compass)]"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-xs text-white/65">{s.league}</p>
-          <p className="mt-1 text-sm font-medium leading-snug text-white/90">
-            <span className="block truncate">{s.home}</span>
-            <span className="block truncate">{s.away}</span>
-          </p>
+          <ul className="mt-2 space-y-1.5">
+            <TeamRow name={s.home} logo={s.home_logo ?? null} state={picked ? (picked === 'HOME' ? 'picked' : 'other') : 'plain'} />
+            <TeamRow name={s.away} logo={s.away_logo ?? null} state={picked ? (picked === 'AWAY' ? 'picked' : 'other') : 'plain'} />
+          </ul>
         </div>
         <p className="shrink-0 text-right leading-tight">
           <span className="block text-lg font-bold tabular-nums">{timeTH(s.kickoff_at)}</span>
@@ -109,6 +113,29 @@ export function SignalCard({ s }: { s: SignalCardData }) {
         </p>
       </div>
     </Link>
+  );
+}
+
+/**
+ * One team of the fixture. Logos sit on a light tile so dark crests stay readable on the ink card.
+ * picked = the side the model chose (full weight, amber ring), other = its opponent (dimmed).
+ */
+function TeamRow({ name, logo, state }: { name: string; logo: string | null; state: 'picked' | 'other' | 'plain' }) {
+  return (
+    <li className={`flex items-center gap-2.5 ${state === 'other' ? 'opacity-55' : ''}`}>
+      <span
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white ${state === 'picked' ? 'ring-2 ring-[var(--color-compass-bright)] ring-offset-2 ring-offset-[var(--color-ink)]' : ''}`}
+      >
+        {logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt="" width={24} height={24} loading="lazy" className="h-6 w-6 object-contain" />
+        ) : (
+          <span className="h-5 w-5 rounded-full bg-slate-200" aria-hidden />
+        )}
+      </span>
+      <span className={`min-w-0 truncate leading-snug ${state === 'picked' ? 'text-base font-bold text-white' : 'text-sm font-medium text-white/90'}`}>{name}</span>
+      {state === 'picked' ? <span className="sr-only">(ฝั่งที่โมเดลเลือก)</span> : null}
+    </li>
   );
 }
 
