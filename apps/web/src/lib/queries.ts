@@ -60,11 +60,17 @@ export interface MatchPreview {
   away_th: string;
   score_th: string;
   created_at: string;
+  /** sections of preview-v0.7 (null on older rows; h2h_th also null without meetings) */
+  attack_th: string | null;
+  defence_th: string | null;
+  h2h_th: string | null;
+  key_factor_th: string | null;
+  summary_th: string | null;
 }
 
 const PREVIEW_SELECT = `fixture_id, stage, text_source, ai_status, data_support, data_notes, predicted_home, predicted_away, predicted_p,
   expected_home, expected_away, p_home, p_draw, p_away, overview_th, home_th, away_th, score_th, created_at,
-  p_goals_0_1, p_goals_2, p_goals_3plus`;
+  p_goals_0_1, p_goals_2, p_goals_3plus, attack_th, defence_th, h2h_th, key_factor_th, summary_th`;
 
 async function previewsFor(fixtureIds: number[]): Promise<Map<number, MatchRow['preview']>> {
   const out = new Map<number, MatchRow['preview']>();
@@ -76,6 +82,7 @@ async function previewsFor(fixtureIds: number[]): Promise<Map<number, MatchRow['
 }
 
 export interface Compass {
+  id: number;
   public_id: string;
   publish_round: string;
   kind: 'SIGNAL' | 'NO_CLEAR_SIGNAL';
@@ -94,6 +101,8 @@ export interface Compass {
   record_hash: string;
   /** model's chance of each outcome (null on fog rounds) */
   model_distribution: OutcomeDistribution | null;
+  /** เข็มทิศเกม note (pick_th): what the view is and where the model differs from the market; match page only */
+  note_th?: string | null;
 }
 
 const MATCH_SELECT = `id, slug, kickoff_at, status_short, elapsed, elapsed_extra, goals_home, goals_away,
@@ -101,7 +110,7 @@ const MATCH_SELECT = `id, slug, kickoff_at, status_short, elapsed, elapsed_extra
   home:teams!fixtures_home_team_id_fkey(id, name, logo_url),
   away:teams!fixtures_away_team_id_fkey(id, name, logo_url)`;
 
-const COMPASS_SELECT = `fixture_id, public_id, publish_round, kind, market, selection, line, odds_at_publish, model_probability,
+const COMPASS_SELECT = `id, fixture_id, public_id, publish_round, kind, market, selection, line, odds_at_publish, model_probability,
   market_probability, signal_strength, reason, published_at, status, result_score, settled_at, record_hash, model_distribution`;
 
 function fail(what: string, error: { message: string } | null): never {
@@ -273,7 +282,7 @@ export const matchBySlug = cache(async (slug: string) => {
   };
 
   const finished = FINISHED.includes(m.status_short);
-  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook, preview] = await Promise.all([
+  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, notes] = await Promise.all([
     sb.from('analysis_predictions').select(COMPASS_SELECT).eq('fixture_id', m.id).order('published_at'),
     sb
       .from('analysis_predictions')
@@ -304,14 +313,16 @@ export const matchBySlug = cache(async (slug: string) => {
     finished ? sb.from('fixture_events').select('elapsed, extra, team_id, player_name, type, detail').eq('fixture_id', m.id).order('seq') : Promise.resolve({ data: [], error: null }),
     sb.from('web_model_outlook').select('computed_at, p_home, p_draw, p_away, p_over25, sides_tested, totals_tested').eq('fixture_id', m.id).maybeSingle(),
     sb.from('web_match_previews').select(PREVIEW_SELECT).eq('fixture_id', m.id).maybeSingle(),
+    sb.from('web_pick_explanations').select('analysis_prediction_id, note_th').eq('fixture_id', m.id),
   ]);
-  for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook, preview })) if (r.error) fail(name, r.error);
+  for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, notes })) if (r.error) fail(name, r.error);
+  const noteFor = new Map((notes.data ?? []).map((n) => [Number(n.analysis_prediction_id), String(n.note_th)]));
 
   const snapRow = (snapshot.data?.[0] as { analysis_snapshots?: unknown } | undefined)?.analysis_snapshots;
   return {
     match: m,
     finished,
-    rounds: (rounds.data ?? []) as unknown as Compass[],
+    rounds: ((rounds.data ?? []) as unknown as Compass[]).map((c) => ({ ...c, note_th: noteFor.get(Number(c.id)) ?? null })),
     snapshot: (Array.isArray(snapRow) ? snapRow[0] : snapRow) as
       | { xg_snapshot: unknown; candidates_snapshot: unknown; model_snapshot: unknown; created_at: string; snapshot_hash: string }
       | null

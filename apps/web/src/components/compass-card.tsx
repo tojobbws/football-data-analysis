@@ -54,7 +54,12 @@ export function CompassCard({ c, home, away, live, id }: { c: Compass; home: str
         {c.signal_strength ? <Badge>สัญญาณ{STRENGTH_TH[c.signal_strength] ?? c.signal_strength}</Badge> : null}
       </div>
       <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-zinc-950">{label}</p>
-      {sel ? <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{pickRationale(sel, home, away)}</p> : null}
+      {/* the note (pick_th) says the same direction as the rationale, with the facts behind it */}
+      {c.note_th ? (
+        <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{c.note_th}</p>
+      ) : sel ? (
+        <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{pickRationale(sel, home, away)}</p>
+      ) : null}
 
       {rows.length ? (
         <div className="mt-4">

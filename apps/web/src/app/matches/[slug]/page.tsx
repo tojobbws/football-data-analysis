@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { CompassCard } from '@/components/compass-card';
 import { COMPASS_LINE } from '@/components/compass-explainer';
 import { LiveGoal, LiveHeadBadge, LiveStaleNote, LiveWatch } from '@/components/live';
-import { MatchPreviewCard } from '@/components/match-preview';
+import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { Badge, Card, Note } from '@/components/sheet';
 import { TeamLogo } from '@/components/ui';
@@ -119,7 +119,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
             ) : null}
 
             {d.preview ? (
-              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} overInOutlook={d.outlook?.sides_tested === true && d.outlook.p_over25 != null} pick={previewPick} />
+              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} overInOutlook={d.outlook?.sides_tested === true && d.outlook.p_over25 != null} pick={previewPick} teams={previewTeams(d)} />
             ) : !d.finished && !OFF[m.status_short] ? (
               <Card id="analysis" title="วิเคราะห์เกม">
                 <p className="text-sm text-zinc-500">บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</p>
@@ -351,12 +351,6 @@ function FormSection({ d }: { d: Data }) {
   );
 }
 
-const RESULT_TONE = {
-  W: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
-  D: 'bg-zinc-50 text-zinc-700 ring-zinc-200',
-  L: 'bg-rose-50 text-rose-800 ring-rose-200',
-} as const;
-
 function FormTeam({ name, rows }: { name: string; rows: FormRow[] }) {
   const xg = rows.filter((r) => r.xgFor != null);
   const avg = (xs: number[]) => (xs.length ? (xs.reduce((a, b) => a + b, 0) / xs.length).toFixed(2) : '–');
@@ -364,13 +358,7 @@ function FormTeam({ name, rows }: { name: string; rows: FormRow[] }) {
     <div className="min-w-0">
       <div className="flex items-center justify-between gap-2 border-b border-zinc-200 pb-2">
         <span className="min-w-0 truncate text-sm font-semibold text-zinc-950">{name}</span>
-        <span className="flex gap-1" aria-label={`ผล 5 นัด: ${[...rows].reverse().map((r) => r.result).join(' ')}`}>
-          {[...rows].reverse().map((r, i) => (
-            <span key={i} className={`inline-flex h-5 w-5 items-center justify-center rounded-[4px] text-[11px] font-semibold ring-1 ring-inset ${RESULT_TONE[r.result]}`} aria-hidden>
-              {r.result}
-            </span>
-          ))}
-        </span>
+        <FormChips results={rows.map((r) => r.result)} />
       </div>
       {rows.length ? (
         <>
@@ -595,6 +583,15 @@ function H2HSection({ d }: { d: Data }) {
       )}
     </Card>
   );
+}
+
+/** Table row (once the team has played in it) and recent results per side, for the sectioned preview. */
+function previewTeams(d: Data): { home: TeamContext; away: TeamContext } {
+  const side = (teamId: number, form: FormRow[]): TeamContext => {
+    const s = d.standings.find((x) => x.team_id === teamId);
+    return { standing: s && s.played > 0 ? s : null, form: form.map((r) => r.result) };
+  };
+  return { home: side(d.match.home.id, d.form.home), away: side(d.match.away.id, d.form.away) };
 }
 
 /** 90-minute score of a finished match (what the preview's predicted score is compared with). */
