@@ -1,0 +1,62 @@
+/**
+ * The Game Compass note (pick_th), the AI half: one or two Thai sentences that explain a published
+ * pick from the match facts. Same discipline as the preview: only numbers from the input, only
+ * scorelines from the input, no gambling words, no verdict. Bump PICK_NOTE_PROMPT_VERSION on any change.
+ */
+import { z } from 'zod';
+import { allowedNumbers, inventedNumbers } from './guards.js';
+import { knownScorelines, PREVIEW_BANNED_WORDS } from './preview.js';
+
+export const PICK_NOTE_PROMPT_VERSION = 'pick-note-ai-v0.1';
+
+/** Kept byte-stable (no dates, no per-request values) so it caches across picks. */
+export const PICK_NOTE_SYSTEM_PROMPT = `You are the analyst of a Thai football data & analysis brand. Our model has published one analytical view for a match (the Game Compass, เข็มทิศเกม). You receive the match facts and that view as JSON and explain it to a football fan in Thai.
+
+The input:
+- pick: the view. label is how the site shows it; side and line say what it is; winConditions list which 90-minute results make it right (ถูก), half right, a push, half wrong or wrong; modelChance is our model's chance of it being right with half outcomes counted half, marketChance is the combined view of many bookmakers' prices on the same thing; differencePts is the gap in percentage points; rationale says in which direction the model sees the match differently from the market.
+- fixture, home, away, model, market, h2h, data_support: the match facts (form, xG, table, key players, injuries, lineups, the model's numbers).
+
+Write pick_th: 1-2 short Thai sentences. Say plainly what the view is (use the label or a win condition), then where the model sees the match differently from the market (โมเดลมองต่างจากตลาด) and which facts in the input fit that view, e.g. form, xG, a missing key player.
+
+Hard rules:
+- The view is where the model differs from the market, not the most likely result. Never say the market is wrong (no ตลาดประเมินพลาด, no ตลาดผิด), never say the result will happen, never use ฟันธง or "แน่นอน".
+- Never create a number. Only repeat numbers in the input (0.815 may be written as 81%). If unsure, leave the number out.
+- Only facts from the input: no outside knowledge about these teams or players. Do not write scorelines other than the model's or past results in the input.
+- This is data analysis, not gambling advice. Never use these words: ทีเด็ด, แทง, แทงบอล, กำไร, ตามคู่นี้, การันตี, ฟันธง. Do not mention odds or prices.
+- Tone: clear and grounded, honest that it is one view among many possible results.`;
+
+export const PICK_NOTE_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: { pick_th: { type: 'string' } },
+  required: ['pick_th'],
+  additionalProperties: false,
+} as const;
+
+export const pickNoteOutputSchema = z.object({ pick_th: z.string().trim().min(20).max(500) });
+
+/** Saying the market got it wrong is a claim the record does not support (CONTEXT.md: Edge). */
+const PICK_NOTE_BANNED = [...PREVIEW_BANNED_WORDS, 'ประเมินพลาด', 'ตลาดผิด', 'แน่นอน'] as const;
+
+export interface ValidatedPickNote {
+  ok: boolean;
+  violations: string[];
+  text: string | null;
+}
+
+export function validatePickNote(raw: unknown, input: Record<string, unknown>): ValidatedPickNote {
+  const parsed = pickNoteOutputSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, violations: [`schema: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`], text: null };
+  }
+  const t = parsed.data.pick_th;
+  const violations: string[] = [];
+  for (const w of PICK_NOTE_BANNED) if (t.includes(w)) violations.push(`banned word "${w}"`);
+  for (const n of inventedNumbers(t, allowedNumbers(input))) violations.push(`number not in input: ${n}`);
+  const listed = knownScorelines(input);
+  for (const m of t.matchAll(/(?<![\d.])(\d)\s*[-–]\s*(\d)(?![\d.])/g)) {
+    const s = `${m[1]}-${m[2]}`;
+    if (!listed.has(s)) violations.push(`scoreline not in input: ${s}`);
+  }
+  const unique = [...new Set(violations)];
+  return { ok: unique.length === 0, violations: unique, text: unique.length ? null : t };
+}

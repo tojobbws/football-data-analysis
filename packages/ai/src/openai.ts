@@ -7,6 +7,7 @@ import OpenAI from 'openai';
 import type { PreviewWriter, RankerResult, ShadowRanker } from './claude.js';
 import { OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
+import { PICK_NOTE_OUTPUT_SCHEMA, PICK_NOTE_SYSTEM_PROMPT } from './pick-note.js';
 
 export interface OpenAICallOptions {
   apiKey: string;
@@ -51,6 +52,10 @@ export function createOpenAIRanker(opts: { apiKey: string; model: string }): Sha
 
 export function createOpenAIPreviewWriter(opts: { apiKey: string; model: string }): PreviewWriter {
   return { write: createOpenAIStructuredCall({ ...opts, system: PREVIEW_SYSTEM_PROMPT, schemaName: 'match_preview', schema: PREVIEW_OUTPUT_SCHEMA as unknown as Record<string, unknown> }) };
+}
+
+export function createOpenAIPickNoteWriter(opts: { apiKey: string; model: string }): PreviewWriter {
+  return { write: createOpenAIStructuredCall({ ...opts, system: PICK_NOTE_SYSTEM_PROMPT, schemaName: 'pick_note', schema: PICK_NOTE_OUTPUT_SCHEMA as unknown as Record<string, unknown> }) };
 }
 
 /** OpenAI errors the next request would hit too: bad request, bad key, no permission, or no quota left. */

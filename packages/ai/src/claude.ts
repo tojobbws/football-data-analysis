@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { isPersistentOpenAIError } from './openai.js';
 import { AI_MODEL, OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
+import { PICK_NOTE_OUTPUT_SCHEMA, PICK_NOTE_SYSTEM_PROMPT } from './pick-note.js';
 
 export interface RankerResult {
   /** parsed JSON answer, or null on refusal / unparseable text */
@@ -79,4 +80,8 @@ export function createClaudeRanker(opts: { apiKey?: string; model?: string } = {
 
 export function createClaudePreviewWriter(opts: { apiKey?: string; model?: string } = {}): PreviewWriter {
   return { write: createStructuredCall({ ...opts, system: PREVIEW_SYSTEM_PROMPT, schema: PREVIEW_OUTPUT_SCHEMA }) };
+}
+
+export function createClaudePickNoteWriter(opts: { apiKey?: string; model?: string } = {}): PreviewWriter {
+  return { write: createStructuredCall({ ...opts, system: PICK_NOTE_SYSTEM_PROMPT, schema: PICK_NOTE_OUTPUT_SCHEMA }) };
 }

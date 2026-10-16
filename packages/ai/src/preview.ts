@@ -130,7 +130,7 @@ export function validatePreviewOutput(raw: unknown, input: Record<string, unknow
 }
 
 /** Scorelines the text may quote: the model's, H2H results, and each team's recent results (either order). */
-function knownScorelines(input: Record<string, unknown>): Set<string> {
+export function knownScorelines(input: Record<string, unknown>): Set<string> {
   const out = new Set<string>();
   const both = (a: unknown, b: unknown) => {
     if (a == null || b == null) return;

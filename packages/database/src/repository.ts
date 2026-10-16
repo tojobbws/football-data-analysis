@@ -1027,6 +1027,46 @@ export class Repository {
     return Number(await insertReturning(this.db, 'match_previews', row));
   }
 
+  // ---------- Game Compass note (pick_th) ----------
+
+  /**
+   * Published picks (SIGNAL, any round) still more than `minMinutes` before kickoff, with their note
+   * attempts so far: the job writes one note per pick and retries a failed AI attempt once.
+   */
+  async picksForNotes(now: Date, minMinutes = 5) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select p.id, p.fixture_id, p.publish_round, p.market, p.selection, p.line, p.model_probability, p.market_probability,
+              p.signal_strength, f.kickoff_at, f.league_id, f.home_team_id, f.away_team_id,
+              count(e.id) as attempts, coalesce(bool_or(e.ai_status = 'OK'), false) as ai_ok
+         from analysis_predictions p
+         join fixtures f on f.id = p.fixture_id
+         left join pick_explanations e on e.analysis_prediction_id = p.id
+        where p.kind = 'SIGNAL' and f.kickoff_at > $1::timestamptz + make_interval(mins => $2)
+        group by p.id, f.id
+        order by f.kickoff_at, p.id`,
+      [now.toISOString(), minMinutes],
+    );
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    return res.rows.map((r) => ({
+      predictionId: Number(r.id),
+      publishRound: String(r.publish_round),
+      market: r.market == null ? null : String(r.market),
+      selection: r.selection == null ? null : String(r.selection),
+      line: num(r.line),
+      modelProbability: num(r.model_probability),
+      marketProbability: num(r.market_probability),
+      signalStrength: r.signal_strength == null ? null : String(r.signal_strength),
+      fixture: { id: Number(r.fixture_id), leagueId: Number(r.league_id), kickoffAt: new Date(r.kickoff_at as string), homeTeamId: Number(r.home_team_id), awayTeamId: Number(r.away_team_id) },
+      attempts: Number(r.attempts),
+      aiOk: Boolean(r.ai_ok),
+    }));
+  }
+
+  /** Insert-only; the DB trigger rejects it at/after kickoff. */
+  async insertPickExplanation(row: Row): Promise<number> {
+    return Number(await insertReturning(this.db, 'pick_explanations', row));
+  }
+
   // ---------- candidate generator ----------
 
   async fixturesForCandidates(leagueIds: number[], fromIso: string, toIso: string) {

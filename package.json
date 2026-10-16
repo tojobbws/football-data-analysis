@@ -38,6 +38,7 @@
     "model:publish": "npm run job -w @fp/analysis-worker -- publish",
     "model:ai-shadow": "npm run job -w @fp/analysis-worker -- ai-shadow",
     "model:preview": "npm run job -w @fp/analysis-worker -- preview",
+    "model:pick-notes": "npm run job -w @fp/analysis-worker -- pick-notes",
     "model:settle": "npm run job -w @fp/analysis-worker -- settle",
     "model:closing": "npm run job -w @fp/analysis-worker -- closing",
     "model:featured": "npm run job -w @fp/analysis-worker -- featured",

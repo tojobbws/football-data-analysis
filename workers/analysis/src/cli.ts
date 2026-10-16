@@ -12,6 +12,7 @@ import { featuredJob } from './featured-job.js';
 import { featuredReport } from './featured-report-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
 import { matchPreviewJob } from './preview-job.js';
+import { pickNoteJob } from './pick-note-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
 
 const USAGE = `usage: npm run job -w @fp/analysis-worker -- <job> [options]
@@ -25,6 +26,7 @@ jobs:
   publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
   ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs ANTHROPIC_API_KEY
   preview [--hours N] [--refresh]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48); AI text with ANTHROPIC_API_KEY, template text without; --refresh rewrites previews from an older version
+  pick-notes                  Game Compass note (pick_th) for every published pick not yet explained; AI text with an AI key, template text without
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
   closing                     keep the closing market (1X2 + main AH/O/U line) of kicked-off matches for good
   featured                    daily featured list (shadow, ADR 0004): reserve slots, lock matches at their LINEUP round
@@ -39,7 +41,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report'].includes(job ?? '')) {
+  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -53,6 +55,7 @@ async function main() {
       });
     else if (job === 'publish') await publishJob(ctx);
     else if (job === 'settle') await settleJob(ctx);
+    else if (job === 'pick-notes') await pickNoteJob(ctx);
     else if (job === 'closing') await closingJob(ctx);
     else if (job === 'featured') await featuredJob(ctx);
     else if (job === 'featured-report') {
