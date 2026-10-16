@@ -59,6 +59,13 @@ export const CROSS_LEAGUE_CUPS: Readonly<Record<number, readonly number[]>> = {
   848: UEFA_DOMESTIC,
 };
 
+/**
+ * Competitions between national teams. Their teams play most matches elsewhere (qualifiers,
+ * friendlies, tournaments we do not track), so `sync:support` fetches each team's recent results
+ * before a match; without them the form in previews is from the last window of this competition.
+ */
+export const NATIONAL_TEAM_COMPETITIONS: readonly number[] = [5];
+
 /** Fixture status codes from API-Football */
 export const FIXTURE_STATUS = {
   NOT_STARTED: ['TBD', 'NS'],

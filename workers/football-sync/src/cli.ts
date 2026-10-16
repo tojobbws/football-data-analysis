@@ -31,6 +31,7 @@ jobs:
   predictions [--hours N]         API-Football predictions for next N hours (default 48)
   standings
   support  [--last N]             results of untracked domestic leagues behind cross-league cups (last N per league, default 30)
+                                  + last 5 results of national teams playing a tracked national-team match within 72 h
   players  [--max-pages N]        player season stats (heavy, weekly)
   bootstrap                       leagues -> teams -> fixtures -> standings
   prune    [--days N] [--vacuum]  delete raw API responses older than N days (default 3; odds snapshots are kept); --vacuum frees the raw table's disk space`;

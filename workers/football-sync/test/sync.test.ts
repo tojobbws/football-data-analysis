@@ -7,7 +7,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import detail from '../../../packages/football/test/fixtures/fixture-detail.json' with { type: 'json' };
-import { pruneStorage, syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncResults, syncTeams } from '../src/jobs.js';
+import { pruneStorage, syncApiPredictions, syncFinishedDetails, syncFixtures, syncLeagues, syncResults, syncSupportLeagues, syncTeams } from '../src/jobs.js';
 import { syncOdds } from '../../odds-sync/src/jobs.js';
 
 const future = new Date(Date.now() + 2 * 86_400_000).toISOString();
@@ -20,6 +20,15 @@ const upcomingFixture = {
   teams: { home: { id: 42, name: 'Arsenal', logo: null, winner: null }, away: { id: 99, name: 'Brand New FC', logo: null, winner: null } },
 };
 const { events: _e, lineups: _l, statistics: _s, players: _p, ...finishedListItem } = detail;
+
+/** a national team's friendly, outside every tracked competition */
+const friendlyOf = (team: number) => ({
+  ...finishedListItem,
+  fixture: { ...finishedListItem.fixture, id: 3000 + team, date: new Date(Date.now() - 5 * 86_400_000).toISOString() },
+  league: { ...finishedListItem.league, id: 10, name: 'Friendlies', country: 'World', season: 2026 },
+  teams: { home: { id: team, name: 'Nation ' + team, logo: null, winner: true }, away: { id: 777, name: 'Other Nation', logo: null, winner: false } },
+});
+const teamCalls: string[] = [];
 
 const oddsQuote = { update: '2026-10-06T10:00:00+00:00', home: '1.95' };
 
@@ -35,7 +44,7 @@ const routes: Record<string, (p: URLSearchParams) => unknown[]> = {
     { team: { id: 40, name: 'Liverpool', code: 'LIV', country: 'England', founded: 1892, national: false, logo: null }, venue: { id: 550, name: 'Anfield', address: null, city: 'Liverpool', capacity: 61276, surface: 'grass', image: null } },
     { team: { id: 42, name: 'Arsenal', code: 'ARS', country: 'England', founded: 1886, national: false, logo: null }, venue: { id: 494, name: 'Emirates Stadium', address: null, city: 'London', capacity: 60383, surface: 'grass', image: null } },
   ],
-  '/fixtures': (p) => (p.get('ids') ? [detail] : [finishedListItem, upcomingFixture]),
+  '/fixtures': (p) => (p.get('ids') ? [detail] : p.get('team') ? [friendlyOf(Number(p.get('team')))] : [finishedListItem, upcomingFixture]),
   '/predictions': () => [
     { predictions: { winner: { id: 42, name: 'Arsenal', comment: null }, win_or_draw: true, under_over: null, goals: { home: '-2.5', away: '-1.5' }, advice: 'x', percent: { home: '50%', draw: '30%', away: '20%' } } },
   ],
@@ -52,6 +61,7 @@ const routes: Record<string, (p: URLSearchParams) => unknown[]> = {
 
 const fakeFetch = (async (input: URL | RequestInfo) => {
   const url = new URL(String(input));
+  if (url.pathname === '/fixtures' && url.searchParams.get('team')) teamCalls.push(url.searchParams.get('team')!);
   const handler = routes[url.pathname];
   const response = handler ? handler(url.searchParams) : [];
   return new Response(JSON.stringify({ get: url.pathname, parameters: {}, errors: [], results: response.length, paging: { current: 1, total: 1 }, response }), { status: 200 });
@@ -209,5 +219,33 @@ describe('sync pipeline', () => {
       { league: 253, season: 2027 },
       { league: 98, season: 2026 },
     ]);
+  });
+});
+
+describe('support: national teams', () => {
+  it('fetches the recent results of teams with a national-team match soon, results only', async () => {
+    await db.query(`insert into leagues (id, name) values (5, 'UEFA Nations League') on conflict do nothing`);
+    await db.query(`insert into teams (id, name, is_national) values (501, 'Nation 501', true), (502, 'Nation 502', true), (503, 'Nation 503', true)
+                    on conflict do nothing`);
+    await db.query(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values
+                    (5001, 5, 2026, now() + interval '30 hours', 501, 502, 'NS'),
+                    (5002, 5, 2026, now() + interval '6 days', 503, 501, 'NS')`);
+    teamCalls.length = 0;
+    const national = { ...ctx, env: { ...ctx.env, TRACKED_LEAGUES: [39, 5] } };
+    await syncSupportLeagues(national);
+    expect(teamCalls.sort()).toEqual(['501', '502']); // 503 plays only after the 72 h window
+    // the friendly is stored with its score only, under an untracked league stub
+    expect(await one(`select league_id, details_synced_at from fixtures where id = 3501`)).toEqual({ league_id: 10, details_synced_at: null });
+    expect((await one(`select is_tracked from leagues where id = 10`)).is_tracked).toBe(false);
+    expect(Number((await one(`select count(*) n from fixture_events where fixture_id = 3501`)).n)).toBe(0);
+    // it now counts as recent form for the team
+    const form = await ctx.repo.teamForm(501, new Date(Date.now() + 30 * 3_600_000));
+    expect(form[0]!.fixtureId).toBe(3501);
+  });
+
+  it('makes no team calls when no national-team competition is tracked', async () => {
+    teamCalls.length = 0;
+    await syncSupportLeagues(ctx);
+    expect(teamCalls).toEqual([]);
   });
 });

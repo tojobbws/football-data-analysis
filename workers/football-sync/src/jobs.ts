@@ -10,7 +10,7 @@ import {
   toTeamRow,
   toVenueRow,
 } from '@fp/football';
-import { addDays, addHours, chunk, CROSS_LEAGUE_CUPS, toDateString } from '@fp/shared';
+import { addDays, addHours, chunk, CROSS_LEAGUE_CUPS, NATIONAL_TEAM_COMPETITIONS, toDateString } from '@fp/shared';
 import { persistFixtures } from './persist.js';
 
 /** Leagues + seasons (+ coverage flags: tells us if xG/odds/predictions exist for a league). */
@@ -62,16 +62,31 @@ export function syncFixtures(ctx: JobContext, opts: { from?: string; to?: string
  * Support leagues: domestic leagues behind a tracked cross-league cup (CROSS_LEAGUE_CUPS) that are not
  * tracked themselves. Results only (the cross-league model needs scores, nothing else), never shown on the
  * site. `last` N played per league = 1 request each, and works across season boundaries.
+ *
+ * Also national teams: for each team with a match in a tracked NATIONAL_TEAM_COMPETITIONS within
+ * `nationalHours`, its last `nationalLast` results in any competition (1 request per team). 72 h with a
+ * daily run means at least one fetch before the 48 h EARLY preview, and about 3 per team per window.
  */
-export function syncSupportLeagues(ctx: JobContext, opts: { last?: number } = {}) {
+export function syncSupportLeagues(ctx: JobContext, opts: { last?: number; nationalLast?: number; nationalHours?: number; now?: Date } = {}) {
   const tracked = new Set(ctx.env.TRACKED_LEAGUES);
   const leagues = [...new Set(ctx.env.TRACKED_LEAGUES.flatMap((l) => CROSS_LEAGUE_CUPS[l] ?? []))].filter((l) => !tracked.has(l));
+  const national = NATIONAL_TEAM_COMPETITIONS.filter((l) => tracked.has(l));
   const last = opts.last ?? 30;
-  return runJob(ctx, 'support', { leagues, last }, async () => {
+  const nationalLast = opts.nationalLast ?? 5;
+  const nationalHours = opts.nationalHours ?? 72;
+  return runJob(ctx, 'support', { leagues, last, national, nationalLast, nationalHours }, async () => {
     let n = 0;
     for (const league of leagues) {
       const { data } = await ctx.api.fixtures({ league, last });
       n += await persistFixtures(ctx.repo, data, { withDetails: false });
+    }
+    if (national.length) {
+      const now = opts.now ?? new Date();
+      const upcoming = await ctx.repo.fixturesForCandidates(national, now.toISOString(), addHours(now, nationalHours).toISOString());
+      for (const team of new Set(upcoming.flatMap((f) => [f.homeTeamId, f.awayTeamId]))) {
+        const { data } = await ctx.api.fixtures({ team, last: nationalLast });
+        n += await persistFixtures(ctx.repo, data, { withDetails: false });
+      }
     }
     return n;
   });
