@@ -346,3 +346,33 @@ describe('match report', () => {
     expect(r.markdown).toContain('ไม่ใช่คำแนะนำในการเล่นพนัน');
   });
 });
+
+describe('player impact without injuries coverage', () => {
+  const T = new Date(NOW.getTime() + 14 * 3_600_000);
+
+  beforeAll(async () => {
+    // EARLY-round view of 9001: no confirmed XIs yet, the star is on the injury list
+    await db.query(`delete from fixture_lineup_players where fixture_id = 9001`);
+    await db.query(`insert into injuries (fixture_id, league_id, season, team_id, player_id, player_name, type)
+                    values (9001, 39, 2026, 1, 1099, 'Star', 'Missing Fixture')`);
+  });
+
+  const homeImpact = async () =>
+    (await q(`select home_impact from player_impact_latest where fixture_id = 9001`))[0]!.home_impact as { source: string; missing: Array<{ playerId: number }> };
+
+  it('uses the injury list while coverage is unknown', async () => {
+    await playerImpactJob(ctx, { hours: 72, now: T });
+    const home = await homeImpact();
+    expect(home.source).toBe('INJURIES');
+    expect(home.missing[0]!.playerId).toBe(1099);
+  });
+
+  it('reads an empty or partial injury list as unknown when the league has no injuries coverage', async () => {
+    await db.query(`insert into league_seasons (league_id, season, coverage) values (39, 2026, '{"injuries": false}')
+                    on conflict (league_id, season) do update set coverage = excluded.coverage`);
+    await playerImpactJob(ctx, { hours: 72, now: new Date(T.getTime() + 60_000) });
+    const home = await homeImpact();
+    expect(home.source).toBe('NONE');
+    expect(home.missing).toEqual([]);
+  });
+});

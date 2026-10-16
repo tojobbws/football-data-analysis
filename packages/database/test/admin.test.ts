@@ -72,4 +72,21 @@ describe('admin RLS', () => {
     expect(await as('authenticated', ADMIN, (q) => q('select email from admin_users'))).toEqual([{ email: 'admin@x' }]);
     expect(await as('authenticated', STRANGER, (q) => q('select email from admin_users'))).toEqual([]);
   });
+
+  it('coverage is admin only and compares the flags with what the season holds', async () => {
+    await db.exec(`
+      insert into leagues (id, name) values (39, 'Premier League');
+      insert into league_seasons (league_id, season, is_current, coverage) values (39, 2026, true, '{"injuries": false}');
+      insert into teams (id, name) values (1, 'A'), (2, 'B');
+      insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short)
+        values (1, 39, 2026, now() - interval '9 days', 1, 2, 'FT'), (2, 39, 2026, now() - interval '2 days', 2, 1, 'FT'),
+               (3, 39, 2026, now() + interval '2 days', 1, 2, 'NS');
+      insert into fixture_statistics (fixture_id, team_id, type, value_num) values (1, 1, 'expected_goals', 1.2);
+    `);
+    await expect(as('authenticated', STRANGER, (q) => q('select fp_admin_coverage()'))).rejects.toThrow(/admin only/);
+    const [r] = await as('authenticated', ADMIN, (q) => q('select fp_admin_coverage() as c'));
+    expect(r!.c).toEqual([
+      { league_id: 39, league_name: 'Premier League', season: 2026, coverage: { injuries: false }, finished: 2, xg: 1, events: 0, lineups: 0, injuries: 0 },
+    ]);
+  });
 });

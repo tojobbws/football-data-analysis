@@ -5,16 +5,18 @@ import { dateTimeTH } from '@/lib/time';
 const MB = (b: unknown) => `${(Number(b ?? 0) / 1048576).toFixed(0)} MB`;
 const LIMIT_MB = 500; // Supabase free tier
 
-/** Pipeline health at a glance: what ran, what failed, how full the DB is, which markets are ON. */
+/** Pipeline health at a glance: what ran, what failed, how full the DB is, which markets are ON, what data each league has. */
 export default async function AdminHome() {
   const sb = await authClient();
   const since = new Date(Date.now() - 86_400_000).toISOString();
-  const [overview, runs, configs, leagues] = await Promise.all([
+  const [overview, runs, configs, leagues, coverage] = await Promise.all([
     sb.rpc('fp_admin_overview'),
     sb.from('sync_runs').select('id, job, status, started_at, finished_at, requests_used, items_written, error').order('started_at', { ascending: false }).limit(300),
     sb.from('model_configs_latest').select('league_id, purpose, enabled, tuned_at'),
     sb.from('leagues').select('id, name'),
+    sb.rpc('fp_admin_coverage'),
   ]);
+  const coverageRows = (coverage.data ?? []) as CoverageRow[];
   const o = (overview.data ?? {}) as Record<string, number | boolean>;
   const allRuns = runs.data ?? [];
   const latestByJob = new Map<string, (typeof allRuns)[number]>();
@@ -29,7 +31,7 @@ export default async function AdminHome() {
     gate.set(Number(c.league_id), g);
   }
   const dbPct = (Number(o.db_bytes ?? 0) / 1048576 / LIMIT_MB) * 100;
-  const err = overview.error ?? runs.error ?? configs.error;
+  const err = overview.error ?? runs.error ?? configs.error ?? coverage.error;
 
   return (
     <main className="space-y-5">
@@ -104,7 +106,64 @@ export default async function AdminHome() {
           </tbody>
         </table>
       </Section>
+
+      <Section title="ข้อมูลที่แต่ละลีกมี (coverage จาก API เทียบกับที่เก็บได้จริง)">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead>
+              <tr className="text-xs text-slate-500">
+                <th className="pb-2 text-left font-normal">ลีก</th>
+                <th className="pb-2 text-right font-normal">จบแล้ว</th>
+                <th className="pb-2 font-normal">xG (stats)</th>
+                <th className="pb-2 font-normal">events</th>
+                <th className="pb-2 font-normal">lineups</th>
+                <th className="pb-2 font-normal">injuries</th>
+                <th className="pb-2 font-normal">predictions</th>
+                <th className="pb-2 font-normal">odds</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-center">
+              {coverageRows.map((c) => {
+                const cov = (c.coverage ?? {}) as Record<string, unknown>;
+                const fx = (cov.fixtures ?? {}) as Record<string, unknown>;
+                return (
+                  <tr key={c.league_id}>
+                    <td className="py-1.5 text-left">
+                      {c.league_name} <span className="text-xs text-slate-400">{c.season}</span>
+                    </td>
+                    <td className="text-right tabular-nums">{c.finished}</td>
+                    <HeldCell flag={fx.statistics_fixtures} held={c.xg} finished={c.finished} />
+                    <HeldCell flag={fx.events} held={c.events} finished={c.finished} />
+                    <HeldCell flag={fx.lineups} held={c.lineups} finished={c.finished} />
+                    <HeldCell flag={cov.injuries} held={c.injuries} finished={c.finished} />
+                    <td>{flagMark(cov.predictions)}</td>
+                    <td>{flagMark(cov.odds)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          ✅/· = API บอกว่ามี/ไม่มี · % = สัดส่วนนัดที่จบแล้วซึ่งเราเก็บข้อมูลนั้นได้ · สีส้ม = API บอกว่ามีแต่เก็บได้ไม่ถึงครึ่ง (sync อาจตกหล่น) · ลีกที่ไม่มี injuries: ก่อนประกาศตัวจริง Player Impact ถือว่า &quot;ไม่รู้&quot; ไม่ใช่ &quot;ไม่มีใครเจ็บ&quot;
+        </p>
+      </Section>
     </main>
+  );
+}
+
+type CoverageRow = { league_id: number; league_name: string; season: number; coverage: unknown; finished: number; xg: number; events: number; lineups: number; injuries: number };
+
+const flagMark = (flag: unknown) => (flag === true ? '✅' : flag === false ? '·' : '?');
+
+/** Coverage flag + share of finished matches we hold that data for; amber when the API says yes but we hold under half. */
+function HeldCell({ flag, held, finished }: { flag: unknown; held: number; finished: number }) {
+  const pct = finished ? Math.round((held / finished) * 100) : null;
+  const gap = flag === true && finished >= 10 && held / finished < 0.5;
+  return (
+    <td className={gap ? 'text-amber-600' : undefined}>
+      {flagMark(flag)} <span className="tabular-nums text-xs">{pct === null ? '–' : `${pct}%`}</span>
+    </td>
   );
 }
 

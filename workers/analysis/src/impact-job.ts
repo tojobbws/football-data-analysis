@@ -2,7 +2,8 @@
  * Player Impact layer job (between Probability Engine and Candidate Generator).
  *
  * For each upcoming fixture with Dixon-Coles prices:
- *   who is missing?  (confirmed lineup if published, otherwise the injuries list)
+ *   who is missing?  (confirmed lineup if published, otherwise the injuries list — unknown when the
+ *                     league has no injuries coverage)
  *   -> attack/defence loss per team -> adjusted λ/μ -> re-price the SAME markets/lines
  *   -> write rows as model 'dc-impact-v0.1' (base DC rows are never modified).
  * Rows are written even when the layer is not trusted yet (useful for 🩹 Injury Impact content);
@@ -53,12 +54,15 @@ export function playerImpactJob(ctx: JobContext, opts: { hours?: number; now?: D
       // who is missing
       const lineups = await ctx.repo.lineupsForFixture(f.id);
       const injuries = await ctx.repo.injuriesForFixture(f.id);
+      // the league has no injury reports: an empty list means "unknown", not "nobody missing"
+      const noInjuryReports = (await ctx.repo.injuriesCovered(f.id)) === false;
       const stats = await ctx.repo.playerStatsForTeams([f.homeTeamId, f.awayTeamId], f.kickoffAt);
       const side = (teamId: number): { loss: TeamLoss; source: 'LINEUP' | 'INJURIES' | 'NONE'; profiled: number } => {
         const profile = buildTeamProfile(stats, teamId, f.kickoffAt);
         if (profile.teamMatches < 3) return { loss: NO_LOSS, source: 'NONE', profiled: profile.teamMatches };
         const lu = lineups.get(`${f.id}:${teamId}`);
         if (lu && lu.starters.size >= 11) return { loss: teamLoss(profile, absencesFromLineup(profile, lu.starters, lu.bench)), source: 'LINEUP', profiled: profile.teamMatches };
+        if (noInjuryReports) return { loss: NO_LOSS, source: 'NONE', profiled: profile.teamMatches };
         return { loss: teamLoss(profile, absencesFromInjuries(injuries.filter((i) => i.teamId === teamId))), source: 'INJURIES', profiled: profile.teamMatches };
       };
       const home = side(f.homeTeamId);

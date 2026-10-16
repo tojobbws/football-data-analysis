@@ -503,6 +503,20 @@ export class Repository {
     return this.lineupsWhere('f.id', fixtureId);
   }
 
+  /**
+   * Whether API-Football reports injuries for a fixture's league season (league_seasons.coverage.injuries).
+   * null when the season or its coverage was never synced: unknown, so callers keep using the injuries list.
+   */
+  async injuriesCovered(fixtureId: number): Promise<boolean | null> {
+    const res = await this.db.query<{ injuries: boolean | null }>(
+      `select (s.coverage->>'injuries')::boolean as injuries
+         from fixtures f join league_seasons s on s.league_id = f.league_id and s.season = f.season
+        where f.id = $1`,
+      [fixtureId],
+    );
+    return res.rows[0]?.injuries ?? null;
+  }
+
   async injuriesForFixture(fixtureId: number) {
     const res = await this.db.query<{ team_id: number | null; player_id: number | null; type: string | null }>(
       'select team_id, player_id, type from injuries where fixture_id = $1',
