@@ -7,7 +7,7 @@ import type { MarketSelection, Outcome } from './settlement.js';
 import { pickRationale, winCondition } from './win-condition.js';
 import { selectionLabel } from './publish.js';
 
-export const PICK_NOTE_VERSION = 'pick-note-v0.1';
+export const PICK_NOTE_VERSION = 'pick-note-v0.2';
 
 export const OUTCOME_TH: Record<Outcome, string> = {
   WIN: 'ถูก',
@@ -81,7 +81,7 @@ export function pickNoteFacts(p: PublishedPick, home: string, away: string): Pic
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
-/** Fallback note: the direction of the difference and both chances, nothing else. */
+/** Fallback note: the direction of the difference and both chances; the label is right above it on the card. */
 export function pickNoteTemplate(f: PickNoteFacts): string {
-  return `${f.rationale} ที่ ${f.label} โมเดลให้โอกาสถูก ${pct(f.modelChance)} ขณะที่ตลาดให้ ${pct(f.marketChance)}`;
+  return `${f.rationale} โมเดลให้โอกาสถูก ${pct(f.modelChance)} ขณะที่ตลาดให้ ${pct(f.marketChance)}`;
 }

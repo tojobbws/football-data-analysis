@@ -9,7 +9,7 @@ describe('pickNoteFacts', () => {
     expect(f).toMatchObject({ market: 'ASIAN_HANDICAP', side: 'Egnatia', line: 1.75, label: 'Egnatia +1.75', modelChance: 0.815, marketChance: 0.671, differencePts: 14.4 });
     expect(f.rationale).toBe('Midtjylland อาจชนะ แต่โมเดลมองว่าจะชนะห่างน้อยกว่าที่ตลาดคาด');
     expect(f.winConditions).toEqual(['Egnatia ชนะ เสมอ หรือแพ้ 1 ลูก → ถูก', 'Egnatia แพ้ 2 ลูกพอดี → ผิดครึ่ง', 'Egnatia แพ้ 3 ลูกขึ้นไป → ผิด']);
-    expect(pickNoteTemplate(f)).toBe('Midtjylland อาจชนะ แต่โมเดลมองว่าจะชนะห่างน้อยกว่าที่ตลาดคาด ที่ Egnatia +1.75 โมเดลให้โอกาสถูก 82% ขณะที่ตลาดให้ 67%');
+    expect(pickNoteTemplate(f)).toBe('Midtjylland อาจชนะ แต่โมเดลมองว่าจะชนะห่างน้อยกว่าที่ตลาดคาด โมเดลให้โอกาสถูก 82% ขณะที่ตลาดให้ 67%');
   });
 
   it('an over/under pick names the side, not a team', () => {

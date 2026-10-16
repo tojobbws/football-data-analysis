@@ -92,7 +92,7 @@ afterAll(async () => {
 describe('pickNoteJob', () => {
   it('explains each published pick from the facts; template text when the AI fails the guards; nothing for fog', async () => {
     const writer = fakeWriter({
-      'Egnatia/EARLY': { output: { pick_th: 'เข็มทิศเกมชี้ Egnatia +1.75 โมเดลมองต่างจากตลาด ให้โอกาสถูก 81% ขณะที่ตลาดให้ 67%' } },
+      'Egnatia/EARLY': { output: { pick_th: 'โมเดลมองต่างจากตลาดว่า Midtjylland อาจชนะไม่ห่าง ให้โอกาสถูก 81% ขณะที่ตลาดให้ 67%' } },
       'Home B/EARLY': { output: { pick_th: 'ตลาดประเมินพลาด Away B ชนะแน่นอน 90%' } },
     });
     expect(await pickNoteJob(ctx, { now: NOW, writer })).toBe(2);
@@ -114,25 +114,44 @@ describe('pickNoteJob', () => {
     const b = (await db.query<Record<string, unknown>>(`select p.* from pick_explanations p join analysis_predictions a on a.id = p.analysis_prediction_id where a.fixture_id = 202`)).rows[0]!;
     expect(b).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'INVALID' });
     expect(b.guard_violations).toEqual(expect.arrayContaining(['banned word "ประเมินพลาด"', 'banned word "แน่นอน"', 'number not in input: 90%']));
-    expect(b.note_th).toBe('โมเดลมองว่า Away B จะชนะห่างมากกว่าที่ตลาดคาด ที่ Away B -0.5 โมเดลให้โอกาสถูก 58% ขณะที่ตลาดให้ 50%');
+    expect(b.note_th).toBe('โมเดลมองว่า Away B จะชนะห่างมากกว่าที่ตลาดคาด โมเดลให้โอกาสถูก 58% ขณะที่ตลาดให้ 50%');
 
     // fog gets no note
     expect((await db.query(`select 1 from pick_explanations where fixture_id = 203`)).rows).toHaveLength(0);
   });
 
   it('retries a failed AI note once, never a passed one; a new round gets its own note', async () => {
-    const again = fakeWriter({ 'Home B/EARLY': { output: { pick_th: 'เข็มทิศเกมชี้ Away B -0.5 โมเดลมองต่างจากตลาดเล็กน้อย จากฟอร์มที่ดีกว่าในช่วงหลัง' } } });
+    const again = fakeWriter({ 'Home B/EARLY': { output: { pick_th: 'โมเดลมองต่างจากตลาดเล็กน้อยว่า Away B มีโอกาสชนะมากกว่า จากฟอร์มที่ดีกว่าในช่วงหลัง' } } });
     expect(await pickNoteJob(ctx, { now: NOW, writer: again })).toBe(1);
     expect(again.calls).toBe(1);
     expect((await db.query(`select note_th from web_pick_explanations where fixture_id = 202`)).rows[0]).toMatchObject({ note_th: expect.stringContaining('ฟอร์มที่ดีกว่า') });
 
     // the LINEUP round is a new pick (a new row in the chain): it is explained on its own, from the LINEUP facts
     await publish(201, 'LINEUP', { selection: 'HOME', line: 1.5, model: 0.7, market: 0.62 });
-    const lineup = fakeWriter({ 'Egnatia/LINEUP': { output: { pick_th: 'รอบตัวจริงเข็มทิศเกมยังชี้ Egnatia +1.5 โมเดลมองต่างจากตลาดน้อยลง' } } });
+    const lineup = fakeWriter({ 'Egnatia/LINEUP': { output: { pick_th: 'หลังประกาศตัวจริง โมเดลยังมองต่างจากตลาดในทางเดิม แต่ห่างน้อยลง' } } });
     expect(await pickNoteJob(ctx, { now: NOW, writer: lineup })).toBe(1);
     expect((lineup.inputs[0]!.fixture as { stage: string }).stage).toBe('LINEUP');
     expect((await db.query(`select count(*) n from web_pick_explanations where fixture_id = 201`)).rows[0]).toMatchObject({ n: 2 });
     expect(await pickNoteJob(ctx, { now: NOW, writer: fakeWriter({}) })).toBe(0);
+  });
+
+  it('--refresh rewrites a note from an older prompt once, with the AI only; notes from the current prompt stay', async () => {
+    await db.query(`insert into teams (id, name) values (9, 'Home R'), (10, 'Away R')`);
+    await db.query(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short, slug) values (205, 39, 2026, $1, 9, 10, 'NS', 'n205')`, [KO.toISOString()]);
+    await publish(205, 'EARLY', { selection: 'AWAY', line: 0, model: 0.51, market: 0.42 });
+    // a note the v0.1 prompt wrote and passed: it restates the pick, which the current prompt no longer allows
+    await db.query(`insert into pick_explanations (analysis_prediction_id, fixture_id, kickoff_at, version, prompt_version, model, text_source, ai_status, note_th, facts)
+      select id, fixture_id, now(), 'pick-note-v0.1', 'pick-note-ai-v0.1', 'gpt-test', 'AI', 'OK', 'มุมมองคือ Away R 0: ทีมเยือนชนะจึงถูก', '{}' from analysis_predictions where fixture_id = 205`);
+
+    // an ordinary run leaves it alone (the pick has an OK note); a refresh without an AI key does nothing
+    expect(await pickNoteJob(ctx, { now: NOW, writer: fakeWriter({}) })).toBe(0);
+    expect(await pickNoteJob(ctx, { now: NOW, writer: null, refresh: true })).toBe(0);
+
+    const writer = fakeWriter({ 'Home R/EARLY': { output: { pick_th: 'โมเดลมองต่างจากตลาดว่า Away R มีโอกาสมากกว่า แม้ฟอร์มล่าสุดไม่เข้าทาง ส่วนต่างมาจากตัวเลขของโมเดลในช่วงยาวกว่า' } } });
+    expect(await pickNoteJob(ctx, { now: NOW, writer, refresh: true })).toBe(1);
+    expect(writer.calls).toBe(1); // only 205: the other picks' notes come from the current prompt
+    expect((await db.query(`select note_th from web_pick_explanations where fixture_id = 205`)).rows[0]).toMatchObject({ note_th: expect.stringContaining('ไม่เข้าทาง') });
+    expect(await pickNoteJob(ctx, { now: NOW, writer: fakeWriter({}), refresh: true })).toBe(0);
   });
 
   it('without an AI key every pick still gets the template note, once; rows are immutable and refused after kickoff', async () => {

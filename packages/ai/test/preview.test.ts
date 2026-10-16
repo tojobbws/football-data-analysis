@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { validatePickNote } from '../src/pick-note.js';
 import { validatePreviewOutput } from '../src/preview.js';
 
 const input = {
@@ -71,5 +72,21 @@ describe('validatePreviewOutput', () => {
     expect(validatePreviewOutput({ ...ok, score_th: '' }, input).violations[0]).toMatch(/^schema:/);
     expect(validatePreviewOutput({ ...ok, summary_th: undefined }, input).violations[0]).toMatch(/^schema:/);
     expect(validatePreviewOutput(null, input).ok).toBe(false);
+  });
+});
+
+describe('validatePickNote', () => {
+  const pickInput = { ...input, pick: { label: 'Arsenal -0.5', modelChance: 0.6, marketChance: 0.52, differencePts: 8 } };
+
+  it('accepts a plain note that starts with where the model differs', () => {
+    expect(validatePickNote({ pick_th: 'โมเดลมองว่า Arsenal มีโอกาสชนะ 60% มากกว่าที่ตลาดให้ 52% สอดคล้องกับฟอร์มที่ชนะ 2-0 ในนัดล่าสุด' }, pickInput).ok).toBe(true);
+  });
+
+  it('rejects a note that restates the pick, stiff wording, a claim that the market is wrong, or one too long', () => {
+    expect(validatePickNote({ pick_th: 'มุมมองคือ Arsenal -0.5: ชนะถือว่าถูก แพ้หรือเสมอถือว่าผิด' }, pickInput).violations).toEqual(['restates the pick at the start']);
+    expect(validatePickNote({ pick_th: 'Arsenal -0.5 คือมุมมองของโมเดลในเกมนี้ที่ต่างจากตลาด' }, pickInput).violations).toEqual(['restates the pick at the start']);
+    expect(validatePickNote({ pick_th: 'โมเดลสูงกว่าตลาด 8 จุดเปอร์เซ็นต์; ฟอร์มดี' }, pickInput).violations).toEqual(['banned word "จุดเปอร์เซ็นต์"', 'banned word ";"']);
+    expect(validatePickNote({ pick_th: 'ตลาดประเมินพลาด Arsenal ชนะแน่นอน' }, pickInput).violations).toEqual(['banned word "ประเมินพลาด"', 'banned word "แน่นอน"']);
+    expect(validatePickNote({ pick_th: 'ก'.repeat(241) }, pickInput).violations[0]).toMatch(/^schema:/);
   });
 });

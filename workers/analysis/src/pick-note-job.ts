@@ -23,6 +23,8 @@ export interface PickNoteJobOptions {
   now?: Date;
   writer?: PreviewWriter | null;
   limit?: number;
+  /** rewrite notes written by an older prompt, once per prompt version (still before kickoff only) */
+  refresh?: boolean;
 }
 
 /** OpenAI when OPENAI_API_KEY and OPENAI_MODEL are set, else Claude when ANTHROPIC_API_KEY is, else none (template text). */
@@ -33,12 +35,16 @@ function defaultWriter(ctx: JobContext): PreviewWriter | null {
 }
 
 export function pickNoteJob(ctx: JobContext, opts: PickNoteJobOptions = {}) {
-  return runJob(ctx, 'pick-notes', { version: PICK_NOTE_VERSION }, async () => {
+  return runJob(ctx, 'pick-notes', { version: PICK_NOTE_VERSION, refresh: Boolean(opts.refresh) }, async () => {
     const now = opts.now ?? new Date();
     let writer = opts.writer === undefined ? defaultWriter(ctx) : opts.writer;
     if (!writer) ctx.log.warn('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY) — pick notes use the template text');
 
-    const picks = await ctx.repo.picksForNotes(now);
+    if (opts.refresh && !writer) {
+      ctx.log.warn('--refresh needs an AI key: nothing rewritten');
+      return 0;
+    }
+    const picks = await ctx.repo.picksForNotes(now, 5, opts.refresh ? PICK_NOTE_PROMPT_VERSION : undefined);
     const report: Array<Record<string, unknown>> = [];
     let written = 0;
 
