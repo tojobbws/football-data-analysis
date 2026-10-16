@@ -95,3 +95,12 @@ _Avoid_: predicted goals
 **Match phase**:
 Where the match itself stands — upcoming, live, or finished. Fan pages describe an unsettled pick by its match phase, not by the bare fact that it is unsettled.
 _Avoid_: using the pick's status to imply match state
+
+### Data
+
+**Benchmark forecast (ตัวเทียบ)**:
+An outside source's match probabilities, kept only to score the model against; it never feeds the model, the pick rules or fan pages.
+_Avoid_: using it as a model input or a second opinion on the pick
+
+**Data coverage**:
+Which kinds of match data a league season provides (statistics, lineups, events, injuries, odds …); it decides which model inputs that league can use. A gap turns those inputs off for the league but never removes the league from picks.
