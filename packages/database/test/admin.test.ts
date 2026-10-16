@@ -89,4 +89,43 @@ describe('admin RLS', () => {
       { league_id: 39, league_name: 'Premier League', season: 2026, coverage: { injuries: false }, finished: 2, xg: 1, events: 0, lineups: 0, injuries: 0 },
     ]);
   });
+
+  it('benchmark scores the last pre-kickoff forecasts of both sides on the same matches', async () => {
+    // fixture 1 (home win), fixture 2 (draw) — fixtures from the coverage test
+    await db.exec(`
+      update fixtures set ft_home = 2, ft_away = 0 where id = 1;
+      update fixtures set ft_home = 1, ft_away = 1 where id = 2;
+      insert into model_versions (id, description) values ('dixon-coles-v0.2', 'dc'), ('ensemble-v0.1', 'ens') on conflict do nothing;
+      insert into probability_predictions (fixture_id, model_version_id, computed_at, market, selection, probability) values
+        -- fixture 1: DC says 0.5 home, the ensemble (preferred) says 0.6; a post-kickoff run is ignored
+        (1, 'dixon-coles-v0.2', now() - interval '10 days', 'MATCH_WINNER', 'HOME', 0.5),
+        (1, 'dixon-coles-v0.2', now() - interval '10 days', 'MATCH_WINNER', 'DRAW', 0.3),
+        (1, 'dixon-coles-v0.2', now() - interval '10 days', 'MATCH_WINNER', 'AWAY', 0.2),
+        (1, 'ensemble-v0.1', now() - interval '10 days', 'MATCH_WINNER', 'HOME', 0.6),
+        (1, 'ensemble-v0.1', now() - interval '10 days', 'MATCH_WINNER', 'DRAW', 0.25),
+        (1, 'ensemble-v0.1', now() - interval '10 days', 'MATCH_WINNER', 'AWAY', 0.15),
+        (1, 'ensemble-v0.1', now() - interval '8 days', 'MATCH_WINNER', 'HOME', 0.01),
+        (1, 'ensemble-v0.1', now() - interval '8 days', 'MATCH_WINNER', 'DRAW', 0.01),
+        (1, 'ensemble-v0.1', now() - interval '8 days', 'MATCH_WINNER', 'AWAY', 0.98),
+        -- fixture 2: model only, no benchmark
+        (2, 'dixon-coles-v0.2', now() - interval '3 days', 'MATCH_WINNER', 'HOME', 0.4),
+        (2, 'dixon-coles-v0.2', now() - interval '3 days', 'MATCH_WINNER', 'DRAW', 0.3),
+        (2, 'dixon-coles-v0.2', now() - interval '3 days', 'MATCH_WINNER', 'AWAY', 0.3);
+      insert into api_predictions (fixture_id, collected_at, percent_home, percent_draw, percent_away, raw) values
+        (1, now() - interval '11 days', 10, 10, 80, '{}'),
+        (1, now() - interval '10 days', 45, 45, 10, '{}'),   -- last before kickoff: wins
+        (1, now() - interval '8 days', 100, 0, 0, '{}');     -- after kickoff: ignored
+    `);
+    await expect(as('authenticated', STRANGER, (q) => q('select fp_admin_benchmark()'))).rejects.toThrow(/admin only/);
+    const [r] = await as('authenticated', ADMIN, (q) => q('select fp_admin_benchmark() as b'));
+    const b = r!.b as { matched: number; model_only: number; benchmark_only: number; total: Record<string, number>; leagues: Array<{ league_name: string; n: number }> };
+    expect(b).toMatchObject({ matched: 1, model_only: 1, benchmark_only: 0 });
+    // model 0.6/0.25/0.15 on a home win: 0.16 + 0.0625 + 0.0225; benchmark 0.45/0.45/0.10: 0.3025 + 0.2025 + 0.01
+    expect(b.total.model_brier).toBeCloseTo(0.245, 6);
+    expect(b.total.benchmark_brier).toBeCloseTo(0.515, 6);
+    expect(b.total.model_log_loss).toBeCloseTo(-Math.log(0.6), 6);
+    expect(b.total.benchmark_log_loss).toBeCloseTo(-Math.log(0.45), 6);
+    expect(b.total.brier_diff).toBeCloseTo(-0.27, 6);
+    expect(b.leagues).toMatchObject([{ league_name: 'Premier League', n: 1 }]);
+  });
 });

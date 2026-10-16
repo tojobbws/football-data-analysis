@@ -17,10 +17,47 @@ interface Shadow {
   ai_status: Status | null;
 }
 
-/** Published 🧭 (rules) next to the AI shadow ranking of the same snapshot — internal only. */
+interface BenchScore {
+  n: number;
+  model_brier: number;
+  benchmark_brier: number;
+  model_log_loss: number;
+  benchmark_log_loss: number;
+  brier_diff: number;
+  brier_diff_se: number | null;
+}
+interface Benchmark {
+  matched: number;
+  model_only: number;
+  benchmark_only: number;
+  total: BenchScore | null;
+  leagues: Array<BenchScore & { league_id: number; league_name: string }>;
+}
+
+const f3 = (x: number) => Number(x).toFixed(3);
+
+function BenchRow({ label, s, strong }: { label: string; s: BenchScore; strong?: boolean }) {
+  return (
+    <tr className={strong ? 'font-semibold' : undefined}>
+      <td className="py-1.5 text-left">{label}</td>
+      <td>{s.n}</td>
+      <td>{f3(s.model_brier)}</td>
+      <td>{f3(s.benchmark_brier)}</td>
+      <td className={Number(s.brier_diff) < 0 ? 'text-emerald-700' : 'text-rose-600'}>
+        {Number(s.brier_diff) > 0 ? '+' : ''}
+        {f3(s.brier_diff)}
+        {s.brier_diff_se == null ? '' : ` ± ${f3(s.brier_diff_se)}`}
+      </td>
+      <td>{f3(s.model_log_loss)}</td>
+      <td>{f3(s.benchmark_log_loss)}</td>
+    </tr>
+  );
+}
+
+/** Published 🧭 (rules) next to the AI shadow ranking of the same snapshot, and the model's 1X2 against a benchmark forecast — internal only. */
 export default async function AdminAnalyses() {
   const sb = await authClient();
-  const [rows, comparison] = await Promise.all([
+  const [rows, comparison, benchmark] = await Promise.all([
     sb
       .from('analysis_predictions')
       .select(
@@ -31,8 +68,10 @@ export default async function AdminAnalyses() {
       .order('published_at', { ascending: false })
       .limit(100),
     sb.from('ai_shadow_comparison').select('*'),
+    sb.rpc('fp_admin_benchmark'),
   ]);
-  const err = rows.error ?? comparison.error;
+  const err = rows.error ?? comparison.error ?? benchmark.error;
+  const bench = benchmark.data as Benchmark | null;
   const list = (rows.data ?? []) as unknown as Array<{
     id: number;
     public_id: string;
@@ -86,6 +125,40 @@ export default async function AdminAnalyses() {
             ))}
           </tbody>
         </table>
+      </Section>
+
+      <Section title="โมเดล vs API-Football predictions (ตัวเทียบ 1X2)" aside="ต่ำกว่า = ดีกว่า · ใช้วัดเทียบเท่านั้น ไม่มีผลต่อ 🧭">
+        {bench?.total ? (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr className="text-xs text-slate-500">
+                    <th className="pb-2 text-left font-normal">ลีก</th>
+                    <th className="pb-2 font-normal">คู่ที่เทียบ</th>
+                    <th className="pb-2 font-normal">Brier โมเดล</th>
+                    <th className="pb-2 font-normal">Brier ตัวเทียบ</th>
+                    <th className="pb-2 font-normal">ต่าง (± SE)</th>
+                    <th className="pb-2 font-normal">Log-loss โมเดล</th>
+                    <th className="pb-2 font-normal">Log-loss ตัวเทียบ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-center tabular-nums">
+                  <BenchRow label="ทุกลีก" s={bench.total} strong />
+                  {bench.leagues.map((s) => (
+                    <BenchRow key={s.league_id} label={s.league_name} s={s} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              ตัวเทียบ = API-Football /predictions แถวสุดท้ายก่อนเตะ · โมเดล = 1X2 ล่าสุดก่อนเตะ (ensemble ถ้ามี ไม่งั้น Dixon-Coles) · ผล 90 นาที ·
+              ต่าง = โมเดล − ตัวเทียบ (ติดลบ = โมเดลดีกว่า) · ไม่นับ: มีแต่โมเดล {bench.model_only} คู่, มีแต่ตัวเทียบ {bench.benchmark_only} คู่
+            </p>
+          </>
+        ) : (
+          <Empty>ยังไม่มีคู่ที่จบแล้วซึ่งมีทั้งสองฝั่ง</Empty>
+        )}
       </Section>
 
       <Section title="บทวิเคราะห์ที่เผยแพร่ล่าสุด">
