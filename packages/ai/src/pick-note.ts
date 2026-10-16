@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 import { allowedNumbers, inventedNumbers } from './guards.js';
-import { knownScorelines, PREVIEW_BANNED_WORDS } from './preview.js';
+import { knownScorelines, PREVIEW_BANNED_WORDS, withoutThousandsSeparators } from './preview.js';
 
 export const PICK_NOTE_PROMPT_VERSION = 'pick-note-ai-v0.2';
 
@@ -66,7 +66,7 @@ export function validatePickNote(raw: unknown, input: Record<string, unknown>): 
   for (const w of PICK_NOTE_BANNED) if (t.includes(w)) violations.push(`banned word "${w}"`);
   const label = (input.pick as { label?: string } | undefined)?.label;
   if (RESTATING_OPENINGS.some((o) => t.startsWith(o)) || (label && t.startsWith(label))) violations.push('restates the pick at the start');
-  for (const n of inventedNumbers(t, allowedNumbers(input))) violations.push(`number not in input: ${n}`);
+  for (const n of inventedNumbers(withoutThousandsSeparators(t), allowedNumbers(input))) violations.push(`number not in input: ${n}`);
   const listed = knownScorelines(input);
   for (const m of t.matchAll(/(?<![\d.])(\d)\s*[-–]\s*(\d)(?![\d.])/g)) {
     const s = `${m[1]}-${m[2]}`;

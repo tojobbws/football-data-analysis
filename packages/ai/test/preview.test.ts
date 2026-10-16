@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validatePickNote } from '../src/pick-note.js';
-import { validatePreviewOutput } from '../src/preview.js';
+import { validatePreviewOutput, withoutThousandsSeparators } from '../src/preview.js';
 
 const input = {
   fixture: { home: 'Arsenal', away: 'Chelsea', league: 'Premier League', stage: 'EARLY' },
@@ -88,5 +88,16 @@ describe('validatePickNote', () => {
     expect(validatePickNote({ pick_th: 'โมเดลสูงกว่าตลาด 8 จุดเปอร์เซ็นต์; ฟอร์มดี' }, pickInput).violations).toEqual(['banned word "จุดเปอร์เซ็นต์"', 'banned word ";"']);
     expect(validatePickNote({ pick_th: 'ตลาดประเมินพลาด Arsenal ชนะแน่นอน' }, pickInput).violations).toEqual(['banned word "ประเมินพลาด"', 'banned word "แน่นอน"']);
     expect(validatePickNote({ pick_th: 'ก'.repeat(241) }, pickInput).violations[0]).toMatch(/^schema:/);
+  });
+});
+
+describe('thousands separators', () => {
+  it('a count written as 1,356 is the 1356 in the input, in the preview and in the pick note', () => {
+    const big = { ...input, model: { ...input.model, matchesUsed: 1356 }, pick: { label: 'Arsenal -0.5' } };
+    expect(withoutThousandsSeparators('โมเดลใช้ 1,356 นัด และ 1,234,567 กับ 1,5')).toBe('โมเดลใช้ 1356 นัด และ 1234567 กับ 1,5');
+    expect(validatePreviewOutput({ ...ok, score_th: 'โมเดลคำนวณจาก 1,356 นัด ประตูคาดหวัง 1.7 ต่อ 1.0' }, big).ok).toBe(true);
+    expect(validatePickNote({ pick_th: 'โมเดลมองต่างจากตลาด จากข้อมูล 1,356 นัดในรายการนี้' }, big).ok).toBe(true);
+    // a decimal comma is still checked as a decimal: 1,7 is xG 1.7, 1,9 is not in the input
+    expect(validatePreviewOutput({ ...ok, score_th: 'ประตูคาดหวัง 1,9 ต่อ 1.0' }, big).violations).toEqual(['score_th: number not in input: 1,9']);
   });
 });

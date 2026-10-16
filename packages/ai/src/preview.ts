@@ -117,7 +117,7 @@ export function validatePreviewOutput(raw: unknown, input: Record<string, unknow
     const t = out[field];
     if (!t) continue;
     for (const w of PREVIEW_BANNED_WORDS) if (t.includes(w)) violations.push(`banned word "${w}"`);
-    for (const n of inventedNumbers(t, allowedNumbers(numberSources(field, input)))) violations.push(`${field}: number not in input: ${n}`);
+    for (const n of inventedNumbers(withoutThousandsSeparators(t), allowedNumbers(numberSources(field, input)))) violations.push(`${field}: number not in input: ${n}`);
     for (const m of t.matchAll(/(?<![\d.])(\d)\s*[-–]\s*(\d)(?![\d.])/g)) {
       const s = `${m[1]}-${m[2]}`;
       // "2-1" style scorelines must be the model's or a result in the input; W-D-L counts like "ชนะ 3 เสมอ 1" don't match this shape
@@ -127,6 +127,16 @@ export function validatePreviewOutput(raw: unknown, input: Record<string, unknow
 
   const unique = [...new Set(violations)];
   return { ok: unique.length === 0, violations: unique, text: unique.length ? null : out };
+}
+
+/**
+ * "1,356" is one thousand three hundred and fifty-six, not 1.356: the number guard reads a comma as a
+ * decimal point (Thai text writes neither often), so a count the AI wrote with a separator was rejected
+ * (Kyoto Sanga, 2026-10-16). Only a comma followed by exactly three digits is a separator. The shadow
+ * ranking keeps the plain guard: it stays frozen for its trial.
+ */
+export function withoutThousandsSeparators(text: string): string {
+  return text.replace(/(\d),(?=\d{3}(?!\d))/g, '$1');
 }
 
 /** Scorelines the text may quote: the model's, H2H results, and each team's recent results (either order). */
