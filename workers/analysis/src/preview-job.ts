@@ -20,12 +20,14 @@ import {
   assessDataSupport,
   buildTemplateText,
   DIXON_COLES_VERSION,
+  formAverages,
   formSummary,
   goalBands,
   matrixExpectedGoals,
   PREVIEW_VERSION,
   previewScoreMatrix,
   previewStageFor,
+  restDays,
   topScorelines,
   type GoalBands,
   type PreviewFacts,
@@ -35,7 +37,7 @@ import {
   type PreviewText,
 } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
-import { addHours } from '@fp/shared';
+import { addHours, toDateString } from '@fp/shared';
 import { ENSEMBLE_VERSION } from './jobs.js';
 
 export interface PreviewJobOptions {
@@ -173,9 +175,10 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
 
 type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[number];
 
-async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<{ facts: PreviewFacts; bands: GoalBands | null }> {
+/** Everything a preview (and a Game Compass note) is written from; every derived number is computed here. */
+export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<{ facts: PreviewFacts; bands: GoalBands | null }> {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
-  const [formHome, formAway, standings, injuries, lineup, probs, apiPred, h2h, qHome, qDraw, qAway] = await Promise.all([
+  const [formHome, formAway, standings, injuries, lineup, probs, apiPred, h2h, qHome, qDraw, qAway, place, lineupTeams, keyHome, keyAway] = await Promise.all([
     ctx.repo.teamForm(f.homeTeamId, f.kickoffAt),
     ctx.repo.teamForm(f.awayTeamId, f.kickoffAt),
     ctx.repo.standingsForTeams(header.leagueId, header.season, [f.homeTeamId, f.awayTeamId]),
@@ -187,6 +190,14 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
     ctx.repo.selectionMovement(f.id, 'MATCH_WINNER', 'HOME', null),
     ctx.repo.selectionMovement(f.id, 'MATCH_WINNER', 'DRAW', null),
     ctx.repo.selectionMovement(f.id, 'MATCH_WINNER', 'AWAY', null),
+    ctx.repo.fixtureVenueReferee(f.id),
+    ctx.repo.lineupTeams(f.id),
+    ctx.repo.teamKeyPlayers(f.homeTeamId, header.season, f.kickoffAt),
+    ctx.repo.teamKeyPlayers(f.awayTeamId, header.season, f.kickoffAt),
+  ]);
+  const [detailsHome, detailsAway] = await Promise.all([
+    ctx.repo.formDetails(f.homeTeamId, formHome.map((x) => x.fixtureId)),
+    ctx.repo.formDetails(f.awayTeamId, formAway.map((x) => x.fixtureId)),
   ]);
 
   const dc = probs.filter((p) => p.modelVersionId === DIXON_COLES_VERSION);
@@ -230,8 +241,16 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
     };
   }
 
-  const team = (id: number, name: string, form: Awaited<ReturnType<JobContext['repo']['teamForm']>>, weighted: number | undefined): PreviewTeam => {
-    const starters = lineup.filter((p) => Number(p.team_id) === id && p.is_starter).map((p) => String(p.player_name));
+  const team = (
+    id: number,
+    name: string,
+    form: Awaited<ReturnType<JobContext['repo']['teamForm']>>,
+    details: Awaited<ReturnType<JobContext['repo']['formDetails']>>,
+    keyPlayers: Awaited<ReturnType<JobContext['repo']['teamKeyPlayers']>>,
+    weighted: number | undefined,
+  ): PreviewTeam => {
+    const xi = lineup.filter((p) => Number(p.team_id) === id && p.is_starter);
+    const starters = xi.map((p) => String(p.player_name));
     const rows = form.map(
       (x): PreviewFormRow => ({
         venue: x.venue as 'H' | 'A',
@@ -241,16 +260,45 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
         xgFor: x.xgFor == null ? null : r2(x.xgFor),
         xgAgainst: x.xgAgainst == null ? null : r2(x.xgAgainst),
         opponent: x.opponent,
+        date: toDateString(new Date(x.kickoffAt), 'Asia/Bangkok'),
+        competition: details.get(x.fixtureId)?.competition ?? null,
       }),
     );
+    const key = new Map(keyPlayers.map((p) => [p.playerId, p]));
+    const standing = standings.get(id) ?? null;
+    const lineupTeam = lineupTeams.get(id);
+    const xiIds = new Set(xi.map((p) => Number(p.player_id)));
     return {
       name,
       form: rows,
       formSummary: formSummary(rows),
-      standing: standings.get(id) ?? null,
-      injuries: injuries.filter((i) => Number(i.team_id) === id).map((i) => ({ player: i.player_name == null ? null : String(i.player_name), type: i.type == null ? null : String(i.type), reason: i.reason == null ? null : String(i.reason) })),
+      // a table the team has not played in yet (a cup's first round) says nothing: rank 30 with 0 played
+      standing: standing && (standing.played ?? 0) > 0 ? standing : null,
+      injuries: injuries
+        .filter((i) => Number(i.team_id) === id)
+        .map((i) => {
+          const k = i.player_id == null ? undefined : key.get(Number(i.player_id));
+          return {
+            player: i.player_name == null ? null : String(i.player_name),
+            type: i.type == null ? null : String(i.type),
+            reason: i.reason == null ? null : String(i.reason),
+            isKeyPlayer: Boolean(k),
+            ...(k ? { goals: k.goals, assists: k.assists } : {}),
+          };
+        }),
       starters: starters.length ? starters : null,
       modelMatches: weighted == null ? null : r2(Number(weighted)),
+      restDays: restDays(f.kickoffAt, form[0] ? new Date(form[0].kickoffAt) : null),
+      averages: formAverages(form.map((x) => details.get(x.fixtureId) ?? { shotsOnTarget: null, possession: null })),
+      keyPlayers: keyPlayers.map(({ name, goals, assists, appearances }) => ({ name, goals, assists, appearances })),
+      lineup:
+        stage === 'LINEUP' && starters.length
+          ? {
+              formation: lineupTeam?.formation ?? null,
+              coach: lineupTeam?.coach ?? null,
+              keyPlayersNotStarting: keyPlayers.filter((p) => !xiIds.has(p.playerId)).map((p) => p.name),
+            }
+          : null,
     };
   };
 
@@ -267,9 +315,11 @@ async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fi
       round: header.round,
       kickoffAt: f.kickoffAt.toISOString(),
       stage,
+      venue: place.venue,
+      referee: place.referee,
     },
-    home: team(f.homeTeamId, header.home, formHome, inputs?.home?.weightedMatches),
-    away: team(f.awayTeamId, header.away, formAway, inputs?.away?.weightedMatches),
+    home: team(f.homeTeamId, header.home, formHome, detailsHome, keyHome, inputs?.home?.weightedMatches),
+    away: team(f.awayTeamId, header.away, formAway, detailsAway, keyAway, inputs?.away?.weightedMatches),
     model,
     market: market && (market.home || market.draw || market.away) ? market : null,
     apiPrediction: apiPred

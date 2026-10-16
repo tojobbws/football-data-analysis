@@ -11,7 +11,7 @@
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.6';
+export const PREVIEW_VERSION = 'preview-v0.7';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -23,6 +23,43 @@ export interface PreviewFormRow {
   xgFor: number | null;
   xgAgainst: number | null;
   opponent?: string | null;
+  /** Thai calendar date (YYYY-MM-DD) */
+  date?: string;
+  competition?: string | null;
+}
+
+export interface VenueRecord {
+  played: number | null;
+  win: number | null;
+  draw: number | null;
+  lose: number | null;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+}
+
+export interface PreviewStanding {
+  rank: number | null;
+  played: number | null;
+  points: number | null;
+  win: number | null;
+  draw: number | null;
+  lose: number | null;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+  goalDiff?: number | null;
+  /** the table zone as the data provider names it, e.g. "Promotion - Champions League (League phase)" */
+  zone?: string | null;
+  /** teams in the table (group) */
+  teams?: number | null;
+  home?: VenueRecord | null;
+  away?: VenueRecord | null;
+}
+
+export interface KeyPlayer {
+  name: string;
+  goals: number;
+  assists: number;
+  appearances: number;
 }
 
 export interface PreviewTeam {
@@ -30,12 +67,21 @@ export interface PreviewTeam {
   form: PreviewFormRow[];
   /** totals over `form` — stated as facts so the text may quote them without doing arithmetic */
   formSummary: FormSummary | null;
-  standing: { rank: number | null; played: number | null; points: number | null; win: number | null; draw: number | null; lose: number | null; goalsFor: number | null; goalsAgainst: number | null } | null;
-  injuries: Array<{ player: string | null; type: string | null; reason: string | null }>;
+  /** null when the team has not played in this table yet (a cup's first round): rank 30 with 0 played means nothing */
+  standing: PreviewStanding | null;
+  injuries: Array<{ player: string | null; type: string | null; reason: string | null; isKeyPlayer?: boolean; goals?: number | null; assists?: number | null }>;
   /** confirmed starting XI (names), null before the lineup is out */
   starters: string[] | null;
   /** time-weighted matches the model has for this team (Dixon-Coles `teamMatches`) */
   modelMatches: number | null;
+  /** whole days since the team's last match (null without one) */
+  restDays?: number | null;
+  /** averages over the recent matches that have the statistic */
+  averages?: { matches: number; shotsOnTarget: number | null; possession: number | null } | null;
+  /** top players this season by goals + assists, every synced competition */
+  keyPlayers?: KeyPlayer[];
+  /** LINEUP stage only */
+  lineup?: { formation: string | null; coach: string | null; keyPlayersNotStarting: string[] } | null;
 }
 
 export interface FormSummary {
@@ -66,6 +112,20 @@ export function formSummary(form: readonly PreviewFormRow[]): FormSummary | null
   };
 }
 
+/** Whole days between the team's last match and this kickoff (null without a last match). */
+export function restDays(kickoffAt: Date, lastMatchAt: Date | null): number | null {
+  return lastMatchAt ? Math.floor((kickoffAt.getTime() - lastMatchAt.getTime()) / 86_400_000) : null;
+}
+
+/** Averages over the matches that have each statistic; null when no match has any. */
+export function formAverages(rows: ReadonlyArray<{ shotsOnTarget: number | null; possession: number | null }>): PreviewTeam['averages'] {
+  const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10 : null);
+  const sot = rows.map((r) => r.shotsOnTarget).filter((x): x is number => x != null);
+  const pos = rows.map((r) => r.possession).filter((x): x is number => x != null);
+  const matches = Math.max(sot.length, pos.length);
+  return matches ? { matches, shotsOnTarget: avg(sot), possession: avg(pos) } : null;
+}
+
 export interface PreviewModel {
   modelVersionId: string;
   computedAt: string;
@@ -88,6 +148,8 @@ export interface PreviewFacts {
     round: string | null;
     kickoffAt: string;
     stage: PreviewStage;
+    venue?: { name: string; city: string | null } | null;
+    referee?: string | null;
   };
   home: PreviewTeam;
   away: PreviewTeam;

@@ -897,16 +897,104 @@ export class Repository {
 
   async standingsForTeams(leagueId: number, season: number, teamIds: number[]) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select team_id, rank, points, played, win, draw, lose, goals_for, goals_against
-         from standings where league_id = $1 and season = $2 and team_id = any($3::int[])`,
+      `select team_id, rank, points, played, win, draw, lose, goals_for, goals_against, goals_diff, description, home, away, teams
+         from (select s.*, count(*) over (partition by group_name) as teams from standings s where league_id = $1 and season = $2) s
+        where team_id = any($3::int[])`,
       [leagueId, season, teamIds],
     );
     const num = (v: unknown) => (v == null ? null : Number(v));
+    const venue = (v: unknown) => {
+      const j = parseJson(v) as { played?: number; win?: number; draw?: number; lose?: number; goals?: { for?: number; against?: number } } | null;
+      return j && Number(j.played) > 0
+        ? { played: num(j.played), win: num(j.win), draw: num(j.draw), lose: num(j.lose), goalsFor: num(j.goals?.for), goalsAgainst: num(j.goals?.against) }
+        : null;
+    };
     return new Map(
       res.rows.map((r) => [
         Number(r.team_id),
-        { rank: num(r.rank), points: num(r.points), played: num(r.played), win: num(r.win), draw: num(r.draw), lose: num(r.lose), goalsFor: num(r.goals_for), goalsAgainst: num(r.goals_against) },
+        {
+          rank: num(r.rank),
+          points: num(r.points),
+          played: num(r.played),
+          win: num(r.win),
+          draw: num(r.draw),
+          lose: num(r.lose),
+          goalsFor: num(r.goals_for),
+          goalsAgainst: num(r.goals_against),
+          goalDiff: num(r.goals_diff),
+          zone: r.description == null ? null : String(r.description),
+          teams: num(r.teams),
+          home: venue(r.home),
+          away: venue(r.away),
+        },
       ]),
+    );
+  }
+
+  /** Venue (name, city) and referee of a fixture. The referee is the name only ("Name, Country" -> "Name"). */
+  async fixtureVenueReferee(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      'select f.referee, v.name, v.city from fixtures f left join venues v on v.id = f.venue_id where f.id = $1',
+      [fixtureId],
+    );
+    const r = res.rows[0];
+    const referee = r?.referee == null ? '' : String(r.referee).split(',')[0]!.trim();
+    return {
+      venue: r?.name == null ? null : { name: String(r.name), city: r.city == null ? null : String(r.city) },
+      referee: referee || null,
+    };
+  }
+
+  /** Competition, shots on target and possession of one team in the given fixtures (its recent form). */
+  async formDetails(teamId: number, fixtureIds: number[]) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.id, l.name as competition, sot.value_num as shots_on_target, pos.value_num as possession
+         from fixtures f
+         join leagues l on l.id = f.league_id
+         left join fixture_statistics sot on sot.fixture_id = f.id and sot.team_id = $1 and sot.type = 'shots_on_goal'
+         left join fixture_statistics pos on pos.fixture_id = f.id and pos.team_id = $1 and pos.type = 'ball_possession'
+        where f.id = any($2::bigint[])`,
+      [teamId, fixtureIds],
+    );
+    return new Map(
+      res.rows.map((r) => [
+        Number(r.id),
+        {
+          competition: String(r.competition),
+          shotsOnTarget: r.shots_on_target == null ? null : Number(r.shots_on_target),
+          possession: r.possession == null ? null : Number(r.possession),
+        },
+      ]),
+    );
+  }
+
+  /** A team's top players this season by goals + assists, over every synced competition before a date. */
+  async teamKeyPlayers(teamId: number, season: number, before: Date, n = 3) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `with s as (
+         select ps.player_id, coalesce(sum(ps.goals), 0) as goals, coalesce(sum(ps.assists), 0) as assists,
+                count(*) filter (where coalesce(ps.minutes, 0) > 0) as appearances
+           from fixture_player_stats ps join fixtures f on f.id = ps.fixture_id
+          where ps.team_id = $1 and f.season = $2 and f.kickoff_at < $3 and f.status_short in ('FT','AET','PEN')
+          group by ps.player_id
+         having coalesce(sum(ps.goals), 0) + coalesce(sum(ps.assists), 0) > 0
+          order by coalesce(sum(ps.goals), 0) + coalesce(sum(ps.assists), 0) desc, coalesce(sum(ps.goals), 0) desc, ps.player_id
+          limit $4)
+       select s.*, coalesce(p.name, (select lp.player_name from fixture_lineup_players lp where lp.player_id = s.player_id limit 1)) as name
+         from s left join players p on p.id = s.player_id
+        order by s.goals + s.assists desc, s.goals desc, s.appearances desc, s.player_id`,
+      [teamId, season, before.toISOString(), n],
+    );
+    return res.rows
+      .filter((r) => r.name != null)
+      .map((r) => ({ playerId: Number(r.player_id), name: String(r.name), goals: Number(r.goals), assists: Number(r.assists), appearances: Number(r.appearances) }));
+  }
+
+  /** Formation and coach per team once the lineup is out. */
+  async lineupTeams(fixtureId: number) {
+    const res = await this.db.query<Record<string, unknown>>('select team_id, formation, coach_name from fixture_lineups where fixture_id = $1', [fixtureId]);
+    return new Map(
+      res.rows.map((r) => [Number(r.team_id), { formation: r.formation == null ? null : String(r.formation), coach: r.coach_name == null ? null : String(r.coach_name) }]),
     );
   }
 

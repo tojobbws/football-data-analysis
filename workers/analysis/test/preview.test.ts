@@ -4,13 +4,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import Anthropic from '@anthropic-ai/sdk';
-import type { PreviewWriter, RankerResult } from '@fp/ai';
+import { PREVIEW_PROMPT_VERSION, type PreviewWriter, type RankerResult } from '@fp/ai';
 import { Repository, type JobContext } from '@fp/database';
 import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { matchPreviewJob } from '../src/preview-job.js';
-import { PREVIEW_VERSION } from '@fp/analysis';
+import { PREVIEW_VERSION, type PreviewTeam } from '@fp/analysis';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -94,8 +94,19 @@ beforeAll(async () => {
       (5, 39, 2026, $5, 1, 8, 'FT', 1, 0, 1, 0, 'p5')`,
     [past(1), past(2), past(3), past(4), past(5)],
   );
-  await db.query(`insert into fixture_statistics (fixture_id, team_id, type, value_num) values (1, 1, 'expected_goals', 1.8), (1, 2, 'expected_goals', 0.6)`);
+  await db.query(`insert into fixture_statistics (fixture_id, team_id, type, value_num) values (1, 1, 'expected_goals', 1.8), (1, 2, 'expected_goals', 0.6),
+    (1, 1, 'shots_on_goal', 6), (1, 1, 'ball_possession', 58), (3, 1, 'shots_on_goal', 3), (3, 1, 'ball_possession', 51)`);
   await db.query(`insert into injuries (fixture_id, league_id, season, team_id, player_id, player_name, type, reason) values (101, 39, 2026, 2, 900, 'B. Injured', 'Missing Fixture', 'Knee Injury')`);
+  // v0.7 facts: venue + referee, table detail, a cup table nobody has played in yet, key players
+  await db.exec(`
+    insert into venues (id, name, city) values (77, 'Home Park', 'Hometown');
+    update fixtures set venue_id = 77, referee = 'A. Referee, England' where id = 101;
+    update standings set goals_diff = 11, description = 'Promotion - Champions League', home = '{"played": 4, "win": 4, "draw": 0, "lose": 0, "goals": {"for": 9, "against": 1}}' where team_id = 1;
+    insert into standings (league_id, season, team_id, rank, points, played, win, draw, lose, goals_for, goals_against) values (1129, 2026, 3, 30, 0, 0, 0, 0, 0, 0, 0);
+    insert into players (id, name) values (101, 'Star Striker'), (502, 'Playmaker'), (900, 'B. Injured');
+    insert into fixture_player_stats (fixture_id, team_id, player_id, minutes, goals, assists) values
+      (1, 1, 101, 90, 2, 0), (3, 1, 101, 90, 1, 1), (3, 1, 502, 80, 0, 2), (5, 1, 103, 10, 0, 0),
+      (2, 2, 900, 90, 1, 0);`);
 
   const at = new Date(NOW.getTime() - 3_600_000).toISOString();
   const inputs = (extra: Record<string, unknown>) =>
@@ -135,7 +146,7 @@ describe('matchPreviewJob', () => {
     expect(writer.calls).toBe(3);
 
     const a = await one(`select * from match_previews where fixture_id = 101`);
-    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: 'preview-ai-v0.6', version: 'preview-v0.6', predicted_home: 1, predicted_away: 0 });
+    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: PREVIEW_PROMPT_VERSION, version: PREVIEW_VERSION, predicted_home: 1, predicted_away: 0 });
     expect(a.overview_th).toContain('50%');
     expect(Number(a.p_home)).toBe(0.5); // ensemble, like 📊 มุมมองโมเดล
     expect(Number(a.expected_home)).toBeCloseTo(1.6, 1);
@@ -157,6 +168,28 @@ describe('matchPreviewJob', () => {
     expect((seen.data_support as { level: string }).level).toBe('LIMITED');
     // the AI never sees the goal bands (3+ is over 2.5, once written up as an over lean)
     expect(JSON.stringify(seen)).not.toMatch(/threePlus|upTo1|p_goals/);
+
+    // v0.7: venue, referee name only, table detail, form dates + competition, rest days, averages, key players
+    const fx = seen.fixture as Record<string, unknown>;
+    expect(fx.venue).toEqual({ name: 'Home Park', city: 'Hometown' });
+    expect(fx.referee).toBe('A. Referee');
+    const h = seen.home as unknown as PreviewTeam;
+    expect(h.standing).toMatchObject({ goalDiff: 11, zone: 'Promotion - Champions League', teams: 2, home: { played: 4, win: 4, goalsFor: 9 }, away: null });
+    expect(h.form[0]).toMatchObject({ competition: 'Premier League', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(h.restDays).toBe(7);
+    expect(h.averages).toEqual({ matches: 2, shotsOnTarget: 4.5, possession: 54.5 });
+    // by goals + assists; a player with neither is left out
+    expect(h.keyPlayers).toEqual([
+      { name: 'Star Striker', goals: 3, assists: 1, appearances: 2 },
+      { name: 'Playmaker', goals: 0, assists: 2, appearances: 1 },
+    ]);
+    expect(h.lineup).toBeNull(); // EARLY
+    const aw = seen.away as unknown as PreviewTeam;
+    expect(aw.injuries[0]).toMatchObject({ player: 'B. Injured', isKeyPlayer: true, goals: 1, assists: 0 });
+
+    // a cup table the team has not played in yet is no fact at all
+    const cup = writer.inputs.find((i) => (i.fixture as { home: string }).home === 'Home B')!;
+    expect((cup.home as { standing: unknown }).standing).toBeNull();
 
     const b = await one(`select * from match_previews where fixture_id = 102`);
     expect(b).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'INVALID', data_support: 'THIN' });
@@ -212,7 +245,10 @@ describe('matchPreviewJob', () => {
       { stage: 'EARLY', text_source: 'AI', ai_status: 'OK' },
       { stage: 'LINEUP', text_source: 'TEMPLATE', ai_status: 'SKIPPED' },
     ]);
-    expect((await one(`select home_th from match_previews where fixture_id = 101 and stage = 'LINEUP'`)).home_th).toContain('ประกาศตัวจริงแล้ว');
+    const lineupRow = await one(`select home_th, facts from match_previews where fixture_id = 101 and stage = 'LINEUP'`);
+    expect(lineupRow.home_th).toContain('ประกาศตัวจริงแล้ว');
+    // LINEUP: formation and the key players who are not in the XI (Star Striker, id 101, starts)
+    expect((lineupRow.facts as { home: PreviewTeam }).home.lineup).toEqual({ formation: '4-3-3', coach: null, keyPlayersNotStarting: ['Playmaker'] });
   });
 
   it('the site sees the latest stage per fixture, read-only and immutable', async () => {
