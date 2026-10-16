@@ -40,7 +40,12 @@ const prose = (over: Record<string, unknown> = {}) => ({
     overview_th: 'โมเดลให้เจ้าบ้าน 50% เกมนี้ข้อมูลเอียงไปทางเจ้าบ้านเล็กน้อย',
     home_th: 'เจ้าบ้านฟอร์มดีจากข้อมูลล่าสุด',
     away_th: 'ทีมเยือนมีข้อมูลน้อยในระบบ',
+    attack_th: 'เกมรุกของเจ้าบ้านมีตัวเลขรองรับมากกว่า',
+    defence_th: 'แนวรับของทีมเยือนเสียประตูบ่อยกว่า',
+    h2h_th: '',
+    key_factor_th: 'ถ้าเจ้าบ้านได้ประตูแรก เกมจะเป็นจังหวะของเจ้าบ้าน',
     score_th: 'สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0',
+    summary_th: 'ตัวเลขเอียงไปทางเจ้าบ้านเล็กน้อย',
     ...over,
   },
 });
@@ -193,7 +198,7 @@ describe('matchPreviewJob', () => {
 
     const b = await one(`select * from match_previews where fixture_id = 102`);
     expect(b).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'INVALID', data_support: 'THIN' });
-    expect(b.guard_violations).toEqual(expect.arrayContaining(['number not in input: 72%', 'scoreline not in input: 2-1']));
+    expect(b.guard_violations).toEqual(expect.arrayContaining(['score_th: number not in input: 72%', 'scoreline not in input: 2-1']));
     expect((b.data_notes as string[])[0]).toContain('บอลถ้วยที่ทีมมาจากคนละลีก');
     expect(b.score_th).toContain('สกอร์ที่โมเดลให้โอกาสสูงสุด');
     expect(b.predicted_home).not.toBeNull();

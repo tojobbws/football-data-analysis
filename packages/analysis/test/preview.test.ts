@@ -185,4 +185,29 @@ describe('buildTemplateText', () => {
     expect(tt.overview_th).toContain('ข้อมูลน้อย');
     expect(tt.score_th).toContain('ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด');
   });
+
+  it('fills every section: attack, defence, h2h (null without meetings), key factor, summary', () => {
+    const f = facts({
+      home: team('Arsenal', {
+        restDays: 3,
+        averages: { matches: 5, shotsOnTarget: 5.4, possession: 58 },
+        keyPlayers: [{ name: 'B. Saka', goals: 6, assists: 4, appearances: 8 }],
+        standing: { rank: 3, played: 8, points: 17, win: 5, draw: 2, lose: 1, goalsFor: 14, goalsAgainst: 6, home: { played: 4, win: 3, draw: 1, lose: 0, goalsFor: 8, goalsAgainst: 2 } },
+      }),
+      away: team('Chelsea', { restDays: 6, injuries: [{ player: 'C. Palmer', type: 'Missing Fixture', reason: 'Injury', isKeyPlayer: true, goals: 5, assists: 3 }] }),
+    });
+    const t = buildTemplateText(f, assessDataSupport(f));
+    expect(t.home_th).toContain('พักมา 3 วัน');
+    expect(t.home_th).toContain('B. Saka (6 ประตู 4 แอสซิสต์)');
+    expect(t.attack_th).toContain('Arsenal ยิงได้ 7 ประตูใน 5 นัด');
+    expect(t.attack_th).toContain('ยิงเข้ากรอบเฉลี่ย 5.4 ครั้ง');
+    expect(t.defence_th).toContain('ในบ้านเสีย 2 ประตูจาก 4 นัด');
+    expect(t.h2h_th).toBe('1 นัดหลังที่พบกัน Arsenal ชนะ 1 เสมอ 0 Chelsea ชนะ 0 ครั้งล่าสุด Chelsea 1-2 Arsenal');
+    expect(t.key_factor_th).toContain('C. Palmer');
+    expect(t.summary_th).toContain('เอียงไปทาง Arsenal');
+
+    const quiet = buildTemplateText(facts({ h2h: [] }), assessDataSupport(facts()));
+    expect(quiet.h2h_th).toBeNull();
+    expect(quiet.key_factor_th).toContain('ประตูแรก');
+  });
 });

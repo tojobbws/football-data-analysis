@@ -152,6 +152,11 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
           home_th: text.home_th,
           away_th: text.away_th,
           score_th: text.score_th,
+          attack_th: text.attack_th,
+          defence_th: text.defence_th,
+          h2h_th: text.h2h_th,
+          key_factor_th: text.key_factor_th,
+          summary_th: text.summary_th,
           facts: input,
         });
         written++;

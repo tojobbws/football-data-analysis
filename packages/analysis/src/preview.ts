@@ -166,11 +166,18 @@ export interface MarketQuote {
   bookmakers: number;
 }
 
+/** The sections of the write-up; home_th / away_th are each team's form section. */
 export interface PreviewText {
   overview_th: string;
   home_th: string;
   away_th: string;
+  attack_th: string;
+  defence_th: string;
+  /** null when the teams have no recent meetings */
+  h2h_th: string | null;
+  key_factor_th: string;
   score_th: string;
+  summary_th: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +349,17 @@ export function buildTemplateText(f: PreviewFacts, support: { level: DataSupport
       })()
     : 'ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด เพราะโมเดลไม่มีข้อมูลพอสำหรับรายการนี้';
 
-  return { overview_th: overview, home_th: teamText(f.home), away_th: teamText(f.away), score_th: score };
+  return {
+    overview_th: overview,
+    home_th: teamText(f.home),
+    away_th: teamText(f.away),
+    attack_th: attackText(f),
+    defence_th: defenceText(f),
+    h2h_th: h2hText(f),
+    key_factor_th: keyFactorText(f),
+    score_th: score,
+    summary_th: summaryText(f),
+  };
 }
 
 function teamText(t: PreviewTeam): string {
@@ -354,11 +371,75 @@ function teamText(t: PreviewTeam): string {
   } else {
     parts.push('ไม่มีผลการแข่งขันล่าสุดในระบบ');
   }
+  if (t.restDays != null) parts.push(`พักมา ${t.restDays} วัน`);
   if (t.standing?.rank != null) parts.push(`อยู่อันดับ ${t.standing.rank}${t.standing.points != null ? ` (${t.standing.points} แต้ม)` : ''}`);
+  const top = t.keyPlayers?.[0];
+  if (top) parts.push(`ตัวหลักเกมรุก ${top.name} (${top.goals} ประตู ${top.assists} แอสซิสต์)`);
   if (t.injuries.length) {
     const names = t.injuries.map((i) => i.player).filter(Boolean).slice(0, 3).join(', ');
     parts.push(`มีรายงานตัวเจ็บ/ติดโทษ ${t.injuries.length} คน${names ? ` (${names})` : ''}`);
   }
   if (t.starters?.length) parts.push('ประกาศตัวจริงแล้ว');
   return `${t.name}: ${parts.join(' · ')}`;
+}
+
+function attackText(f: PreviewFacts): string {
+  const line = (t: PreviewTeam) => {
+    const s = t.formSummary ?? formSummary(t.form);
+    if (!s) return `${t.name} ไม่มีผลล่าสุดในระบบ`;
+    let x = `${t.name} ยิงได้ ${s.goalsFor} ประตูใน ${s.matches} นัด`;
+    if (s.xgFor != null) x += ` xG เฉลี่ย ${n2(s.xgFor)}`;
+    if (t.averages?.shotsOnTarget != null) x += ` ยิงเข้ากรอบเฉลี่ย ${t.averages.shotsOnTarget} ครั้ง`;
+    return x;
+  };
+  return `${line(f.home)} ส่วน${line(f.away)}`;
+}
+
+function defenceText(f: PreviewFacts): string {
+  const line = (t: PreviewTeam, where: 'home' | 'away') => {
+    const s = t.formSummary ?? formSummary(t.form);
+    if (!s) return `${t.name} ไม่มีผลล่าสุดในระบบ`;
+    let x = `${t.name} เสีย ${s.goalsAgainst} ประตูใน ${s.matches} นัด`;
+    if (s.xgAgainst != null) x += ` xG เสียเฉลี่ย ${n2(s.xgAgainst)}`;
+    const v = t.standing?.[where];
+    if (v?.played) x += ` และ${where === 'home' ? 'ในบ้าน' : 'นอกบ้าน'}เสีย ${v.goalsAgainst} ประตูจาก ${v.played} นัด`;
+    return x;
+  };
+  return `${line(f.home, 'home')} ส่วน${line(f.away, 'away')}`;
+}
+
+function h2hText(f: PreviewFacts): string | null {
+  if (!f.h2h.length) return null;
+  let home = 0;
+  let away = 0;
+  for (const m of f.h2h) {
+    const winner = m.homeGoals > m.awayGoals ? m.home : m.homeGoals < m.awayGoals ? m.away : null;
+    if (winner === f.fixture.home) home++;
+    else if (winner === f.fixture.away) away++;
+  }
+  const draws = f.h2h.length - home - away;
+  const last = f.h2h[0]!;
+  return `${f.h2h.length} นัดหลังที่พบกัน ${f.fixture.home} ชนะ ${home} เสมอ ${draws} ${f.fixture.away} ชนะ ${away} ครั้งล่าสุด ${last.home} ${last.homeGoals}-${last.awayGoals} ${last.away}`;
+}
+
+function keyFactorText(f: PreviewFacts): string {
+  for (const t of [f.home, f.away]) {
+    const missing = t.injuries.find((i) => i.isKeyPlayer && i.player);
+    if (missing) return `การขาด ${missing.player} ซึ่งเป็นตัวหลักของ ${t.name} อาจเปลี่ยนรูปเกมได้`;
+    const benched = t.lineup?.keyPlayersNotStarting[0];
+    if (benched) return `${benched} ไม่ได้อยู่ในตัวจริงของ ${t.name} ซึ่งอาจส่งผลกับเกมรุก`;
+  }
+  const [h, a] = [f.home.restDays, f.away.restDays];
+  if (h != null && a != null && Math.abs(h - a) >= 2) {
+    const tired = h < a ? f.home : f.away;
+    return `${tired.name} มีเวลาพักน้อยกว่า ความสดของผู้เล่นอาจเป็นปัจจัยในช่วงท้ายเกม`;
+  }
+  return 'ประตูแรกอาจเป็นตัวกำหนดรูปเกม ทีมที่ได้นำก่อนจะเลือกจังหวะเกมได้ง่ายขึ้น';
+}
+
+function summaryText(f: PreviewFacts): string {
+  const m = f.model;
+  if (!m) return `${f.fixture.home} พบ ${f.fixture.away} เป็นเกมที่ต้องอ่านจากฟอร์มและสถิติ เพราะโมเดลยังไม่มีตัวเลข`;
+  if (Math.abs(m.p.home - m.p.away) < 0.1) return `ตัวเลขของโมเดลมองว่า ${f.fixture.home} กับ ${f.fixture.away} สูสีกัน`;
+  return `ตัวเลขของโมเดลเอียงไปทาง ${m.p.home > m.p.away ? f.fixture.home : f.fixture.away} แต่ยังเป็นเพียงหนึ่งในหลายผลที่เป็นไปได้`;
 }
