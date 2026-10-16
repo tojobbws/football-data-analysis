@@ -320,7 +320,8 @@ describe('matchPreviewJob', () => {
     const writer = fakeWriter({ 'Home G': prose() });
     expect(await matchPreviewJob(ctx, { now: NOW, writer, budgetMinutes: -1 })).toBe(0);
     expect(writer.calls).toBe(0);
-    expect(await matchPreviewJob(ctx, { now: NOW, writer })).toBe(1);
-    expect(writer.calls).toBe(1);
+    expect((await db.query(`select 1 from match_previews where fixture_id = 107`)).rows).toHaveLength(0);
+    await matchPreviewJob(ctx, { now: NOW, writer });
+    expect((await db.query(`select 1 from match_previews where fixture_id = 107`)).rows).toHaveLength(1);
   });
 });
