@@ -26,7 +26,7 @@ jobs:
   report [--hours N]           🔎 Markdown report of upcoming matches (default next 18h) -> reports/
   publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
   ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs ANTHROPIC_API_KEY
-  preview [--hours N] [--refresh]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48); AI text with ANTHROPIC_API_KEY, template text without; --refresh rewrites previews from an older version
+  preview [--hours N] [--refresh] [--budget-minutes M]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48); AI text with ANTHROPIC_API_KEY, template text without; --refresh rewrites previews from an older version
   pick-notes [--refresh]      Game Compass note (pick_th) for every published pick not yet explained; AI text with an AI key, template text without; --refresh rewrites notes from an older prompt
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
   closing                     keep the closing market (1X2 + main AH/O/U line) of kicked-off matches for good
@@ -39,7 +39,7 @@ async function main() {
   loadDotEnvFile();
   const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
+    options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
   if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report'].includes(job ?? '')) {
@@ -94,7 +94,7 @@ async function main() {
       );
     }
     else if (job === 'ai-shadow') await aiShadowJob(ctx);
-    else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, refresh: values.refresh });
+    else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, refresh: values.refresh, budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
     else if (job === 'report') {
       const r = await matchReport(ctx, { hours: values.hours ? Number(values.hours) : undefined });
       console.log(r.markdown);

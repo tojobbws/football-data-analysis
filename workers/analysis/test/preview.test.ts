@@ -310,4 +310,17 @@ describe('matchPreviewJob', () => {
       { fixture_id: 106, text_source: 'TEMPLATE', ai_status: 'SKIPPED', model: null },
     ]);
   });
+
+  it('stops starting new previews once the time budget is used up; the next run picks them up', async () => {
+    await db.query(`insert into teams (id, name) values (15, 'Home G'), (16, 'Away G')`);
+    await db.query(
+      `insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short, slug) values (107, 39, 2026, $1, 15, 16, 'NS', 'm107')`,
+      [KO.toISOString()],
+    );
+    const writer = fakeWriter({ 'Home G': prose() });
+    expect(await matchPreviewJob(ctx, { now: NOW, writer, budgetMinutes: -1 })).toBe(0);
+    expect(writer.calls).toBe(0);
+    expect(await matchPreviewJob(ctx, { now: NOW, writer })).toBe(1);
+    expect(writer.calls).toBe(1);
+  });
 });

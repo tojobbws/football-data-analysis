@@ -65,7 +65,6 @@ jobs:
           npm run model:featured
           npm run model:pick-notes
           npm run model:ai-shadow
-          npm run model:preview -- --hours 48
 
       - name: Daily
         if: github.event.schedule == '30 22 * * *'
@@ -89,3 +88,26 @@ jobs:
           npm run sync:players
           npm run model:tune
           npm run db:prune -- --vacuum
+
+  # The written previews take one AI call (~75 s) per match; at the end of the sync job they overran its 30 minutes.
+  # Own job: nearest kickoffs first, and it stops starting new previews after 24 minutes so it ends by itself.
+  preview:
+    if: inputs.job == 'hourly'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
+      SEASON: ${{ vars.SEASON || '2026' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run model:preview -- --hours 48 --budget-minutes 24

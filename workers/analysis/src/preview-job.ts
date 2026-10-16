@@ -46,6 +46,8 @@ export interface PreviewJobOptions {
   hours?: number;
   writer?: PreviewWriter | null;
   limit?: number;
+  /** stop starting new previews after this many minutes: the nearest kickoffs come first, the rest wait for the next run */
+  budgetMinutes?: number;
   /** rewrite a stage whose rows all came from an older PREVIEW_VERSION (once per version, still before kickoff only) */
   refresh?: boolean;
 }
@@ -74,6 +76,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, hours).toISOString());
     const report: Array<Record<string, unknown>> = [];
     let written = 0;
+    const deadline = opts.budgetMinutes ? Date.now() + opts.budgetMinutes * 60_000 : null;
 
     for (const f of fixtures.slice(0, opts.limit ?? Infinity)) {
       const lineups = await ctx.repo.lineupsForFixture(f.id);
@@ -85,6 +88,10 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
       const prev = await ctx.repo.previewAttempts(f.id, stage, opts.refresh ? PREVIEW_VERSION : undefined);
       if (prev.aiOk || (!writer && prev.attempts > 0) || prev.attempts >= MAX_ATTEMPTS_PER_STAGE) continue;
 
+      if (deadline !== null && Date.now() > deadline) {
+        ctx.log.warn('preview time budget used up; the rest wait for the next run', { budgetMinutes: opts.budgetMinutes, written });
+        break;
+      }
       const { facts, bands } = await collectFacts(ctx, f, stage);
       const support = assessDataSupport(facts);
       const template = buildTemplateText(facts, support);
