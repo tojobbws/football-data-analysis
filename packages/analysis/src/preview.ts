@@ -112,9 +112,14 @@ export function formSummary(form: readonly PreviewFormRow[]): FormSummary | null
   };
 }
 
-/** Whole days between the team's last match and this kickoff (null without a last match). */
+/** Beyond this the gap is an off-season or a competition we do not sync, not rest: "พักมา 146 วัน" says nothing. */
+const MAX_REST_DAYS = 14;
+
+/** Whole days between the team's last match and this kickoff (null without a last match, or after a long gap). */
 export function restDays(kickoffAt: Date, lastMatchAt: Date | null): number | null {
-  return lastMatchAt ? Math.floor((kickoffAt.getTime() - lastMatchAt.getTime()) / 86_400_000) : null;
+  if (!lastMatchAt) return null;
+  const days = Math.floor((kickoffAt.getTime() - lastMatchAt.getTime()) / 86_400_000);
+  return days <= MAX_REST_DAYS ? days : null;
 }
 
 /** Averages over the matches that have each statistic; null when no match has any. */

@@ -6,6 +6,7 @@ import {
   matrixExpectedGoals,
   previewScoreMatrix,
   previewStageFor,
+  restDays,
   topScorelines,
   type PreviewFacts,
   type PreviewTeam,
@@ -209,5 +210,15 @@ describe('buildTemplateText', () => {
     const quiet = buildTemplateText(facts({ h2h: [] }), assessDataSupport(facts()));
     expect(quiet.h2h_th).toBeNull();
     expect(quiet.key_factor_th).toContain('ประตูแรก');
+  });
+});
+
+describe('restDays', () => {
+  it('whole days since the last match; nothing after an off-season-length gap or without a last match', () => {
+    const ko = new Date('2026-10-18T01:00:00Z');
+    expect(restDays(ko, new Date('2026-10-14T19:00:00Z'))).toBe(3);
+    expect(restDays(ko, new Date('2026-10-04T01:00:00Z'))).toBe(14);
+    expect(restDays(ko, new Date('2026-05-25T10:00:00Z'))).toBeNull();
+    expect(restDays(ko, null)).toBeNull();
   });
 });
