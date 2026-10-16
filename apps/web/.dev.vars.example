@@ -1,6 +1,6 @@
 # copy to .dev.vars (gitignored) for `npm run preview -w @fp/web`
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_ANON_KEY=<anon / publishable key from Supabase > Project Settings > API>
-WEB_LEAGUES=39,140,135,78,61,296,5,2,3,848,1129,40,88,94,144,203,179,119,218,207,103,113,292,98,253,262,128,307,188
+WEB_LEAGUES=39,140,135,78,61,296,5,2,3,848,1129,40,88,94,144,203,179,119,218,207,103,113,292,98,253,262,128,307,188,71
 # public origin for canonical URLs + sitemap (optional locally; set it in production)
 SITE_URL=

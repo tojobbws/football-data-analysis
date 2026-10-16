@@ -33,6 +33,8 @@ export const KNOWN_LEAGUES = {
   128: { name: 'Liga Profesional Argentina', country: 'Argentina' },
   307: { name: 'Pro League', country: 'Saudi-Arabia' },
   188: { name: 'A-League', country: 'Australia' },
+  // added 2026-10-16
+  71: { name: 'Serie A', country: 'Brazil' },
 } as const satisfies Record<number, { name: string; country: string }>;
 
 /**
