@@ -1,6 +1,6 @@
 import type { OutcomeDistribution } from '@fp/analysis';
 import type { Compass } from '@/lib/queries';
-import { STATUS, odds, pct, pickRationale, selectionLabel, toSelection, winCondition } from '@/lib/labels';
+import { ROUND, STATUS, odds, pct, pickRationale, selectionLabel, toSelection, winCondition } from '@/lib/labels';
 import type { LiveSeed } from '@/lib/live';
 import { dateTimeTH } from '@/lib/time';
 import { CompassExplainer } from './compass-explainer';
@@ -13,7 +13,6 @@ const STRENGTH_TH: Record<string, string> = { STRONG: 'หนักแน่น'
 const REPEATS = ['เข็มทิศเกม', 'ระดับสัญญาณ', 'โมเดลให้โอกาส', 'อ้างอิงราคา'];
 // technical reason lines: kept, but behind "รายละเอียดเพิ่มเติม"
 const TECHNICAL = ['โมเดลผ่านการทดสอบ', 'แรงตลาด'];
-const ROUND_TH: Record<string, string> = { EARLY: 'รอบแรก ก่อนประกาศตัวจริง', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ' };
 const DIST_KEY = { WIN: 'win', HALF_WIN: 'halfWin', PUSH: 'push', HALF_LOSS: 'halfLoss', LOSS: 'loss' } as const satisfies Record<string, keyof OutcomeDistribution>;
 const OUTCOME_TONE: Record<string, string> = { WIN: 'text-emerald-800', HALF_WIN: 'text-emerald-700', PUSH: 'text-zinc-600', HALF_LOSS: 'text-orange-800', LOSS: 'text-rose-800' };
 
@@ -21,8 +20,9 @@ const OUTCOME_TONE: Record<string, string> = { WIN: 'text-emerald-800', HALF_WIN
  * เข็มทิศเกม — the one pick for this match (SIGNAL rounds only; fog is not shown on the match page).
  * Reads top-down for any fan: the pick, what has to happen on the pitch for each outcome (with the
  * model's chance of it), and why it was picked. Technical figures sit behind "รายละเอียดเพิ่มเติม".
+ * `changedFrom`: the previous round's pick when this round points elsewhere, named in a quiet line.
  */
-export function CompassCard({ c, home, away, live, id }: { c: Compass; home: string; away: string; live: LiveSeed; id?: string }) {
+export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compass; home: string; away: string; live: LiveSeed; id?: string; changedFrom?: Compass | null }) {
   const line = c.line == null ? null : Number(c.line);
   const label = selectionLabel(c.market!, c.selection!, line, home, away);
   const sel = toSelection(c.market, c.selection, line);
@@ -48,7 +48,15 @@ export function CompassCard({ c, home, away, live, id }: { c: Compass; home: str
   ].filter(Boolean);
 
   return (
-    <Card id={id} title="เข็มทิศเกม" description={`${ROUND_TH[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้`} action={badge} tone="pick">
+    <Card id={id} title="เข็มทิศเกม" description={`${ROUND[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้`} action={badge} tone="pick">
+      {changedFrom ? (
+        <p className="-mt-1 mb-3 text-xs text-zinc-500">
+          อัปเดต{ROUND[c.publish_round] ?? c.publish_round} ·{' '}
+          <a href="#earlier-picks" className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-800">
+            รอบก่อนหน้า ({ROUND[changedFrom.publish_round] ?? changedFrom.publish_round}) ชี้ {selectionLabel(changedFrom.market!, changedFrom.selection!, changedFrom.line == null ? null : Number(changedFrom.line), home, away)}
+          </a>
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="compass">{MARKET_TH[c.market!] ?? c.market}</Badge>
         {c.signal_strength ? <Badge>สัญญาณ{STRENGTH_TH[c.signal_strength] ?? c.signal_strength}</Badge> : null}

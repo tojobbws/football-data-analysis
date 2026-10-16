@@ -22,6 +22,10 @@ _Avoid_: claiming the market got it wrong (ตลาดประเมินพ�
 A single published selection of the Game Compass for one match (market, side, line), made before kickoff and never edited afterwards. Its market is Asian handicap or over/under; 1X2 is never picked (a few early 1X2 picks stay as published).
 _Avoid_: tip, bet
 
+**Publish round (รอบเผยแพร่)**:
+A point in time at which a match's Game Compass is locked as a new record: EARLY (before lineups), LINEUP (after both confirmed XIs, only when they are known in time) or PREMATCH (rare, ADR 0005). A later round replaces the earlier one on fan pages; the earlier one stays in the record and is never edited. A match may get only its EARLY round. Fan-facing names: ก่อนประกาศตัวจริง, หลังประกาศตัวจริง, ก่อนเตะ.
+_Avoid_: รอบแรก (promises a second round that may never come)
+
 **Unsettled pick**:
 A pick whose outcome has not yet been decided — regardless of whether the match is upcoming, live, or already finished.
 _Avoid_: pending result (as a fan-facing phrase)

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Empty, Section, StatusBadge } from '@/components/ui';
-import { MARKET, ROUND, odds, pct, selectionLabel, type Status } from '@/lib/labels';
+import { MARKET, ROUND, ROUND_SHORT, odds, pct, selectionLabel, type Status } from '@/lib/labels';
 import { modelOutlookPerformance, performance, type ModelOutlookScore, type PerfBucket } from '@/lib/queries';
 import { dateTimeTH, shortDayTH } from '@/lib/time';
 
@@ -83,7 +83,7 @@ export default async function PerformancePage() {
                         <>
                           {selectionLabel(r.market!, r.selection!, r.line == null ? null : Number(r.line), r.home_team, r.away_team)}
                           <p className="text-xs text-slate-500">
-                            {r.signal_strength} · {r.publish_round === 'LINEUP' ? 'หลังตัวจริง' : 'รอบแรก'}
+                            {r.signal_strength} · {ROUND_SHORT[r.publish_round] ?? r.publish_round}
                           </p>
                         </>
                       ) : (

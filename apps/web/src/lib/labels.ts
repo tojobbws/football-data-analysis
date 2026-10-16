@@ -47,7 +47,9 @@ export const MARKET: Record<string, string> = {
   OVER_UNDER: 'สูง/ต่ำ (Over/Under)',
 };
 
-export const ROUND: Record<string, string> = { EARLY: 'รอบแรก (ก่อนประกาศตัวจริง)', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ' };
+// publish rounds (CONTEXT.md "Publish round"): never "รอบแรก", a LINEUP round may never come
+export const ROUND: Record<string, string> = { EARLY: 'ก่อนประกาศตัวจริง', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ' };
+export const ROUND_SHORT: Record<string, string> = { EARLY: 'ก่อนตัวจริง', LINEUP: 'หลังตัวจริง', PREMATCH: 'ก่อนเตะ' };
 
 
 /**

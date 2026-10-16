@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { odds, pct, selectionLabel } from '@/lib/labels';
+import { ROUND_SHORT, odds, pct, selectionLabel } from '@/lib/labels';
 import { footballDate, shortDayTH, timeTH } from '@/lib/time';
 import { CompassMark, IconLock } from './icons';
 
@@ -28,7 +28,6 @@ const STRENGTH_STEP: Record<string, { n: number; th: string }> = {
   MEDIUM: { n: 2, th: 'สัญญาณปานกลาง' },
   STRONG: { n: 3, th: 'ข้อมูลหนักแน่น' },
 };
-const ROUND_SHORT: Record<string, string> = { EARLY: 'รอบแรก', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ' };
 
 /** "คืนนี้ / วันนี้" for today's football day (06:00→06:00), otherwise the short date. */
 function whenLabel(iso: string) {

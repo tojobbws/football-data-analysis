@@ -8,9 +8,9 @@ import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/matc
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { Badge, Card, Note } from '@/components/sheet';
 import { TeamLogo } from '@/components/ui';
-import { FINISHED, odds, selectionLabel, toSelection } from '@/lib/labels';
+import { FINISHED, ROUND, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { isLive, toSeed } from '@/lib/live';
-import { matchBySlug, type FormRow } from '@/lib/queries';
+import { matchBySlug, type Compass, type FormRow } from '@/lib/queries';
 import { dateTimeTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +33,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
  * Match page as a quiet data sheet: typographic header, then cards with hairlines and tables.
  * Main column = the pick and the reading; side column = market, table, H2H.
  */
+/** Same market, side and line: a later round that only repeats the pick is not a change. */
+function samePick(a: Compass, b: Compass) {
+  const line = (c: Compass) => (c.line == null ? null : Number(c.line));
+  return a.market === b.market && a.selection === b.selection && line(a) === line(b);
+}
+
 export default async function MatchPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const d = await matchBySlug(slug);
@@ -42,6 +48,11 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   const latest = d.rounds.at(-1) ?? null;
   const pick = latest?.kind === 'SIGNAL' ? latest : null;
   const earlierPicks = d.rounds.slice(0, -1).filter((c) => c.kind === 'SIGNAL');
+  const prevPick = earlierPicks.at(-1) ?? null;
+  // a later round that points elsewhere names the earlier pick; a later fog says so in one quiet line,
+  // or the earlier pick would read as still standing (the one exception to hiding fog here)
+  const changedFrom = pick && prevPick && !samePick(pick, prevPick) ? prevPick : null;
+  const fogAfterPick = latest?.kind === 'NO_CLEAR_SIGNAL' && prevPick ? latest : null;
   const noAnalysisYet = !latest;
   const pickSel = pick ? toSelection(pick.market, pick.selection, pick.line == null ? null : Number(pick.line)) : null;
   const previewPick = pick && pickSel ? { label: selectionLabel(pick.market!, pick.selection!, pick.line == null ? null : Number(pick.line), m.home.name, m.away.name), sel: pickSel } : null;
@@ -93,9 +104,10 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
 
         <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0 space-y-6">
-            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} live={toSeed(m)} /> : null}
+            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} live={toSeed(m)} changedFrom={changedFrom} /> : null}
             {earlierPicks.length ? (
-              <div id={pick ? undefined : 'pick'} className="scroll-mt-24 space-y-2">
+              <div id={pick ? 'earlier-picks' : 'pick'} className="scroll-mt-24 space-y-2">
+                {fogAfterPick ? <p className="text-sm text-zinc-600">{ROUND[fogAfterPick.publish_round] ?? fogAfterPick.publish_round} โมเดลไม่ชี้ฝั่งใดชัดเจน</p> : null}
                 {earlierPicks.map((c) => (
                   <details key={c.public_id} className="group">
                     <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 border-b border-zinc-200 text-sm text-zinc-700 [&::-webkit-details-marker]:hidden">
