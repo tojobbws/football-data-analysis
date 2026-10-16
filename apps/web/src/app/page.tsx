@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { COMPASS_HOME_LINE, CompassExplainer } from '@/components/compass-explainer';
 import { ArticleGrid, MoreLink, PreviewGrid, Rail, RailItem } from '@/components/home';
+import { FeaturedPicks } from '@/components/featured-picks';
 import { IconChevronRight, CompassPicksTitle, IconLock } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
@@ -9,7 +10,7 @@ import { SignalCard } from '@/components/signal-card';
 import { Empty } from '@/components/ui';
 import { FINISHED, pct } from '@/lib/labels';
 import { isLive as liveNow } from '@/lib/live';
-import { latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, perfSummary, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
+import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, perfSummary, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
@@ -37,7 +38,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, live, signals, perf, articles, leagues, upcomingPreviews] = await Promise.all([
+  const [shown, live, signals, perf, articles, leagues, upcomingPreviews, ranks] = await Promise.all([
     date ? matchesOnFootballDay(date) : liveMatches(),
     liveMatches(),
     upcomingSignals(4),
@@ -45,6 +46,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     latestArticles(4),
     leagueWidgets(5),
     previewCards('upcoming', 4),
+    date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
   ]);
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
@@ -94,6 +96,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               <CompassExplainer />
             </div>
             <MoreLink href="/today" label="ทุกคู่" />
+          </div>
+          <div className="mb-4 empty:hidden">
+            <FeaturedPicks matches={shown} ranks={ranks} />
           </div>
           {signals.length ? (
             <Rail label="คู่น่าจับตา">

@@ -65,7 +65,7 @@ A fixed-length comparison of shadow pick rules against the real ones, judged on 
 _Avoid_: tweaking shadow rules mid-trial (that starts a new trial)
 
 **Daily featured list (คู่เด่นประจำวัน)**:
-Up to 5 of a football day's picks, chosen from real picks only (never a separate opinion), ranked by support score with at most one per match and two per league; a slot is reserved from the EARLY pick and confirmed or dropped by the LINEUP pick. Runs in shadow until ADR 0004's verdict. Fan-facing name: "เข็มทิศฟุตบอลชี้ คู่เด่นประจำวัน".
+Up to 5 of a football day's picks, chosen from real picks only (never a separate opinion), ranked by the model blended with the market (featured-v2, ADR 0006; v1 ranked by support score) with at most one per match and two per league; a slot is reserved from the EARLY pick and confirmed or dropped by the LINEUP pick. On the site since ADR 0006; fan-facing name: "เข็มทิศเกมประจำวัน". A day with no qualifying pick has no list.
 _Avoid_: best bets, sure picks, ฟันธง (as fan-facing copy); filling the list by relaxing thresholds
 
 **Closing market**:

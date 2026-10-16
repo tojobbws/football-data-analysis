@@ -1321,10 +1321,10 @@ export class Repository {
   /** Matches of a football day with their latest published prediction (LINEUP over EARLY) and its support score. */
   async featuredDayMatches(leagueIds: number[], from: string, to: string) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select f.id as fixture_id, f.league_id, f.kickoff_at, p.id as prediction_id, p.publish_round, p.kind, p.model_distribution, c.support_score
+      `select f.id as fixture_id, f.league_id, f.kickoff_at, p.id as prediction_id, p.publish_round, p.kind, p.model_distribution, p.market, p.model_probability, p.market_probability, c.support_score
          from fixtures f
          left join lateral (
-           select id, publish_round, kind, model_distribution, candidate_id from analysis_predictions
+           select id, publish_round, kind, model_distribution, candidate_id, market, model_probability, market_probability from analysis_predictions
             where fixture_id = f.id order by (publish_round = 'LINEUP') desc, published_at desc limit 1
          ) p on true
          left join analysis_candidates c on c.id = p.candidate_id
@@ -1339,6 +1339,9 @@ export class Repository {
       predictionId: r.prediction_id == null ? null : Number(r.prediction_id),
       round: r.publish_round == null ? null : String(r.publish_round),
       kind: r.kind == null ? null : String(r.kind),
+      market: r.market == null ? null : String(r.market),
+      modelProbability: r.model_probability == null ? null : Number(r.model_probability),
+      marketProbability: r.market_probability == null ? null : Number(r.market_probability),
       distribution: r.model_distribution == null ? null : (parseJson(r.model_distribution) as unknown as OutcomeDistributionRow),
       supportScore: r.support_score == null ? null : Number(r.support_score),
     }));

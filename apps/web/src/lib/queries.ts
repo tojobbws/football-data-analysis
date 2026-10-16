@@ -733,3 +733,17 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
       return { league, standings, scorers: top };
     });
 }
+
+// ---------------------------------------------------------------------------
+// Daily featured list (ADR 0006)
+// ---------------------------------------------------------------------------
+
+/** Fixture id → rank in the football day's list (เข็มทิศเกมประจำวัน). Empty when switched off with FEATURED_LIST=off. */
+export async function featuredRanks(date: string): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (!webEnv().featuredList) return out;
+  const { data, error } = await db().from('featured_selections').select('fixture_id, rank').eq('football_date', date).eq('version', 'featured-v2').not('rank', 'is', null);
+  if (error) fail('featured_selections', error);
+  for (const r of data ?? []) out.set(Number(r.fixture_id), Number(r.rank));
+  return out;
+}

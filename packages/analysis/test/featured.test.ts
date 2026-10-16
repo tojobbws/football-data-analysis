@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FEATURED_V1, featuredVerdict, isFeaturedEligible, trialSide, type TrialPick, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
+import { FEATURED_V1, FEATURED_V2, blendedProbability, featuredVerdict, isFeaturedEligible, trialSide, type TrialPick, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
 
 const at = (h: number) => new Date(Date.UTC(2026, 9, 17, h));
 const pick = (fixtureId: number, leagueId: number, supportScore: number, over: Partial<FeaturedCandidate> = {}): FeaturedCandidate => ({
@@ -72,5 +72,28 @@ describe('daily featured list', () => {
     expect(featuredVerdict(side(150, 90, 0.0), side(1000, 500, 0.01)).verdict).toBe('EXTEND'); // CLV not better
     expect(featuredVerdict(side(150, 70, 0.02), side(1000, 500, 0.01)).verdict).toBe('EXTEND'); // hit rate not better
     expect(featuredVerdict(side(300, 140, 0.02), side(1000, 500, 0.01)).verdict).toBe('FAIL');
+  });
+});
+
+describe('featured-v2 (ADR 0006)', () => {
+  const p = (fixtureId: number, leagueId: number, model: number, market: number | null, over: Partial<FeaturedCandidate> = {}) =>
+    pick(fixtureId, leagueId, 0, { modelProbability: model, marketProbability: market, market: 'ASIAN_HANDICAP', ...over });
+
+  it('blends the model with the market; without a market quote it falls back to the model', () => {
+    expect(blendedProbability({ modelProbability: 0.6, marketProbability: 0.5 }, 0.5)).toBeCloseTo(0.55);
+    expect(blendedProbability({ modelProbability: 0.6, marketProbability: null }, 0.5)).toBe(0.6);
+    expect(blendedProbability({ modelProbability: null, marketProbability: 0.5 }, 0.5)).toBeNull();
+  });
+
+  it('ranks by the blended probability, not by the edge over the market', () => {
+    // the high-edge pick (model 0.62 vs market 0.50) sits below the one the market also backs
+    const r = reserveFeatured([p(1, 39, 0.62, 0.5), p(2, 140, 0.6, 0.58)], [], FEATURED_V2);
+    expect(ids(r)).toEqual([2, 1]);
+  });
+
+  it('keeps Over/Under out until it has a second signal, but not in v1', () => {
+    const ou = p(1, 39, 0.6, 0.55, { market: 'OVER_UNDER' });
+    expect(isFeaturedEligible(ou, FEATURED_V2)).toBe(false);
+    expect(isFeaturedEligible(ou, FEATURED_V1)).toBe(true);
   });
 });

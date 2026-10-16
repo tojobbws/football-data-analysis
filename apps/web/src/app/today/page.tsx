@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import { ArticleGrid, MoreLink } from '@/components/home';
+import { FeaturedPicks } from '@/components/featured-picks';
 import { MatchList } from '@/components/match-list';
 import { CompassPicksTitle } from '@/components/icons';
 import { SignalCard } from '@/components/signal-card';
 import { Empty, Section } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
-import { latestArticles, matchDayCounts, matchesOnFootballDay } from '@/lib/queries';
+import { featuredRanks, latestArticles, matchDayCounts, matchesOnFootballDay } from '@/lib/queries';
 import { SITE_NAME, siteUrl } from '@/lib/site';
 import { addDaysStr, dayTH, footballDate } from '@/lib/time';
 
@@ -37,6 +38,7 @@ export default async function TodayPage() {
       matches = await matchesOnFootballDay(next);
     }
   }
+  const ranks = await featuredRanks(day);
   const picks = matches.filter((m) => m.compass?.kind === 'SIGNAL' && !FINISHED.includes(m.status_short));
   const leagues = [...new Set(matches.map((m) => m.league.name))];
   const todaysArticles = articles.filter((a) => footballDate(new Date(a.published_at)) === today);
@@ -70,6 +72,8 @@ export default async function TodayPage() {
           ส่วนเข็มทิศเกม เลือก 1 ตัวเลือกต่อคู่ ตรงจุดที่โมเดลมองต่างจากตลาดชัดที่สุด และล็อกไว้ก่อนเตะเสมอ
         </p>
       </header>
+
+      <FeaturedPicks matches={matches} ranks={ranks} />
 
       <Section title={<CompassPicksTitle className="h-14 sm:h-16" />} aside="ล็อกก่อนเตะ แก้ไขไม่ได้">
         {picks.length ? (

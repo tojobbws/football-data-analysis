@@ -19,6 +19,12 @@ export interface FeaturedConfig {
   target: number;
   /** tracked, but outside the featured scope */
   excludedLeagues: readonly number[];
+  /** how qualifying picks are ranked: the support score (edge over the market), or the model blended with the market */
+  rankBy: 'SUPPORT' | 'BLENDED';
+  /** weight of the model in the blended probability (the rest is the market's no-vig probability) */
+  modelWeight: number;
+  /** Over/Under needs a second independent signal (ADR 0006) that does not exist yet, so v2 leaves it out */
+  allowOverUnder: boolean;
 }
 
 /** Frozen for the shadow trial (ADR 0004): any change is a new version and the count restarts. */
@@ -29,6 +35,18 @@ export const FEATURED_V1: FeaturedConfig = {
   maxPerDay: 5,
   target: 3,
   excludedLeagues: [296, 5, 1129],
+  rankBy: 'SUPPORT',
+  modelWeight: 1,
+  allowOverUnder: true,
+};
+
+/** ADR 0006: ranked by the model blended 50/50 with the market; the edge stays a gate (already one of the pick rules). */
+export const FEATURED_V2: FeaturedConfig = {
+  ...FEATURED_V1,
+  version: 'featured-v2',
+  rankBy: 'BLENDED',
+  modelWeight: 0.5,
+  allowOverUnder: false,
 };
 
 /** The current pick of a match not locked yet. */
@@ -41,6 +59,20 @@ export interface FeaturedCandidate {
   distribution: OutcomeDistribution;
   /** the pick's market passes the league's tuning gate */
   gateEnabled: boolean;
+  market?: string;
+  modelProbability?: number | null;
+  marketProbability?: number | null;
+}
+
+/** Probability the list is ranked by: model and no-vig market blended; without a market quote, the model alone. */
+export function blendedProbability(c: Pick<FeaturedCandidate, 'modelProbability' | 'marketProbability'>, modelWeight: number): number | null {
+  if (c.modelProbability == null) return null;
+  if (c.marketProbability == null) return c.modelProbability;
+  return modelWeight * c.modelProbability + (1 - modelWeight) * c.marketProbability;
+}
+
+function rankScore(c: FeaturedCandidate, cfg: FeaturedConfig): number {
+  return cfg.rankBy === 'BLENDED' ? (blendedProbability(c, cfg.modelWeight) ?? -1) : c.supportScore;
 }
 
 export interface LockedSlot {
@@ -49,6 +81,7 @@ export interface LockedSlot {
 }
 
 export function isFeaturedEligible(c: FeaturedCandidate, cfg: FeaturedConfig = FEATURED_V1): boolean {
+  if (!cfg.allowOverUnder && c.market === 'OVER_UNDER') return false;
   return c.gateEnabled && !cfg.excludedLeagues.includes(c.leagueId) && fairProbability(c.distribution) >= cfg.minFairWin;
 }
 
@@ -63,7 +96,7 @@ export function reserveFeatured(candidates: FeaturedCandidate[], confirmed: Lock
 
   const ranked = candidates
     .filter((c) => !taken.has(c.fixtureId) && isFeaturedEligible(c, cfg))
-    .sort((a, b) => b.supportScore - a.supportScore || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId);
+    .sort((a, b) => rankScore(b, cfg) - rankScore(a, cfg) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId);
 
   const out: FeaturedCandidate[] = [];
   for (const c of ranked) {

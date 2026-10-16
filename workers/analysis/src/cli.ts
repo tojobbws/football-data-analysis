@@ -8,6 +8,7 @@ import { matchReport } from './report-job.js';
 import { settleJob } from './settle-job.js';
 import { closingJob } from './closing-job.js';
 import { shadowReport } from './shadow-report-job.js';
+import { FEATURED_V2 } from '@fp/analysis';
 import { featuredJob } from './featured-job.js';
 import { featuredReport } from './featured-report-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
@@ -57,15 +58,20 @@ async function main() {
     else if (job === 'settle') await settleJob(ctx);
     else if (job === 'pick-notes') await pickNoteJob(ctx, { refresh: values.refresh });
     else if (job === 'closing') await closingJob(ctx);
-    else if (job === 'featured') await featuredJob(ctx);
+    else if (job === 'featured') {
+      await featuredJob(ctx);
+      await featuredJob(ctx, { config: FEATURED_V2 });
+    }
     else if (job === 'featured-report') {
-      const r = await featuredReport(ctx);
+      for (const version of ['featured-v1', 'featured-v2']) {
+      const r = await featuredReport(ctx, { version });
       const pct = (x: number | null) => (x === null ? '-' : `${(x * 100).toFixed(1)}%`);
       console.log(`featured list ${r.version} since ${r.since.toISOString().slice(0, 10)} — verdict: ${r.verdict} (needs ${r.trial.minPicks}, extends to ${r.trial.extendTo}; ADR 0003 must also have a verdict)`);
       console.log(`criteria: ${JSON.stringify(r.criteria)} · dropped at LINEUP: ${r.dropped} · days: ${JSON.stringify(r.days)}`);
       console.table(
         (['featured', 'all'] as const).map((who) => ({ who, picks: r[who].picks, settled: r[who].settled, fairHitRate: pct(r[who].fairHitRate), clvN: r[who].clvN, clvMean: pct(r[who].clvMean) })),
       );
+    }
     }
     else if (job === 'shadow-report') {
       const r = await shadowReport(ctx);

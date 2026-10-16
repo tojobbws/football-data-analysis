@@ -1,3 +1,5 @@
+> **Superseded in part by [ADR 0006](0006-featured-v2-public.md)**: the list now goes on the site on featured-v2 without waiting for the verdict below; the criteria remain as a review.
+
 # The daily featured list runs in shadow first, with criteria fixed in advance
 
 The owner wants each football day to name at most 5 matches whose Game Compass pick is the strongest of the day ("เข็มทิศฟุตบอลชี้ คู่เด่นประจำวัน"). ADR 0003 defers any such selection until the rules-v0.4 shadow trial gives its verdict, because a ranking only reorders whatever the pick rules choose. So the selection is built now but runs **in shadow**. It is locked, settled and reported in admin only, and is never shown on fan pages.

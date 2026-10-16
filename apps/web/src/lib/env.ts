@@ -8,6 +8,8 @@ export interface WebEnv {
   leagues: number[];
   /** public origin, e.g. https://www.example.com (canonical URLs, sitemap); optional */
   SITE_URL: string;
+  /** daily featured list on the site; FEATURED_LIST=off is the emergency switch (ADR 0006) */
+  featuredList: boolean;
 }
 
 /** Cloudflare bindings in production/preview, process.env in `next dev`. Server only. */
@@ -25,5 +27,5 @@ export function webEnv(): WebEnv {
     .split(',')
     .map((x) => Number(x.trim()))
     .filter(Number.isInteger);
-  return { SUPABASE_URL: url, SUPABASE_ANON_KEY: key, leagues, SITE_URL: String(src.SITE_URL ?? '') };
+  return { SUPABASE_URL: url, SUPABASE_ANON_KEY: key, leagues, SITE_URL: String(src.SITE_URL ?? ''), featuredList: String(src.FEATURED_LIST ?? 'on').toLowerCase() !== 'off' };
 }

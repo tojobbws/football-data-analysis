@@ -32,7 +32,7 @@ export function featuredJob(ctx: JobContext, opts: FeaturedOptions = {}) {
 
     const asCandidate = (m: (typeof open)[number]): FeaturedCandidate | null =>
       m.kind === 'SIGNAL' && m.predictionId != null && m.distribution && m.supportScore != null && (m.round === 'LINEUP' || m.kickoffAt > now)
-        ? { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: m.supportScore, distribution: m.distribution, gateEnabled: true }
+        ? { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: m.supportScore, distribution: m.distribution, gateEnabled: true, market: m.market ?? undefined, modelProbability: m.modelProbability, marketProbability: m.marketProbability }
         : null;
     const reserved = reserveFeatured(open.map(asCandidate).filter((c): c is FeaturedCandidate => c !== null), confirmed, cfg);
     const rankOf = (fixtureId: number) => {
