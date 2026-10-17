@@ -90,6 +90,41 @@ describe('admin RLS', () => {
     ]);
   });
 
+  it('review compares both featured versions with all LINEUP picks and buckets settled picks by edge', async () => {
+    // a 14-point-edge pick that lost and an 8-point-edge pick that won; published before kickoff, the matches then move into the past
+    await db.exec(`
+      insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short)
+        values (11, 39, 2026, now() + interval '1 day', 1, 2, 'NS'), (12, 39, 2026, now() + interval '1 day', 2, 1, 'NS');
+      insert into analysis_predictions (fixture_id, publish_round, kind, market, selection, line, model_probability, market_probability, decision_rule_version) values
+        (11, 'LINEUP', 'SIGNAL', 'ASIAN_HANDICAP', 'HOME', 0, 0.64, 0.50, 'rules-v0.3'),
+        (12, 'LINEUP', 'SIGNAL', 'ASIAN_HANDICAP', 'AWAY', 0.5, 0.58, 0.50, 'rules-v0.5');
+      update fixtures set kickoff_at = now() - interval '1 day', status_short = 'FT', ft_home = 1, ft_away = 0 where id in (11, 12);
+      update analysis_predictions set status = 'LOSS', clv = 0.02 where fixture_id = 11;
+      update analysis_predictions set status = 'WIN', clv = 0.01 where fixture_id = 12;
+      insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, prediction_id, fair_probability, locked_at)
+        select '2026-10-10', 'featured-v2', p.fixture_id, 39, 'CONFIRMED', p.fixture_id, p.id, 0.6, now() from analysis_predictions p where p.publish_round = 'LINEUP';
+    `);
+    await expect(as('authenticated', STRANGER, (q) => q('select fp_admin_review()'))).rejects.toThrow(/admin only/);
+    const [r] = await as('authenticated', ADMIN, (q) => q('select fp_admin_review() as r'));
+    const v = r!.r as {
+      sides: Record<string, { picks: number; settled: number; fair_hit: number; clv_mean: number; avg_fair_probability: number | null }>;
+      by_edge: Array<{ bucket: string; settled: number; fair_hit: number }>;
+      by_rules: Array<{ rules: string; picks: number; settled: number }>;
+      days: Array<{ version: string; day: string; picks: number; won: number; lost: number }>;
+    };
+    expect(v.sides['featured-v2']).toMatchObject({ picks: 2, settled: 2, fair_hit: 0.5 });
+    expect(Number(v.sides['featured-v2']!.avg_fair_probability)).toBeCloseTo(0.6, 6);
+    expect(Number(v.sides['featured-v2']!.clv_mean)).toBeCloseTo(0.015, 6);
+    expect(v.sides['all:featured-v2']).toMatchObject({ picks: 2, settled: 2, fair_hit: 0.5 });
+    expect(v.sides['featured-v1']).toBeUndefined(); // nothing confirmed for v1 yet
+    expect(v.by_edge).toMatchObject([
+      { bucket: '2) 6 to 9', settled: 1, fair_hit: 1 },
+      { bucket: '4) 12 and over', settled: 1, fair_hit: 0 },
+    ]);
+    expect(v.by_rules).toMatchObject([{ rules: 'rules-v0.3', picks: 1, settled: 1 }, { rules: 'rules-v0.5', picks: 1, settled: 1 }]);
+    expect(v.days).toMatchObject([{ version: 'featured-v2', day: '2026-10-10', picks: 2, won: 1, lost: 1 }]);
+  });
+
   it('benchmark scores the last pre-kickoff forecasts of both sides on the same matches', async () => {
     // fixture 1 (home win), fixture 2 (draw) — fixtures from the coverage test
     await db.exec(`

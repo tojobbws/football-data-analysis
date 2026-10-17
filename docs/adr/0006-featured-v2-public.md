@@ -26,3 +26,5 @@ On the football day 2026-10-16 the published picks went 1 win, 1 push, 5 losses;
 
 - **Pick rules become rules-v0.5**: the edge cap drops from 0.15 to 0.12, nothing else changes. Picks with a larger edge are rejected as `EDGE_TOO_LARGE`. The cap was set from the 18 picks above, so it may be overfitted; it is reviewed with the rest on 2026-11-06. The shadow rules (v0.4) inherit the new cap, so shadow and real stay comparable. Per ADR 0003 the shadow trial count restarts on the new rules.
 - **Strength labels leave the fan pages**: the card meter ("ข้อมูลหนักแน่น" and the like), the badge on the match page and the label in the /performance table are gone. The labels are still stored and shown in admin, and they still do not decide the featured list.
+
+The review numbers are on `/admin/review` (admin only, computed on every open by `fp_admin_review()`, migration 0034): the criteria above as pass / fail / not enough data for featured-v1 and v2, confirmed selections per football day, and settled picks by edge, side and rule version.

@@ -10,6 +10,7 @@ export const metadata: Metadata = { title: 'หลังบ้าน', robots: {
 const nav = [
   { href: '/admin', label: 'ภาพรวมระบบ' },
   { href: '/admin/analyses', label: '🧭 บทวิเคราะห์ & AI' },
+  { href: '/admin/review', label: '📊 ทบทวนผล' },
   { href: '/admin/articles', label: '📝 บทความ' },
 ];
 
