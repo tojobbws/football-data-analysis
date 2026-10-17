@@ -172,8 +172,8 @@ describe('generateCandidates', () => {
   });
 
   it('never picks 1X2, even with the largest edge: the next passing AH/OU selection is the pick', () => {
-    // home win: model 0.60 vs market ~0.49 -> the biggest edge on the board
-    const m = input().model.map((x) => (x.market === 'MATCH_WINNER' && x.selection === 'HOME' ? { ...x, probability: 0.6 } : x));
+    // home win: model 0.58 vs market ~0.49 -> the biggest edge on the board, still under the edge cap
+    const m = input().model.map((x) => (x.market === 'MATCH_WINNER' && x.selection === 'HOME' ? { ...x, probability: 0.58 } : x));
     const d = generateCandidates(input({ model: m }));
     const home = d.candidates.find((c) => c.market === 'MATCH_WINNER' && c.selection === 'HOME')!;
     expect(home.edge!).toBeGreaterThan(d.pick!.edge!);
@@ -185,7 +185,7 @@ describe('generateCandidates', () => {
 
   it('is deterministic', () => {
     expect(generateCandidates(input())).toEqual(generateCandidates(input()));
-    expect(DEFAULT_RULES.version).toBe('rules-v0.3');
+    expect(DEFAULT_RULES.version).toBe('rules-v0.5');
   });
 });
 

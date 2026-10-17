@@ -23,11 +23,6 @@ export interface SignalCardData {
 }
 
 const MARKET_SHORT: Record<string, string> = { MATCH_WINNER: 'ผลแพ้ชนะ 1X2', ASIAN_HANDICAP: 'กำแพง · แฮนดิแคป', OVER_UNDER: 'สูง/ต่ำ' };
-const STRENGTH_STEP: Record<string, { n: number; th: string }> = {
-  LEAN: { n: 1, th: 'สัญญาณอ่อน' },
-  MEDIUM: { n: 2, th: 'สัญญาณปานกลาง' },
-  STRONG: { n: 3, th: 'ข้อมูลหนักแน่น' },
-};
 
 /** "คืนนี้ / วันนี้" for today's football day (06:00→06:00), otherwise the short date. */
 function whenLabel(iso: string) {
@@ -47,7 +42,6 @@ export function SignalCard({ s }: { s: SignalCardData }) {
   const model = s.model_probability == null ? null : Number(s.model_probability);
   const market = s.market_probability == null ? null : Number(s.market_probability);
   const edge = model != null && market != null ? Math.round((model - market) * 100) : null;
-  const strength = STRENGTH_STEP[s.signal_strength ?? ''];
   // a side pick (handicap / 1X2) names one team: that row leads, the other steps back; totals name neither
   const picked = s.market !== 'OVER_UNDER' && (s.selection === 'HOME' || s.selection === 'AWAY') ? s.selection : null;
 
@@ -90,18 +84,7 @@ export function SignalCard({ s }: { s: SignalCardData }) {
 
       <div className="mt-auto pt-4">
         <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3 text-xs">
-          {strength ? (
-            <span className="flex items-center gap-2">
-              <span className="flex items-end gap-0.5" aria-hidden>
-                {[1, 2, 3].map((i) => (
-                  <span key={i} className={`w-1.5 rounded-sm ${i <= strength.n ? 'bg-[var(--color-compass-bright)]' : 'bg-white/15'}`} style={{ height: 4 + i * 3 }} />
-                ))}
-              </span>
-              <span className="text-white/80">{strength.th}</span>
-            </span>
-          ) : (
-            <span />
-          )}
+          <span />
           <span className="text-white/65">
             ราคาอ้างอิง <b className="font-semibold tabular-nums text-white">{odds(s.odds_at_publish)}</b>
           </span>

@@ -81,10 +81,11 @@ export interface DecisionRules {
 }
 
 export const DEFAULT_RULES: DecisionRules = {
-  version: 'rules-v0.3',
+  version: 'rules-v0.5',
   pickMarkets: PICK_MARKETS,
   minEdge: 0.03,
-  maxEdge: 0.15,
+  // 0.15 in v0.3/v0.4: picks 12+ points above the market hit 38.9% (n=18) against 58.3% at 6–9 (n=12), ADR 0006
+  maxEdge: 0.12,
   minEv: 0.02,
   minBookmakers: 2,
   maxOddsAgeHours: 12,

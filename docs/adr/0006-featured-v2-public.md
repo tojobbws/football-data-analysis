@@ -19,3 +19,10 @@ Rules-v0.4 (bias table) is not promoted: its table was measured as model-versus-
 - **Keep it admin-only until the ADR 0004 verdict**: the earlier decision, and the safer one for credibility. Overruled by the owner.
 - **Show a "being measured" note beside the list**: rejected by the owner, because it costs credibility.
 - **Rank by edge (v1)**: kept only as a shadow comparison.
+
+## Addendum 2026-10-17: edge cap and strength labels
+
+On the football day 2026-10-16 the published picks went 1 win, 1 push, 5 losses; all four STRONG picks lost, each 10–14 points above the market. Over all 49 settled picks since 2026-10-07 the fair hit rate was 46.9%; by edge over the market: under 6 points 44.4% (n=9), 6–9 58.3% (n=12), 9–12 50.0% (n=10), 12 and over **38.9%** (n=18); by label: STRONG 40.9% (n=22), MEDIUM 62.5% (n=8), LEAN 47.4% (n=19). The groups are small, so this is a direction, not proof; it agrees with ADR 0003 (the model is less sharp than the market, so the largest disagreements are the likeliest model errors).
+
+- **Pick rules become rules-v0.5**: the edge cap drops from 0.15 to 0.12, nothing else changes. Picks with a larger edge are rejected as `EDGE_TOO_LARGE`. The cap was set from the 18 picks above, so it may be overfitted; it is reviewed with the rest on 2026-11-06. The shadow rules (v0.4) inherit the new cap, so shadow and real stay comparable. Per ADR 0003 the shadow trial count restarts on the new rules.
+- **Strength labels leave the fan pages**: the card meter ("ข้อมูลหนักแน่น" and the like), the badge on the match page and the label in the /performance table are gone. The labels are still stored and shown in admin, and they still do not decide the featured list.

@@ -83,7 +83,7 @@ export default async function PerformancePage() {
                         <>
                           {selectionLabel(r.market!, r.selection!, r.line == null ? null : Number(r.line), r.home_team, r.away_team)}
                           <p className="text-xs text-slate-500">
-                            {r.signal_strength} · {ROUND_SHORT[r.publish_round] ?? r.publish_round}
+                            {ROUND_SHORT[r.publish_round] ?? r.publish_round}
                           </p>
                         </>
                       ) : (

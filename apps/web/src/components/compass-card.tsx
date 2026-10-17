@@ -8,7 +8,6 @@ import { LivePhaseBadge } from './live';
 import { Badge, Card, StatStrip, StatusPill, plainLine } from './sheet';
 
 const MARKET_TH: Record<string, string> = { MATCH_WINNER: 'ผลแพ้ชนะ 1X2', ASIAN_HANDICAP: 'กำแพง · แฮนดิแคป', OVER_UNDER: 'สูง/ต่ำ' };
-const STRENGTH_TH: Record<string, string> = { STRONG: 'หนักแน่น', MEDIUM: 'ปานกลาง', LEAN: 'อ่อน' };
 // reason lines that only repeat the pick or the stat strip
 const REPEATS = ['เข็มทิศเกม', 'ระดับสัญญาณ', 'โมเดลให้โอกาส', 'อ้างอิงราคา'];
 // technical reason lines: kept, but behind "รายละเอียดเพิ่มเติม"
@@ -59,7 +58,6 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="compass">{MARKET_TH[c.market!] ?? c.market}</Badge>
-        {c.signal_strength ? <Badge>สัญญาณ{STRENGTH_TH[c.signal_strength] ?? c.signal_strength}</Badge> : null}
       </div>
       <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-zinc-950">{label}</p>
       {/* the note (pick_th) says the same direction as the rationale, with the facts behind it */}
