@@ -86,6 +86,7 @@ export class ApiFootballClient {
   private readonly now: () => number;
   private readonly calls: number[] = [];
   private _requestCount = 0;
+  private _rejectedCount = 0;
   private _lastRateLimit: RateLimitInfo = { dailyRemaining: null, minuteRemaining: null };
 
   constructor(private readonly opts: ApiFootballClientOptions) {
@@ -103,6 +104,16 @@ export class ApiFootballClient {
   /** Number of HTTP requests made (includes retries) — use to track API cost. */
   get requestCount(): number {
     return this._requestCount;
+  }
+
+  /** Requests the API refused for the per-minute rate limit. They do not count against the day's quota (checked against /status). */
+  get rejectedCount(): number {
+    return this._rejectedCount;
+  }
+
+  /** Requests that count against the day's quota: attempts minus the ones the API rate-limited. */
+  get billedCount(): number {
+    return this._requestCount - this._rejectedCount;
   }
 
   get lastRateLimit(): RateLimitInfo {
@@ -183,7 +194,10 @@ export class ApiFootballClient {
       minuteRemaining: numHeader(res.headers, 'x-ratelimit-remaining'),
     };
 
-    if (res.status === 429) throw new ApiFootballError(`429 Too Many Requests on ${path}`, 'RATE_LIMIT', path);
+    if (res.status === 429) {
+      this._rejectedCount += 1;
+      throw new ApiFootballError(`429 Too Many Requests on ${path}`, 'RATE_LIMIT', path);
+    }
     if (res.status === 401 || res.status === 403) throw new ApiFootballError(`HTTP ${res.status} on ${path} (check API key)`, 'AUTH', path);
     if (res.status >= 500) throw new ApiFootballError(`HTTP ${res.status} on ${path}`, 'HTTP', path, 'server');
     if (!res.ok) throw new ApiFootballError(`HTTP ${res.status} on ${path}`, 'HTTP', path, await safeText(res));
@@ -198,7 +212,10 @@ export class ApiFootballClient {
     const errors = normaliseErrors(body.errors);
     if (errors) {
       const text = JSON.stringify(errors);
-      if (/ratelimit|too many requests/i.test(text)) throw new ApiFootballError(`Rate limited: ${text}`, 'RATE_LIMIT', path, errors);
+      if (/ratelimit|too many requests/i.test(text)) {
+        this._rejectedCount += 1;
+        throw new ApiFootballError(`Rate limited: ${text}`, 'RATE_LIMIT', path, errors);
+      }
       if (/request limit|reached the request limit|plan/i.test(text)) throw new ApiFootballError(`Quota/plan: ${text}`, 'QUOTA', path, errors);
       if (/token|key/i.test(text)) throw new ApiFootballError(`Auth: ${text}`, 'AUTH', path, errors);
       throw new ApiFootballError(`API error on ${path}: ${text}`, 'API', path, errors);

@@ -1,5 +1,6 @@
 import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, loadEnv, type Env, type Logger } from '@fp/shared';
+import { budgetVerdict } from './budget.js';
 import { createPgDb, type Db } from './db.js';
 import { Repository } from './repository.js';
 
@@ -52,20 +53,30 @@ export async function runJob(
   params: Record<string, unknown>,
   fn: () => Promise<number>,
 ): Promise<number> {
+  const budget = await ctx.repo.apiBudgetFor(name);
+  if (budget && budgetVerdict(budget) === 'stop') {
+    // the group's daily cap is reached: do nothing (no API call, no writes), so a later re-run is always safe
+    const first = await ctx.repo.recordBudgetSkip(name, { ...params, group: budget.group, used: budget.used, cap: budget.cap });
+    if (first) ctx.log.warn('job skipped: daily API budget reached', { job: name, ...budget });
+    return 0;
+  }
   const runId = await ctx.repo.startSyncRun(name, params);
-  const before = ctx.client.requestCount;
+  const before = ctx.client.billedCount;
+  const rejectedBefore = ctx.client.rejectedCount;
   const log = ctx.log.child({ job: name, runId });
   log.info('job started', params);
   try {
     const written = await fn();
-    const requestsUsed = ctx.client.requestCount - before;
-    await ctx.repo.finishSyncRun(runId, { status: 'SUCCESS', requestsUsed, itemsWritten: written });
+    const requestsUsed = ctx.client.billedCount - before;
+    const requestsRejected = ctx.client.rejectedCount - rejectedBefore;
+    await ctx.repo.finishSyncRun(runId, { status: 'SUCCESS', requestsUsed, requestsRejected, dailyRemaining: ctx.client.lastRateLimit.dailyRemaining, itemsWritten: written });
     log.info('job finished', { written, requestsUsed, dailyRemaining: ctx.client.lastRateLimit.dailyRemaining });
     return written;
   } catch (err) {
-    const requestsUsed = ctx.client.requestCount - before;
+    const requestsUsed = ctx.client.billedCount - before;
+    const requestsRejected = ctx.client.rejectedCount - rejectedBefore;
     await ctx.repo
-      .finishSyncRun(runId, { status: 'FAILED', requestsUsed, itemsWritten: 0, error: String(err instanceof Error ? err.stack ?? err.message : err) })
+      .finishSyncRun(runId, { status: 'FAILED', requestsUsed, requestsRejected, dailyRemaining: ctx.client.lastRateLimit.dailyRemaining, itemsWritten: 0, error: String(err instanceof Error ? err.stack ?? err.message : err) })
       .catch(() => {});
     log.error('job failed', { error: String(err) });
     throw err;

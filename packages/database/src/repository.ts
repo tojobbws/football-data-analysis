@@ -1,3 +1,4 @@
+import type { JobBudget } from './budget.js';
 import type { OddsRow, RawResponseRecord } from '@fp/football';
 import { LIVE_STATUSES } from '@fp/shared';
 import type { Db, Queryable } from './db.js';
@@ -121,11 +122,49 @@ export class Repository {
     return Number(await insertReturning<string | number>(this.db, 'sync_runs', { job, params }));
   }
 
-  async finishSyncRun(id: number, r: { status: 'SUCCESS' | 'FAILED'; requestsUsed: number; itemsWritten: number; error?: string }) {
-    await this.db.query(
-      `update sync_runs set status = $2, requests_used = $3, items_written = $4, error = $5, finished_at = now() where id = $1`,
-      [id, r.status, r.requestsUsed, r.itemsWritten, r.error ?? null],
+  async finishSyncRun(
+    id: number,
+    r: { status: 'SUCCESS' | 'FAILED'; requestsUsed: number; itemsWritten: number; error?: string; requestsRejected?: number; dailyRemaining?: number | null },
+  ) {
+    try {
+      await this.db.query(
+        `update sync_runs set status = $2, requests_used = $3, items_written = $4, error = $5, requests_rejected = $6, api_daily_remaining = $7, finished_at = now() where id = $1`,
+        [id, r.status, r.requestsUsed, r.itemsWritten, r.error ?? null, r.requestsRejected ?? 0, r.dailyRemaining ?? null],
+      );
+    } catch {
+      // before migration 0039 the two new columns do not exist: keep finishing runs the old way
+      await this.db.query(
+        `update sync_runs set status = $2, requests_used = $3, items_written = $4, error = $5, finished_at = now() where id = $1`,
+        [id, r.status, r.requestsUsed, r.itemsWritten, r.error ?? null],
+      );
+    }
+  }
+
+  /** Today's use against this job's budget group; null when the budget tables are not there yet (before migration 0039). */
+  async apiBudgetFor(job: string): Promise<JobBudget | null> {
+    try {
+      const { rows } = await this.db.query<{ group_name: string; used: number; daily_cap: number; enforced: boolean }>(
+        `select group_name, used, daily_cap, enforced from fp_api_usage_today()
+          where group_name = coalesce((select group_name from api_job_groups where job = $1), 'sync')`,
+        [job],
+      );
+      const r = rows[0];
+      return r ? { group: r.group_name, used: Number(r.used), cap: Number(r.daily_cap), enforced: r.enforced } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** A job skipped for its budget. One row per job per 15 minutes, so a 30-second poll does not fill the table. */
+  async recordBudgetSkip(job: string, params: Record<string, unknown>): Promise<boolean> {
+    const recent = await this.db.query(
+      `select 1 from sync_runs where job = $1 and params->>'skipped' = 'budget' and started_at > now() - interval '15 minutes' limit 1`,
+      [job],
     );
+    if (recent.rows.length) return false;
+    const id = await this.startSyncRun(job, { ...params, skipped: 'budget' });
+    await this.finishSyncRun(id, { status: 'SUCCESS', requestsUsed: 0, itemsWritten: 0 });
+    return true;
   }
 
   // ---------- reference data ----------

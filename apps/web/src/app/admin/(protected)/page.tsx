@@ -1,3 +1,4 @@
+import { ApiUsageCard, type ApiUsage } from '@/components/api-usage';
 import { Section } from '@/components/ui';
 import { authClient } from '@/lib/auth';
 import { dateTimeTH } from '@/lib/time';
@@ -9,13 +10,15 @@ const LIMIT_MB = 500; // Supabase free tier
 export default async function AdminHome() {
   const sb = await authClient();
   const since = new Date(Date.now() - 86_400_000).toISOString();
-  const [overview, runs, configs, leagues, coverage] = await Promise.all([
+  const [overview, runs, configs, leagues, coverage, apiUsage] = await Promise.all([
     sb.rpc('fp_admin_overview'),
     sb.from('sync_runs').select('id, job, status, started_at, finished_at, requests_used, items_written, error').order('started_at', { ascending: false }).limit(300),
     sb.from('model_configs_latest').select('league_id, purpose, enabled, tuned_at'),
     sb.from('leagues').select('id, name'),
     sb.rpc('fp_admin_coverage'),
+    sb.rpc('fp_admin_api_usage'), // missing before migration 0039: the card is then just left out
   ]);
+  const usage = apiUsage.error ? null : (apiUsage.data as ApiUsage | null);
   const coverageRows = (coverage.data ?? []) as CoverageRow[];
   const o = (overview.data ?? {}) as Record<string, number | boolean>;
   const allRuns = runs.data ?? [];
@@ -42,6 +45,8 @@ export default async function AdminHome() {
         <Kpi k="Hash chain" v={o.chain_ok === false ? '❌ ผิดปกติ' : '✅ ถูกต้อง'} warn={o.chain_ok === false} />
         <Kpi k="Job fail (24 ชม.)" v={String(failed24.length)} sub={`API ใช้ไป ${requests24} requests`} warn={failed24.length > 0} />
       </section>
+
+      {usage ? <ApiUsageCard usage={usage} /> : null}
 
       <Section title="Job ล่าสุดของแต่ละงาน">
         <div className="overflow-x-auto">
