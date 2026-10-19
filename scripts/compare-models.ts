@@ -49,18 +49,33 @@ const repo = new Repository(db);
 const SEL = ['HOME', 'DRAW', 'AWAY'] as const;
 const mix = (a: Probs3, b: Probs3, w: number): Probs3 => [0, 1, 2].map((k) => w * a[k]! + (1 - w) * b[k]!) as unknown as Probs3;
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
+/** Margin removed by raising each implied probability to the power k with sum = 1 (k >= 1 pulls longshots down). */
+function powerNoVig(inv: number[]): number[] {
+  let lo = 0.5;
+  let hi = 3;
+  for (let i = 0; i < 60; i++) {
+    const k = (lo + hi) / 2;
+    if (inv.reduce((a, x) => a + x ** k, 0) > 1) lo = k;
+    else hi = k;
+  }
+  return inv.map((x) => x ** ((lo + hi) / 2));
+}
 const f = (v: number, d = 4) => +v.toFixed(d);
 
 interface Row {
   league: number;
   outcome: 0 | 1 | 2;
+  year: number;
   market: Probs3;
+  /** same prices, margin removed with the power method instead (checks that the proportional rule is not what decides) */
+  marketPower: Probs3;
   dc: Probs3;
   elo: Probs3;
 }
 
 const CANDIDATES: Array<{ name: string; p: (r: Row) => Probs3 }> = [
   { name: 'market (reference)', p: (r) => r.market },
+  { name: 'market (power de-vig)', p: (r) => r.marketPower },
   { name: 'Dixon-Coles', p: (r) => r.dc },
   { name: 'Elo', p: (r) => r.elo },
   { name: 'DC + Elo 50/50', p: (r) => mix(r.dc, r.elo, 0.5) },
@@ -71,6 +86,9 @@ const CANDIDATES: Array<{ name: string; p: (r: Row) => Probs3 }> = [
   { name: 'market 90 + Elo 10', p: (r) => mix(r.market, r.elo, 0.9) },
   { name: 'market 75 + (DC+Elo 50/50) 25', p: (r) => mix(r.market, mix(r.dc, r.elo, 0.5), 0.75) },
 ];
+
+/** How many finished matches had a complete closing 1X2, and how many of those the burn-in year set aside. */
+const tally = { withClosing: 0, burnIn: 0 };
 
 async function runLeague(leagueId: number): Promise<Row[]> {
   const matches = sortByTime(await repo.finishedMatches(leagueId));
@@ -97,9 +115,13 @@ async function runLeague(leagueId: number): Promise<Row[]> {
   let model: DixonColesModel | null = null;
   let lastFit = -Infinity;
   matches.forEach((m, i) => {
-    if (m.kickoffAt < from) return;
     const q = closing.get(m.fixtureId);
     if (!q || SEL.some((s) => !q.has(s))) return;
+    tally.withClosing++;
+    if (m.kickoffAt < from) {
+      tally.burnIn++;
+      return;
+    }
     const t = m.kickoffAt.getTime();
     if (!model || t - lastFit >= refitMs) {
       model = fitDixonColes(matches, m.kickoffAt, dcOpts, model ?? undefined);
@@ -112,6 +134,8 @@ async function runLeague(leagueId: number): Promise<Row[]> {
     out.push({
       league: leagueId,
       outcome: outcomeIndex(m.homeGoals, m.awayGoals),
+      year: m.kickoffAt.getUTCFullYear(),
+      marketPower: powerNoVig(inv) as unknown as Probs3,
       market: inv.map((x) => x / tot) as unknown as Probs3,
       dc: SEL.map((s) => priceSelection(mx, { market: 'MATCH_WINNER', selection: s }).probability) as unknown as Probs3,
       elo: eloP[i]!,
@@ -137,8 +161,10 @@ for (const l of leagues) {
 }
 await db.close();
 
+console.log(`finished matches with a complete closing 1X2 (${book}): ${tally.withClosing}; set aside as burn-in: ${tally.burnIn}; scored by every candidate: ${rows.length}`);
 const loss = (c: (typeof CANDIDATES)[number], rs: Row[]) => rs.map((r) => logLoss3(c.p(r), r.outcome));
 const ref = loss(CANDIDATES[0]!, rows);
+for (const c of CANDIDATES) if (loss(c, rows).length !== rows.length) throw new Error(`${c.name} scored a different number of matches`);
 console.log(`book ${book}, ${rows.length} matches in ${leagues.length} leagues, walk-forward, evaluated from first fixture + ${values['burn-in-days']} days\n`);
 console.log('== pooled 1X2 log loss (lower is better); z > 0 candidate beats the market, z < 0 market is better ==');
 console.table(
@@ -154,7 +180,20 @@ console.table(
       logLoss: f(mean(l)),
       'vs market': f(mean(l) - mean(ref)),
       z: f(t.z, 2),
+      'diff 95% CI': c === CANDIDATES[0] ? '-' : `${f(-t.meanImprovement - 1.96 * t.se)} .. ${f(-t.meanImprovement + 1.96 * t.se)}`,
       'leagues better than market': c === CANDIDATES[0] ? '-' : `${perLeague.filter((d) => d < 0).length}/${perLeague.filter((d) => !Number.isNaN(d)).length}`,
     };
+  }),
+);
+
+console.log('\n== log loss minus the market, per calendar year of the match (same matches for every row of a year) ==');
+const years = [...new Set(rows.map((r) => r.year))].sort();
+console.table(
+  years.map((y) => {
+    const rs = rows.filter((r) => r.year === y);
+    const m = mean(loss(CANDIDATES[0]!, rs));
+    const out: Record<string, string | number> = { year: y, matches: rs.length, 'market logLoss': f(m) };
+    for (const c of CANDIDATES.slice(1)) out[c.name] = f(mean(loss(c, rs)) - m);
+    return out;
   }),
 );
