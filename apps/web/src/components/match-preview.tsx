@@ -248,11 +248,7 @@ function ModelNumbers({ p, result, modelTested, pick, overInOutlook }: { p: Matc
         </dl>
         {hasScore ? (
           <div className="mt-3 border-t border-zinc-100 pt-3 text-xs leading-relaxed text-zinc-500">
-            <p>
-              สกอร์เดียวที่เป็นไปได้มากที่สุด <b className="font-semibold tabular-nums text-zinc-950">{p.predicted_home}–{p.predicted_away}</b> โอกาส {pct(p.predicted_p)}
-              {p.predicted_p != null ? ` · ยังมีสกอร์อื่นอีก ${pct(1 - Number(p.predicted_p))}` : ''}
-            </p>
-            <ScoreDetails p={p} ifScore={ifScore} pick={pick} modelTested={modelTested} hit={hit} result={result} />
+            <ScoreDetails p={p} ifScore={ifScore} pick={pick} modelTested={modelTested} hit={hit} result={result} showXg={false} />
           </div>
         ) : null}
       </div>
@@ -293,10 +289,10 @@ function ModelNumbers({ p, result, modelTested, pick, overInOutlook }: { p: Matc
 }
 
 /** Under the scoreline: xG, what that score means for the pick, the measuring note, and the result once known. */
-function ScoreDetails({ p, ifScore, pick, modelTested, hit, result }: { p: MatchPreview; ifScore: Status | null; pick?: { label: string } | null; modelTested: boolean; hit: string | null; result?: { home: number; away: number } | null }) {
+function ScoreDetails({ p, ifScore, pick, modelTested, hit, result, showXg = true }: { p: MatchPreview; ifScore: Status | null; pick?: { label: string } | null; modelTested: boolean; hit: string | null; result?: { home: number; away: number } | null; showXg?: boolean }) {
   return (
     <>
-      {p.expected_home != null ? (
+      {showXg && p.expected_home != null ? (
         <p className="mt-1 text-xs text-zinc-500">
           xG {Number(p.expected_home).toFixed(2)}–{Number(p.expected_away).toFixed(2)}
         </p>
