@@ -15,3 +15,5 @@ export * from './shadow-rules.js';
 export * from './featured.js';
 export * from './pick-note.js';
 export * from './snapshot.js';
+export * from './rounds.js';
+export * from './cup.js';

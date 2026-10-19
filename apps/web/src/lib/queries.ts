@@ -284,7 +284,7 @@ export const matchBySlug = cache(async (slug: string) => {
   };
 
   const finished = FINISHED.includes(m.status_short);
-  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, notes] = await Promise.all([
+  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, qualification, notes] = await Promise.all([
     sb.from('analysis_predictions').select(COMPASS_SELECT).eq('fixture_id', m.id).order('published_at'),
     sb
       .from('analysis_predictions')
@@ -315,6 +315,7 @@ export const matchBySlug = cache(async (slug: string) => {
     finished ? sb.from('fixture_events').select('elapsed, extra, team_id, player_name, type, detail').eq('fixture_id', m.id).order('seq') : Promise.resolve({ data: [], error: null }),
     sb.from('web_model_outlook').select('computed_at, p_home, p_draw, p_away, p_over25, sides_tested, totals_tested').eq('fixture_id', m.id).maybeSingle(),
     sb.from('web_match_previews').select(PREVIEW_SELECT).eq('fixture_id', m.id).maybeSingle(),
+    sb.from('web_qualification').select('leg, stage, agg_a, agg_b, p_a, p_b, p_extra_time, p_penalties, assumptions, computed_at, sides_tested, team_a_id, team_b_id').eq('fixture_id', m.id).maybeSingle(),
     sb.from('web_pick_explanations').select('analysis_prediction_id, note_th').eq('fixture_id', m.id),
   ]);
   for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, notes })) if (r.error) fail(name, r.error);
@@ -339,6 +340,8 @@ export const matchBySlug = cache(async (slug: string) => {
     events: (events.data ?? []) as Array<{ elapsed: number | null; extra: number | null; team_id: number | null; player_name: string | null; type: string; detail: string | null }>,
     outlook: (outlook.data ?? null) as ModelOutlook | null,
     preview: (preview.data ?? null) as MatchPreview | null,
+    // optional extra: a missing view (before migration 0040) just means no card
+    qualification: qualification.error ? null : ((qualification.data ?? null) as QualificationView | null),
   };
 });
 
@@ -352,6 +355,24 @@ export interface ModelOutlook {
   /** the league's model passed `model:tune` for this market */
   sides_tested: boolean;
   totals_tested: boolean;
+}
+
+/** โอกาสผ่านเข้ารอบ of a two-legged cup tie, last forecast made before this leg kicked off (view web_qualification). */
+export interface QualificationView {
+  leg: number;
+  stage: string;
+  team_a_id: number;
+  team_b_id: number;
+  agg_a: number;
+  agg_b: number;
+  p_a: number;
+  p_b: number;
+  p_extra_time: number;
+  p_penalties: number;
+  assumptions: string[];
+  computed_at: string;
+  /** the league's 1X2 model passed its test */
+  sides_tested: boolean;
 }
 
 export interface ModelOutlookScore {

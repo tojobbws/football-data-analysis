@@ -59,6 +59,7 @@ jobs:
           npm run model:closing
           npm run sync:details
           npm run model:probabilities -- --days 2
+          npm run model:qualification || echo "::warning::qualification job failed (optional step, the run goes on)"
           npm run model:impact -- --hours 36
           npm run model:candidates -- --hours 36
           npm run model:publish

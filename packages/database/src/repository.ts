@@ -439,6 +439,50 @@ export class Repository {
     });
   }
 
+  // ---------- cup ties and qualification (slice 04) ----------
+  async competitionRuleRows() {
+    try {
+      const { rows } = await this.db.query<{ league_id: number; from_season: number; stage: string; legs: number; away_goals: boolean; extra_time: boolean; penalties: boolean; neutral_venue: boolean }>(
+        'select league_id, from_season, stage, legs, away_goals, extra_time, penalties, neutral_venue from competition_rules',
+      );
+      return rows;
+    } catch {
+      return []; // before migration 0040 there are no rules: nothing to forecast, and the hourly run goes on
+    }
+  }
+
+  /** Fixtures of the given competitions kicking off in [from, to), with 90-minute / extra-time / shoot-out goals. */
+  async cupFixtureRows(leagueIds: number[], from: Date, to: Date) {
+    const { rows } = await this.db.query<{
+      id: number; league_id: number; season: number; round: string | null; kickoff_at: Date; home_team_id: number; away_team_id: number; status_short: string;
+      ft_home: number | null; ft_away: number | null; et_home: number | null; et_away: number | null; pen_home: number | null; pen_away: number | null;
+    }>(
+      `select id, league_id, season, round, kickoff_at, home_team_id, away_team_id, status_short, ft_home, ft_away, et_home, et_away, pen_home, pen_away
+         from fixtures where league_id = any($1::int[]) and kickoff_at >= $2 and kickoff_at < $3 order by kickoff_at`,
+      [leagueIds, from.toISOString(), to.toISOString()],
+    );
+    return rows;
+  }
+
+  /** The sides scoreline matrix (1X2 / handicap) of the last live run before `before`, or null. */
+  async latestSidesMatrix(fixtureId: number, before: Date, modelVersion: string): Promise<number[][] | null> {
+    const { rows } = await this.db.query<{ sides_matrix: number[][] }>(
+      `select sides_matrix from scoreline_snapshots where fixture_id = $1 and model_version_id = $2 and source = 'live' and computed_at < $3 order by computed_at desc limit 1`,
+      [fixtureId, modelVersion, before.toISOString()],
+    );
+    return rows[0]?.sides_matrix ?? null;
+  }
+
+  async lastQualificationAt(fixtureId: number): Promise<Date | null> {
+    const { rows } = await this.db.query<{ t: Date }>('select max(computed_at) as t from qualification_snapshots where fixture_id = $1', [fixtureId]);
+    return rows[0]?.t ? new Date(rows[0].t) : null;
+  }
+
+  /** Insert-only per (fixture, model version, computed_at, source). */
+  insertQualificationSnapshot(row: Row) {
+    return writeRows(this.db, 'qualification_snapshots', [row], { conflict: ['fixture_id', 'model_version_id', 'computed_at', 'source'], update: 'nothing' });
+  }
+
   async insertModelConfigs(rows: ModelConfigInput[]): Promise<number> {
     let n = 0;
     for (const r of rows) {

@@ -6,7 +6,9 @@ import { COMPASS_LINE } from '@/components/compass-explainer';
 import { LiveGoal, LiveHeadBadge, LiveStaleNote, LiveWatch } from '@/components/live';
 import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/match-preview';
 import { ModelOutlookCard } from '@/components/model-outlook';
+import { QualificationCard } from '@/components/qualification';
 import { Badge, Card, Note } from '@/components/sheet';
+import { stageLabelTh } from '@fp/analysis';
 import { TeamLogo } from '@/components/ui';
 import { FINISHED, ROUND, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { isLive, toSeed } from '@/lib/live';
@@ -69,10 +71,15 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
     superEvent: { '@type': 'SportsEvent', name: m.league.name },
   };
 
+  // two-legged cup ties only, and only where the league's 1X2 model passed its test (like the model outlook)
+  const qualification = d.qualification?.sides_tested ? d.qualification : null;
+  const teamName = (id: number) => (id === m.home.id ? m.home.name : m.away.name);
+
   const sections = [
     pick || earlierPicks.length || noAnalysisYet ? { id: 'pick', label: 'เข็มทิศเกม' } : null,
     d.preview || (!d.finished && !OFF[m.status_short]) ? { id: 'analysis', label: 'วิเคราะห์' } : null,
     d.outlook?.sides_tested ? { id: 'model', label: 'โมเดล' } : null,
+    qualification ? { id: 'qualification', label: 'ผ่านเข้ารอบ' } : null,
     d.finished && d.stats.length ? { id: 'stats', label: 'สถิติ' } : null,
     { id: 'form', label: 'ฟอร์ม' },
     { id: 'squad', label: 'ผู้เล่น' },
@@ -138,6 +145,8 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
               </Card>
             ) : null}
 
+            {qualification ? <QualificationCard id="qualification" q={qualification} a={teamName(qualification.team_a_id)} b={teamName(qualification.team_b_id)} /> : null}
+
             {d.outlook?.sides_tested ? <ModelOutlookCard id="model" o={d.outlook} home={m.home.name} away={m.away.name} result={result90(d)} /> : null}
           </div>
 
@@ -189,7 +198,7 @@ function MatchHead({ d }: { d: Data }) {
           <TeamLogo src={m.league.logo_url} alt="" size={16} />
           {m.league.name}
         </span>
-        {m.round ? <><Sep />{m.round}</> : null}
+        {m.round ? <><Sep />{stageLabelTh(m.round)}</> : null}
         <Sep />
         {dayTH(m.kickoff_at)}
         {m.venue?.name ? <><Sep />{m.venue.name}</> : null}

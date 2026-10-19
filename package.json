@@ -31,6 +31,7 @@
     "sync:odds": "npm run job -w @fp/odds-sync -- odds",
     "dev:web": "npm run dev -w @fp/web",
     "model:probabilities": "npm run job -w @fp/analysis-worker -- probabilities",
+    "model:qualification": "npm run job -w @fp/analysis-worker -- qualification",
     "model:backtest": "npm run job -w @fp/analysis-worker -- backtest",
     "model:tune": "npm run job -w @fp/analysis-worker -- tune",
     "model:candidates": "npm run job -w @fp/analysis-worker -- candidates",

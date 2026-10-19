@@ -15,12 +15,14 @@ import { aiShadowJob } from './ai-shadow-job.js';
 import { matchPreviewJob } from './preview-job.js';
 import { pickNoteJob } from './pick-note-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
+import { qualificationJob } from './qualification-job.js';
 
 const USAGE = `usage: npm run job -w @fp/analysis-worker -- <job> [options]
 
 jobs:
   tune [--league ID]           grid-search settings per league (time split) -> model_configs
   probabilities [--days N] [--min-gap-hours H]   model probabilities for fixtures in the next N days (default 7)
+  qualification [--days N]     chance each side goes through a two-legged cup tie (needs the live scoreline matrices); skips ties it cannot price
   impact [--hours N]           Player Impact layer: re-price with missing players (lineups / injuries)
   candidates [--hours N]       evaluate all selections vs odds, store decision (default next 36h)
   report [--hours N]           🔎 Markdown report of upcoming matches (default next 18h) -> reports/
@@ -42,7 +44,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report'].includes(job ?? '')) {
+  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -54,6 +56,7 @@ async function main() {
         days: values.days ? Number(values.days) : undefined,
         minGapHours: values['min-gap-hours'] ? Number(values['min-gap-hours']) : undefined,
       });
+    else if (job === 'qualification') await qualificationJob(ctx, { days: values.days ? Number(values.days) : undefined });
     else if (job === 'publish') await publishJob(ctx);
     else if (job === 'settle') await settleJob(ctx);
     else if (job === 'pick-notes') await pickNoteJob(ctx, { refresh: values.refresh });
