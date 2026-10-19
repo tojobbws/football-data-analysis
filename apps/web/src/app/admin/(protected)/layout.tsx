@@ -11,6 +11,7 @@ const nav = [
   { href: '/admin', label: 'ภาพรวมระบบ' },
   { href: '/admin/analyses', label: '🧭 บทวิเคราะห์ & AI' },
   { href: '/admin/review', label: '📊 ทบทวนผล' },
+  { href: '/admin/registry', label: 'คู่ใหญ่ & ไทย' },
   { href: '/admin/articles', label: '📝 บทความ' },
 ];
 

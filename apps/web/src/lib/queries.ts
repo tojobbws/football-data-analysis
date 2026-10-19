@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import type { OutcomeDistribution } from '@fp/analysis';
+import { buildRegistry, type PopularityRegistry } from '@fp/shared/popularity';
 import { webEnv } from './env';
 import { db } from './supabase';
 import { FINISHED, LIVE, type Status } from './labels';
@@ -20,6 +21,7 @@ export interface Team {
 export interface MatchRow {
   id: number;
   slug: string;
+  season: number;
   kickoff_at: string;
   status_short: string;
   elapsed: number | null;
@@ -105,7 +107,7 @@ export interface Compass {
   note_th?: string | null;
 }
 
-const MATCH_SELECT = `id, slug, kickoff_at, status_short, elapsed, elapsed_extra, goals_home, goals_away,
+const MATCH_SELECT = `id, slug, season, kickoff_at, status_short, elapsed, elapsed_extra, goals_home, goals_away,
   league:leagues!fixtures_league_id_fkey(id, name, logo_url, country),
   home:teams!fixtures_home_team_id_fkey(id, name, logo_url),
   away:teams!fixtures_away_team_id_fkey(id, name, logo_url)`;
@@ -258,7 +260,7 @@ export const matchBySlug = cache(async (slug: string) => {
   const sb = db();
   const { data: f, error } = await sb
     .from('fixtures')
-    .select(`${MATCH_SELECT}, season, round, referee, league_id, home_team_id, away_team_id, ht_home, ht_away, ft_home, ft_away,
+    .select(`${MATCH_SELECT}, round, referee, league_id, home_team_id, away_team_id, ht_home, ht_away, ft_home, ft_away,
       venue:venues!fixtures_venue_id_fkey(name, city, image_url),
       home_ground:teams!fixtures_home_team_id_fkey(venue:venues(image_url))`)
     .eq('slug', slug)
@@ -406,6 +408,25 @@ export async function modelResults() {
     leagueNames: new Map((leagues.data ?? []).map((l) => [Number(l.id), String(l.name)])),
   };
 }
+
+/**
+ * The popularity registry (teams, leagues, rivalries) that orders big matches and finds the Thai section.
+ * An optional extra: if it cannot be read the site simply shows no big-match or Thai section.
+ */
+export const popularityRegistry = cache(async (): Promise<PopularityRegistry> => {
+  const sb = db();
+  const [teams, leagues, rivalries] = await Promise.all([
+    sb.from('team_popularity').select('team_id, season, popularity'),
+    sb.from('league_importance').select('league_id, season, importance, is_thai'),
+    sb.from('rivalries').select('team_a_id, team_b_id, name, weight'),
+  ]);
+  const failed = teams.error ?? leagues.error ?? rivalries.error;
+  if (failed) {
+    console.error('popularity registry unavailable:', failed.message);
+    return buildRegistry([], [], []);
+  }
+  return buildRegistry(teams.data ?? [], leagues.data ?? [], rivalries.data ?? []);
+});
 
 /** Last 5 finished matches of a team before `before`, with xG when available. */
 async function teamForm(teamId: number, before: string): Promise<FormRow[]> {

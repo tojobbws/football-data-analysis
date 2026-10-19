@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // shared TS source (labels, settlement wording) — one definition for workers and web
-  transpilePackages: ['@fp/analysis'],
+  transpilePackages: ['@fp/analysis', '@fp/shared'],
   images: { remotePatterns: [{ protocol: 'https', hostname: 'media.api-sports.io' }] },
   webpack(config) {
     // workspace packages are ESM TS that import siblings as './x.js'

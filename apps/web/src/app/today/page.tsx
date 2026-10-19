@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { BigMatches, ThaiMatches } from '@/components/big-matches';
 import { ArticleGrid, MoreLink } from '@/components/home';
 import { FeaturedPicks } from '@/components/featured-picks';
 import { MatchList } from '@/components/match-list';
@@ -6,7 +7,8 @@ import { CompassPicksTitle } from '@/components/icons';
 import { SignalCard } from '@/components/signal-card';
 import { Empty, Section } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
-import { featuredRanks, latestArticles, matchDayCounts, matchesOnFootballDay } from '@/lib/queries';
+import { bigMatchesOf, thaiMatchesOf } from '@/lib/popularity';
+import { featuredRanks, latestArticles, matchDayCounts, matchesOnFootballDay, popularityRegistry } from '@/lib/queries';
 import { SITE_NAME, siteUrl } from '@/lib/site';
 import { addDaysStr, dayTH, footballDate } from '@/lib/time';
 
@@ -38,7 +40,9 @@ export default async function TodayPage() {
       matches = await matchesOnFootballDay(next);
     }
   }
-  const ranks = await featuredRanks(day);
+  const [ranks, registry] = await Promise.all([featuredRanks(day), popularityRegistry()]);
+  const big = bigMatchesOf(matches, registry);
+  const thai = thaiMatchesOf(matches, registry);
   const picks = matches.filter((m) => m.compass?.kind === 'SIGNAL' && !FINISHED.includes(m.status_short));
   const leagues = [...new Set(matches.map((m) => m.league.name))];
   const todaysArticles = articles.filter((a) => footballDate(new Date(a.published_at)) === today);
@@ -74,6 +78,10 @@ export default async function TodayPage() {
       </header>
 
       <FeaturedPicks matches={matches} ranks={ranks} />
+
+      <BigMatches items={big} title={day === today ? 'คู่ใหญ่วันนี้' : 'คู่ใหญ่'} />
+
+      <ThaiMatches matches={thai} />
 
       <Section title={<CompassPicksTitle className="h-14 sm:h-16" />} aside="ล็อกก่อนเตะ แก้ไขไม่ได้">
         {picks.length ? (

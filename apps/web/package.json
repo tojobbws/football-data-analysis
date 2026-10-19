@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@fp/analysis": "*",
+    "@fp/shared": "*",
     "@opennextjs/cloudflare": "^1.20.9",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",

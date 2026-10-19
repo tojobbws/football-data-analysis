@@ -43,7 +43,8 @@ export function MatchList({ matches, compact = false }: { matches: MatchRow[]; c
   );
 }
 
-function MatchItem({ m, compact }: { m: MatchRow; compact: boolean }) {
+/** One match row. `note` is a small line under it (a big match shows its league and rivalry there). */
+export function MatchItem({ m, compact, note }: { m: MatchRow; compact: boolean; note?: string }) {
   const finished = FINISHED.includes(m.status_short);
   const live = isLive(m.status_short, m.kickoff_at);
   const off = OFF[m.status_short];
@@ -117,6 +118,8 @@ function MatchItem({ m, compact }: { m: MatchRow; compact: boolean }) {
             ) : null
           ) : null}
         </div>
+
+        {note ? <p className="col-start-2 col-end-4 truncate text-xs text-slate-500">{note}</p> : null}
 
         {!compact && m.preview ? (
           <p className="col-start-2 col-end-4 line-clamp-2 text-xs leading-relaxed text-slate-600">
