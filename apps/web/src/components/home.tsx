@@ -110,22 +110,38 @@ export function PreviewTable({ previews }: { previews: PreviewCard[] }) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {previews.map((p) => (
-            <tr key={p.slug} className="relative transition-colors hover:bg-slate-50">
-              <td className="px-3 py-3 align-top text-xs leading-tight text-slate-600 sm:px-4">
-                <span className="block text-sm font-semibold tabular-nums text-[var(--color-ink)]">{timeTH(p.kickoff_at)}</span>
-                {shortDayTH(p.kickoff_at)}
-              </td>
-              <td className="min-w-0 px-3 py-3 align-top">
-                <Link href={`/matches/${p.slug}`} className="text-sm font-semibold leading-snug text-[var(--color-ink)] after:absolute after:inset-0 sm:text-base">
-                  {p.home} <span className="font-normal text-slate-400">vs</span> {p.away}
+            // every cell is its own link to the match (a stretched ::after overlay escapes table rows and
+            // swallowed clicks across the page); only the match name is focusable, the rest are mouse targets
+            <tr key={p.slug} className="transition-colors hover:bg-slate-50">
+              <td className="p-0 align-top">
+                <Link href={`/matches/${p.slug}`} tabIndex={-1} aria-hidden className="block px-3 py-3 text-xs leading-tight text-slate-600 sm:px-4">
+                  <span className="block text-sm font-semibold tabular-nums text-[var(--color-ink)]">{timeTH(p.kickoff_at)}</span>
+                  {shortDayTH(p.kickoff_at)}
                 </Link>
-                <span className="mt-0.5 block text-xs text-slate-600 md:hidden">{p.league}</span>
               </td>
-              <td className="hidden px-3 py-3 align-top text-sm text-slate-600 md:table-cell">{p.league}</td>
-              <td className="hidden px-3 py-3 align-top text-sm leading-relaxed text-slate-600 lg:table-cell">
-                <span className="line-clamp-2">{p.overview_th}</span>
+              <td className="min-w-0 p-0 align-top">
+                <Link href={`/matches/${p.slug}`} className="block px-3 py-3">
+                  <span className="text-sm font-semibold leading-snug text-[var(--color-ink)] sm:text-base">
+                    {p.home} <span className="font-normal text-slate-400">vs</span> {p.away}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-600 md:hidden">{p.league}</span>
+                </Link>
               </td>
-              <td className="px-3 py-3 text-slate-400"><IconChevronRight size={16} /></td>
+              <td className="hidden p-0 align-top md:table-cell">
+                <Link href={`/matches/${p.slug}`} tabIndex={-1} aria-hidden className="block px-3 py-3 text-sm text-slate-600">
+                  {p.league}
+                </Link>
+              </td>
+              <td className="hidden p-0 align-top lg:table-cell">
+                <Link href={`/matches/${p.slug}`} tabIndex={-1} aria-hidden className="block px-3 py-3 text-sm leading-relaxed text-slate-600">
+                  <span className="line-clamp-2">{p.overview_th}</span>
+                </Link>
+              </td>
+              <td className="p-0 align-top">
+                <Link href={`/matches/${p.slug}`} tabIndex={-1} aria-hidden className="block px-3 py-3 text-slate-400">
+                  <IconChevronRight size={16} />
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>
