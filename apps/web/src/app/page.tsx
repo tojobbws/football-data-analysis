@@ -1,18 +1,16 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { COMPASS_HOME_LINE, CompassExplainer } from '@/components/compass-explainer';
 import { BigMatches } from '@/components/big-matches';
-import { ArticleGrid, MoreLink, PreviewGrid, Rail, RailItem } from '@/components/home';
-import { FeaturedPicks } from '@/components/featured-picks';
-import { IconChevronRight, CompassPicksTitle, IconLock } from '@/components/icons';
+import { ArticleGrid, MoreLink, PreviewTable } from '@/components/home';
+import { featuredList } from '@/components/featured-picks';
+import { IconChevronRight } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
-import { SignalCard } from '@/components/signal-card';
 import { Empty } from '@/components/ui';
-import { FINISHED, pct } from '@/lib/labels';
+import { FINISHED } from '@/lib/labels';
 import { isLive as liveNow } from '@/lib/live';
 import { bigMatchesOf } from '@/lib/popularity';
-import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, perfSummary, popularityRegistry, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
+import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, popularityRegistry, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
@@ -40,11 +38,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, live, signals, perf, articles, leagues, upcomingPreviews, ranks, registry] = await Promise.all([
+  const [shown, live, signals, articles, leagues, upcomingPreviews, ranks, registry] = await Promise.all([
     date ? matchesOnFootballDay(date) : liveMatches(),
     liveMatches(),
-    upcomingSignals(4),
-    perfSummary(),
+    upcomingSignals(5),
     latestArticles(4),
     leagueWidgets(5),
     previewCards('upcoming', 4),
@@ -55,6 +52,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
   // on today: live first, then upcoming, then finished; other days keep kickoff order
+  // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list when switched on and filled, otherwise the next signals
+  const featured = featuredList(shown, ranks);
+  const watch = new Set(featured.length ? featured.map((f) => f.slug) : signals.map((x) => x.fixture_slug));
   const ordered = onToday ? [...shown].sort(byPhase) : shown;
 
   return (
@@ -75,7 +75,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               aside={!liveView ? <BandLink href="/today" label="วิเคราะห์ทุกคู่" /> : null}
             />
             {ordered.length ? (
-              <ScoreboardList matches={ordered} date={date} />
+              <ScoreboardList matches={ordered} date={date} watch={watch} />
             ) : (
               <BandEmpty>{liveView ? 'ตอนนี้ไม่มีคู่ที่กำลังแข่งในลีกที่ติดตาม' : 'ไม่มีแมตช์ในวันนี้ในลีกที่ติดตาม — ลองเลือกวันอื่นจากแถบด้านบน'}</BandEmpty>
             )}
@@ -88,100 +88,13 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         </div>
       </ScoreboardBand>
 
-      {/* ---------------- 2: compass (white band, like the scoreboard) ---------------- */}
-      <div className="border-b border-slate-200 bg-white">
-        <section id="compass" className="mx-auto max-w-5xl scroll-mt-28 px-4 pb-6 pt-6" aria-labelledby="compass-h">
-          <div className="mb-3 flex items-end justify-between gap-3">
-            <div className="min-w-0">
-              <h2 id="compass-h" className="leading-none">
-                <CompassPicksTitle className="h-16 sm:h-20" />
-              </h2>
-              <p className="mt-1 text-xs leading-relaxed text-slate-600">{COMPASS_HOME_LINE}</p>
-              <CompassExplainer />
-            </div>
-            <MoreLink href="/today" label="ทุกคู่" />
-          </div>
-          <div className="mb-4 empty:hidden">
-            <FeaturedPicks matches={shown} ranks={ranks} />
-          </div>
-          {signals.length ? (
-            <Rail label="คู่น่าจับตา">
-              {signals.map((s) => (
-                <RailItem key={s.public_id}>
-                  <SignalCard
-                    s={{
-                      slug: s.fixture_slug,
-                      league: s.league_name,
-                      kickoff_at: s.kickoff_at,
-                      home: s.home_team,
-                      away: s.away_team,
-                      home_logo: s.home_logo,
-                      away_logo: s.away_logo,
-                      market: s.market!,
-                      selection: s.selection!,
-                      line: s.line,
-                      signal_strength: s.signal_strength,
-                      model_probability: s.model_probability,
-                      market_probability: s.market_probability,
-                      odds_at_publish: s.odds_at_publish,
-                      round: s.publish_round,
-                    }}
-                  />
-                </RailItem>
-              ))}
-            </Rail>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
-              <p className="text-sm font-semibold">ตอนนี้ยังไม่มีคู่ที่ข้อมูลชี้ชัด</p>
-              <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-600">
-                เราเลือกเฉพาะคู่ที่ข้อมูลสนับสนุนพอ ไม่บังคับเลือกทุกคู่ — บทวิเคราะห์เผยแพร่ภายใน 24 ชม. ก่อนเตะ
-              </p>
-            </div>
-          )}
-          {perf && perf.total_signals ? (
-            <Link
-              href="/performance"
-              className="mt-2 flex min-h-11 items-center justify-between gap-3 rounded-xl px-1 text-xs text-slate-600 transition-colors hover:text-[var(--color-ink)]"
-            >
-              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="flex items-center gap-1 font-semibold text-[var(--color-ink)]">
-                  <IconLock size={12} />
-                  บันทึกสาธารณะ
-                </span>
-                <span>
-                  <b className="text-[var(--color-ink)] tabular-nums">{perf.total_signals}</b> สัญญาณ
-                </span>
-                {perf.win_rate == null ? (
-                  <span>
-                    รอตัดสินผล <b className="text-[var(--color-ink)] tabular-nums">{perf.pending}</b>
-                  </span>
-                ) : (
-                  <>
-                    <span>
-                      Win rate <b className="text-[var(--color-ink)] tabular-nums">{pct(perf.win_rate, 1)}</b>
-                    </span>
-                    <span>
-                      ชนะราคาปิด <b className="text-[var(--color-ink)] tabular-nums">{pct(perf.beat_closing_rate, 0)}</b>
-                    </span>
-                  </>
-                )}
-              </span>
-              <span className="flex shrink-0 items-center font-medium text-[var(--color-pitch)]">
-                ผลงานทั้งหมด
-                <IconChevronRight size={16} />
-              </span>
-            </Link>
-          ) : null}
-        </section>
-      </div>
-
       <div className="mx-auto mt-8 grid max-w-5xl grid-cols-1 gap-8 px-4">
         <div className="space-y-8">
           <BigMatches items={big} title={onToday ? 'คู่ใหญ่วันนี้' : 'คู่ใหญ่'} />
           {/* ---------------- 3: match previews, then editorial articles when there are some ---------------- */}
           <section aria-labelledby="previews-h">
             <DayHeading id="previews-h" kicker="อ่านต่อ" title="บทวิเคราะห์ล่าสุด" href="/analysis" />
-            {previews.length ? <PreviewGrid previews={previews} /> : <Empty>บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</Empty>}
+            {previews.length ? <PreviewTable previews={previews} /> : <Empty>บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</Empty>}
           </section>
           {articles.length ? (
             <section aria-labelledby="articles-h">

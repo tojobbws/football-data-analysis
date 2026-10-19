@@ -5,7 +5,7 @@ import { FINISHED, STATUS, selectionLabel } from '@/lib/labels';
 import { addDaysStr, dayMonthTH, thaiDate, timeTH, weekdayShortTH } from '@/lib/time';
 import { DatePickerButton } from './date-picker-button';
 import { isLive, toSeed } from '@/lib/live';
-import { CompassMark } from './icons';
+import { CompassMark, CompassPicksTitle } from './icons';
 import { LiveCountBadge, LiveGoal, LiveMinute, LiveWatch } from './live';
 import { TeamLogo } from './primitives';
 
@@ -80,7 +80,7 @@ export function DateStrip({ base, selected, today, liveCount }: { base: string; 
  * Matches grouped by league (in kickoff order). On a football day (`date` given), kick-offs that fall
  * on the next calendar morning get a "เช้ามืด…" divider, like the reference app's "tomorrow morning".
  */
-export function ScoreboardList({ matches, date }: { matches: MatchRow[]; date: string | null }) {
+export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; date: string | null; watch?: Set<string> }) {
   const groups = new Map<number, { league: MatchRow['league']; rows: MatchRow[] }>();
   for (const m of matches) {
     const g = groups.get(m.league.id) ?? { league: m.league, rows: [] };
@@ -99,7 +99,7 @@ export function ScoreboardList({ matches, date }: { matches: MatchRow[]; date: s
               {rows.map((m, i) => (
                 <li key={m.id}>
                   {i === firstLate ? <Divider label={`เช้ามืดวัน${longWeekday(nextMorning!)} ${dayMonthTH(noon(nextMorning!))}`} /> : null}
-                  <MatchCard m={m} />
+                  <MatchCard m={m} watched={watch?.has(m.slug) ?? false} />
                 </li>
               ))}
             </ul>
@@ -140,7 +140,7 @@ function Divider({ label }: { label: string }) {
   );
 }
 
-function MatchCard({ m }: { m: MatchRow }) {
+function MatchCard({ m, watched = false }: { m: MatchRow; watched?: boolean }) {
   const live = isLive(m.status_short, m.kickoff_at);
   const finished = FINISHED.includes(m.status_short);
   const off = OFF[m.status_short];
@@ -159,7 +159,7 @@ function MatchCard({ m }: { m: MatchRow }) {
   return (
     <Link
       href={`/matches/${m.slug}`}
-      className={`flex min-h-14 items-center rounded-xl bg-slate-50 py-2 pl-2 pr-1.5 ring-1 ring-inset transition-colors duration-150 hover:bg-slate-100 ${live ? 'ring-[var(--color-live)]/50' : 'ring-slate-200/80'}`}
+      className={`flex min-h-14 items-center rounded-xl py-2 pl-2 pr-1.5 ring-inset transition-colors duration-150 ${watched ? 'bg-[var(--color-compass-soft)]/40 ring-2 ring-[var(--color-compass-bright)] hover:bg-[var(--color-compass-soft)]/70' : `bg-slate-50 ring-1 hover:bg-slate-100 ${live ? 'ring-[var(--color-live)]/50' : 'ring-slate-200/80'}`}`}
     >
       {/* status */}
       <div className="flex w-11 shrink-0 flex-col items-center justify-center text-center leading-none">
@@ -195,7 +195,7 @@ function MatchCard({ m }: { m: MatchRow }) {
       </div>
 
       {/* 🧭 marker (one pick, or settled result) */}
-      <div className="flex w-9 shrink-0 items-center justify-center">
+      <div className={`flex shrink-0 items-center justify-center ${watched && c && pick && c.status === 'PENDING' ? 'w-[4.5rem]' : 'w-9'}`}>
         {c && pick ? (
           c.status !== 'PENDING' ? (
             <span className="text-sm" title={`🧭 ${pick} · ${STATUS[c.status].label}`}>
@@ -205,8 +205,8 @@ function MatchCard({ m }: { m: MatchRow }) {
               </span>
             </span>
           ) : (
-            <span className="flex h-7 w-7 items-center justify-center" title={`🧭 ${pick}`}>
-              <CompassMark size={26} />
+            <span className={`flex h-7 items-center justify-center ${watched ? '' : 'w-7'}`} title={`🧭 ${pick}`}>
+              {watched ? <CompassPicksTitle className="h-6" /> : <CompassMark size={26} />}
               <span className="sr-only">🧭 เข็มทิศเกม: {pick}</span>
             </span>
           )

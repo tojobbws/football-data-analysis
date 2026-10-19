@@ -4,54 +4,82 @@ import { useState } from 'react';
 import type { LeagueWidget } from '@/lib/queries';
 import { Empty, Section, TeamLogo } from './primitives';
 
+/** The five biggest leagues, shown up front: Premier League, La Liga, Serie A, Bundesliga, Ligue 1. */
+const BIG = [39, 140, 135, 78, 61];
+
 /** Sidebar: tracked league logos (also the league picker) + standings + top scorers. */
 export function LeagueWidgets({ widgets }: { widgets: LeagueWidget[] }) {
   const [id, setId] = useState(() => (widgets.find((w) => w.standings.length) ?? widgets[0])?.league.id);
   const [all, setAll] = useState(false);
+  const [open, setOpen] = useState(false);
   const w = widgets.find((x) => x.league.id === id);
   if (!w) return null;
   const table = all ? w.standings : w.standings.slice(0, 10);
+  const big = BIG.map((bid) => widgets.find((x) => x.league.id === bid)).filter((x): x is LeagueWidget => x != null);
+  const more = widgets.filter((x) => !BIG.includes(x.league.id));
   const groups = [
-    { label: 'ลีก', items: widgets.filter((x) => x.league.type !== 'Cup') },
-    { label: 'ถ้วย', items: widgets.filter((x) => x.league.type === 'Cup') },
+    { label: 'ลีก', items: more.filter((x) => x.league.type !== 'Cup') },
+    { label: 'ถ้วย', items: more.filter((x) => x.league.type === 'Cup') },
   ].filter((g) => g.items.length);
   // e.g. two "Bundesliga" (Germany, Austria): show the country under the name
   const names = widgets.map((x) => x.league.name);
   const dup = new Set(names.filter((n, i) => names.indexOf(n) !== i));
 
+  const pick = (l: LeagueWidget['league']) => (
+    <button
+      key={l.id}
+      type="button"
+      onClick={() => {
+        setId(l.id);
+        setAll(false);
+        setOpen(false);
+      }}
+      aria-pressed={l.id === id}
+      title={l.country && l.type !== 'Cup' ? `${l.name} (${l.country})` : l.name}
+      className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-xs leading-tight transition-colors ${
+        l.id === id ? 'border-[var(--color-pitch)] bg-[var(--color-pitch-soft)] font-semibold text-[var(--color-ink)]' : 'border-transparent text-slate-600 hover:bg-slate-50'
+      }`}
+    >
+      <TeamLogo src={l.logo_url} alt="" size={28} />
+      <span className="line-clamp-2 text-center">{l.name}</span>
+      {dup.has(l.name) && l.country ? <span className="-mt-0.5 text-[10px] text-slate-500">{l.country}</span> : null}
+    </button>
+  );
+
   return (
     <>
-      <Section title="ลีกที่เราวิเคราะห์" aside={groups.map((g) => `${g.label} ${g.items.length}`).join(' · ')}>
-        <div className="space-y-3">
-          {groups.map((g) => (
-            <div key={g.label}>
-              <h3 className="mb-1.5 text-xs font-medium text-slate-500">
-                {g.label} <span className="tabular-nums">({g.items.length})</span>
-              </h3>
-              <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={`เลือก${g.label}`}>
-                {g.items.map(({ league: l }) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => {
-                      setId(l.id);
-                      setAll(false);
-                    }}
-                    aria-pressed={l.id === id}
-                    title={l.country && l.type !== 'Cup' ? `${l.name} (${l.country})` : l.name}
-                    className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-xs leading-tight transition-colors ${
-                      l.id === id ? 'border-[var(--color-pitch)] bg-[var(--color-pitch-soft)] font-semibold text-[var(--color-ink)]' : 'border-transparent text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <TeamLogo src={l.logo_url} alt="" size={28} />
-                    <span className="line-clamp-2 text-center">{l.name}</span>
-                    {dup.has(l.name) && l.country ? <span className="-mt-0.5 text-[10px] text-slate-500">{l.country}</span> : null}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
+      <Section title="ลีกที่เราวิเคราะห์" aside={`ทั้งหมด ${widgets.length}`}>
+        <div className="grid grid-cols-5 gap-1" role="group" aria-label="ลีกใหญ่">
+          {big.map((x) => pick(x.league))}
         </div>
+        {more.length ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setOpen((x) => !x)}
+              aria-expanded={open}
+              aria-controls="league-picker"
+              className="mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-1 text-left text-sm font-medium text-[var(--color-pitch)] hover:bg-slate-50"
+            >
+              <span>{open ? 'ซ่อน' : `ลีกอื่น ๆ อีก ${more.length} รายการ`}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div id="league-picker" hidden={!open} className="mt-2 space-y-3">
+              {groups.map((g) => (
+                <div key={g.label}>
+                  <h3 className="mb-1.5 text-xs font-medium text-slate-500">
+                    {g.label} <span className="tabular-nums">({g.items.length})</span>
+                  </h3>
+                  <div className="grid grid-cols-4 gap-1.5" role="group" aria-label={`เลือก${g.label}`}>
+                    {g.items.map((x) => pick(x.league))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
       </Section>
 
       <Section

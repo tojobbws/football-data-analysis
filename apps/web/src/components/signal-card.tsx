@@ -25,7 +25,7 @@ export interface SignalCardData {
 const MARKET_SHORT: Record<string, string> = { MATCH_WINNER: 'ผลแพ้ชนะ 1X2', ASIAN_HANDICAP: 'กำแพง · แฮนดิแคป', OVER_UNDER: 'สูง/ต่ำ' };
 
 /** "คืนนี้ / วันนี้" for today's football day (06:00→06:00), otherwise the short date. */
-function whenLabel(iso: string) {
+export function whenLabel(iso: string) {
   const d = new Date(iso);
   if (footballDate(d) !== footballDate()) return shortDayTH(iso);
   const h = Number(timeTH(iso).slice(0, 2));
@@ -127,7 +127,7 @@ function TeamRow({ name, logo, state }: { name: string; logo: string | null; sta
  * Grey fill = market, white tick = model, gold = the gap between them. Each label sits under its
  * own mark: the lower one ends at its mark, the higher one starts at it, so they never overlap.
  */
-function EdgeMeter({ model, market }: { model: number; market: number }) {
+export function EdgeMeter({ model, market }: { model: number; market: number }) {
   const lo = Math.min(model, market) * 100;
   const hi = Math.max(model, market) * 100;
   const label = (k: string, p: number, tone = '') => (

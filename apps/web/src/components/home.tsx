@@ -90,6 +90,50 @@ export function PreviewGrid({ previews }: { previews: PreviewCard[] }) {
   );
 }
 
+/**
+ * The same previews as a table for the home page: when, the match, the league and the overview's
+ * first line. The league and overview columns drop away on phones; each row opens the match page.
+ */
+export function PreviewTable({ previews }: { previews: PreviewCard[] }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <table className="w-full border-collapse text-left">
+        <caption className="sr-only">บทวิเคราะห์ล่าสุด</caption>
+        <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-600">
+          <tr>
+            <th scope="col" className="w-20 px-3 py-2 font-medium sm:w-28 sm:px-4">เตะ</th>
+            <th scope="col" className="px-3 py-2 font-medium">คู่</th>
+            <th scope="col" className="hidden px-3 py-2 font-medium md:table-cell md:w-40">ลีก</th>
+            <th scope="col" className="hidden px-3 py-2 font-medium lg:table-cell">ภาพรวม</th>
+            <th scope="col" className="w-10 px-3 py-2"><span className="sr-only">อ่านบทวิเคราะห์</span></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {previews.map((p) => (
+            <tr key={p.slug} className="relative transition-colors hover:bg-slate-50">
+              <td className="px-3 py-3 align-top text-xs leading-tight text-slate-600 sm:px-4">
+                <span className="block text-sm font-semibold tabular-nums text-[var(--color-ink)]">{timeTH(p.kickoff_at)}</span>
+                {shortDayTH(p.kickoff_at)}
+              </td>
+              <td className="min-w-0 px-3 py-3 align-top">
+                <Link href={`/matches/${p.slug}`} className="text-sm font-semibold leading-snug text-[var(--color-ink)] after:absolute after:inset-0 sm:text-base">
+                  {p.home} <span className="font-normal text-slate-400">vs</span> {p.away}
+                </Link>
+                <span className="mt-0.5 block text-xs text-slate-600 md:hidden">{p.league}</span>
+              </td>
+              <td className="hidden px-3 py-3 align-top text-sm text-slate-600 md:table-cell">{p.league}</td>
+              <td className="hidden px-3 py-3 align-top text-sm leading-relaxed text-slate-600 lg:table-cell">
+                <span className="line-clamp-2">{p.overview_th}</span>
+              </td>
+              <td className="px-3 py-3 text-slate-400"><IconChevronRight size={16} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Stand-in cover until an article has its own image: pitch lines on the brand ink. */
 function CoverFallback() {
   return (
