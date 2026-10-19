@@ -4,6 +4,7 @@ import { STATUS, pct, settle, type Status } from '@/lib/labels';
 import type { MarketSelection } from '@fp/analysis';
 import { dateTimeTH } from '@/lib/time';
 import { Badge, Card, Note } from './sheet';
+import { TeamLogo } from './primitives';
 
 export const DATA_SUPPORT: Record<DataSupport, { label: string; variant: 'good' | 'warn' | 'bad' }> = {
   GOOD: { label: 'ข้อมูลครบ', variant: 'good' },
@@ -37,8 +38,10 @@ export function MatchPreviewCard({
   result,
   modelTested,
   pick,
+  pickNote,
   overInOutlook = false,
   teams,
+  logos,
   id,
 }: {
   p: MatchPreview;
@@ -47,9 +50,13 @@ export function MatchPreviewCard({
   result?: { home: number; away: number } | null;
   modelTested: boolean;
   pick?: { label: string; sel: MarketSelection } | null;
+  /** the pick's stored one-line note, shown under its label at the end of the write-up */
+  pickNote?: string | null;
   overInOutlook?: boolean;
   /** table and recent results per side, for the stat cards and form chips of a sectioned preview */
   teams?: { home: TeamContext; away: TeamContext };
+  /** club crests from the teams table (API-Football); a missing one falls back to a plain disc */
+  logos?: { home: string | null; away: string | null };
   id?: string;
 }) {
   const notes = p.data_notes.filter((n) => !n.includes(UNTESTED_NOTE));
@@ -59,14 +66,13 @@ export function MatchPreviewCard({
 
   return (
     <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`} action={<Badge variant={support.variant}>{support.label}</Badge>}>
-      {notes.length ? <p className="mb-3 text-xs leading-relaxed text-zinc-500">{notes.join(' · ')}</p> : null}
-
       {p.attack_th != null ? (
-        <SectionedPreview p={p} home={home} away={away} teams={teams} pick={pick}>
+        <SectionedPreview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes}>
           {numbers}
         </SectionedPreview>
       ) : (
         <>
+          {notes.length ? <p className="mb-3 text-xs leading-relaxed text-zinc-500">{notes.join(' · ')}</p> : null}
           <p className="max-w-prose text-[15px] leading-7 text-zinc-800">{p.overview_th}</p>
           <TeamTexts p={p} home={home} away={away} className="mt-5 border-t border-zinc-100 pt-4" />
           <div className="mt-5 border-t border-zinc-100 pt-4">{numbers}</div>
@@ -86,62 +92,27 @@ export function MatchPreviewCard({
  * chips come from the database; the prose is the stored text. No winner is called here: the one view
  * of the match is the Game Compass above, which the model section points back to.
  */
-function SectionedPreview({ p, home, away, teams, pick, children }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; pick?: { label: string } | null; children: ReactNode }) {
-  const hs = teams?.home.standing;
-  const as = teams?.away.standing;
-  const stats =
-    hs && as
-      ? [
-          { k: 'อันดับ', h: hs.rank, a: as.rank },
-          { k: 'แต้ม', h: hs.points, a: as.points },
-          { k: 'ยิงได้', h: hs.goals_for, a: as.goals_for },
-          { k: 'เสีย', h: hs.goals_against, a: as.goals_against },
-        ]
-      : null;
+function SectionedPreview({ p, home, away, teams, logos, pick, pickNote, limits, children }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: { label: string } | null; pickNote?: string | null; limits: string[]; children: ReactNode }) {
   const play = [
     { k: 'เกมรุก', v: p.attack_th },
     { k: 'เกมรับ', v: p.defence_th },
-    { k: 'สถิติพบกัน', v: p.h2h_th },
-    { k: 'ปัจจัยสำคัญ', v: p.key_factor_th },
+    { k: 'เจอกันล่าสุด', v: p.h2h_th },
   ].filter((x): x is { k: string; v: string } => Boolean(x.v));
+  // what could go wrong, plus the data's own limits: one place for both
+  const risks = [p.key_factor_th, ...limits].filter((x): x is string => Boolean(x));
 
   return (
     <div className="space-y-5">
       <section aria-labelledby="pv-overview">
-        <SectionTitle id="pv-overview">ภาพรวมก่อนเกม</SectionTitle>
-        {stats ? (
-          <div className="mt-2 rounded-lg border border-zinc-200">
-            <div className="grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] gap-2 border-b border-zinc-100 px-3 py-2 text-xs font-medium text-zinc-500">
-              <span className="truncate">{home}</span>
-              <span aria-hidden />
-              <span className="truncate text-right">{away}</span>
-            </div>
-            <dl className="divide-y divide-zinc-100">
-              {stats.map((x) => (
-                <div key={x.k} className="grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] items-baseline gap-2 px-3 py-1.5">
-                  <dt className="order-2 text-center text-xs text-zinc-500">{x.k}</dt>
-                  <dd className="order-1 text-lg font-semibold tabular-nums text-zinc-950">{x.h}</dd>
-                  <dd className="order-3 text-right text-lg font-semibold tabular-nums text-zinc-950">{x.a}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="border-t border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-500">
-              ตารางคะแนนหลังลงเล่น {hs!.played === as!.played ? `${hs!.played} นัด` : `${hs!.played} และ ${as!.played} นัด`}
-            </p>
-          </div>
-        ) : null}
-        <p className="mt-3 max-w-prose text-[15px] leading-7 text-zinc-800">{p.overview_th}</p>
+        <SectionTitle id="pv-overview">เกมนี้ใครดูดีกว่า?</SectionTitle>
+        <p className="mt-2 max-w-prose text-base leading-7 text-zinc-800">{p.overview_th}</p>
       </section>
 
       <section aria-labelledby="pv-form" className="border-t border-zinc-100 pt-4">
-        <SectionTitle id="pv-form">ฟอร์มล่าสุด</SectionTitle>
-        <TeamTexts p={p} home={home} away={away} teams={teams} className="mt-2" />
-      </section>
-
-      {play.length ? (
-        <section aria-labelledby="pv-play" className="border-t border-zinc-100 pt-4">
-          <SectionTitle id="pv-play">วิเคราะห์รูปเกม</SectionTitle>
-          <ul className="mt-2 space-y-2 text-sm leading-relaxed text-zinc-700">
+        <SectionTitle id="pv-form">วิเคราะห์ทีมต่อทีม</SectionTitle>
+        <TeamTexts p={p} home={home} away={away} teams={teams} logos={logos} className="mt-3" />
+        {play.length ? (
+          <ul className="mt-4 space-y-2 text-sm leading-relaxed text-zinc-700">
             {play.map((x) => (
               <li key={x.k} className="flex gap-2.5">
                 <span className="mt-[0.6em] h-px w-2.5 shrink-0 bg-zinc-300" aria-hidden />
@@ -151,21 +122,38 @@ function SectionedPreview({ p, home, away, teams, pick, children }: { p: MatchPr
               </li>
             ))}
           </ul>
+        ) : null}
+      </section>
+
+      <section aria-labelledby="pv-model" className="border-t border-zinc-100 pt-4">
+        <SectionTitle id="pv-model">รูปเกมและสกอร์ที่เป็นไปได้</SectionTitle>
+        <div className="mt-2">{children}</div>
+      </section>
+
+      {pick ? (
+        <section aria-labelledby="pv-pick" className="border-t border-zinc-100 pt-4">
+          <SectionTitle id="pv-pick">ตัวเลือกที่น่าสนใจที่สุด</SectionTitle>
+          <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{pick.label}</p>
+          {pickNote ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{pickNote}</p> : null}
+          <a href="#pick" className="mt-1.5 inline-block text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950">
+            ดูเหตุผลและเงื่อนไขของเข็มทิศเกม
+          </a>
         </section>
       ) : null}
 
-      <section aria-labelledby="pv-model" className="border-t border-zinc-100 pt-4">
-        <SectionTitle id="pv-model">ตัวเลขจากโมเดล</SectionTitle>
-        <div className="mt-2">{children}</div>
-        {pick ? (
-          <p className="mt-3 text-sm text-zinc-700">
-            มุมมองเดียวของเราสำหรับคู่นี้คือเข็มทิศเกม <b className="font-semibold text-zinc-950">{pick.label}</b>{' '}
-            <a href="#pick" className="text-zinc-500 underline underline-offset-2 hover:text-zinc-950">
-              ดูเหตุผล
-            </a>
-          </p>
-        ) : null}
-      </section>
+      {risks.length ? (
+        <section aria-labelledby="pv-risk" className="border-t border-zinc-100 pt-4">
+          <SectionTitle id="pv-risk">ความเสี่ยงและข้อจำกัด</SectionTitle>
+          <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-zinc-700">
+            {risks.map((r) => (
+              <li key={r} className="flex gap-2.5">
+                <span className="mt-[0.6em] h-px w-2.5 shrink-0 bg-zinc-300" aria-hidden />
+                <span>{r}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {p.summary_th ? (
         <p className="max-w-prose border-t border-zinc-100 pt-4 text-[15px] leading-7 text-zinc-800">
@@ -185,15 +173,16 @@ function SectionTitle({ id, children }: { id: string; children: ReactNode }) {
 }
 
 /** Each team's text side by side; with `teams`, its recent results as chips above the text. */
-function TeamTexts({ p, home, away, teams, className = '' }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; className?: string }) {
+function TeamTexts({ p, home, away, teams, logos, className = '' }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; className?: string }) {
   return (
     <div className={`grid gap-x-8 gap-y-5 sm:grid-cols-2 ${className}`}>
       {[
-        { name: home, text: p.home_th, side: 'เจ้าบ้าน', form: teams?.home.form ?? [] },
-        { name: away, text: p.away_th, side: 'ทีมเยือน', form: teams?.away.form ?? [] },
+        { name: home, text: p.home_th, side: 'เจ้าบ้าน', logo: logos?.home ?? null, form: teams?.home.form ?? [] },
+        { name: away, text: p.away_th, side: 'ทีมเยือน', logo: logos?.away ?? null, form: teams?.away.form ?? [] },
       ].map((t) => (
         <div key={t.side} className="min-w-0">
           <p className="flex flex-wrap items-center gap-2">
+            {logos ? <TeamLogo src={t.logo} alt="" size={24} /> : null}
             <span className="text-sm font-semibold text-zinc-950">{t.name}</span>
             <Badge variant="secondary">{t.side}</Badge>
           </p>

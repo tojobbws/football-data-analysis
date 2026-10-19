@@ -92,7 +92,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
     <div className="bg-white">
       <main className="mx-auto max-w-5xl px-4 pb-12 pt-5 sm:pt-8">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-        <MatchHead d={d} />
+        <MatchHead d={d} standings={previewTeams(d)} />
 
         <nav aria-label="ส่วนต่าง ๆ ของหน้านี้" className="sticky top-14 z-20 -mx-4 mt-4 overflow-x-auto border-b border-zinc-100 bg-white px-4 py-2 [scrollbar-width:none] md:top-16">
           <ul className="inline-flex gap-1 rounded-lg bg-zinc-100 p-1">
@@ -138,7 +138,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
             ) : null}
 
             {d.preview ? (
-              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} overInOutlook={d.outlook?.sides_tested === true && d.outlook.p_over25 != null} pick={previewPick} teams={previewTeams(d)} />
+              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} overInOutlook={d.outlook?.sides_tested === true && d.outlook.p_over25 != null} pick={previewPick} pickNote={pick?.note_th ?? null} teams={previewTeams(d)} logos={{ home: m.home.logo_url, away: m.away.logo_url }} />
             ) : !d.finished && !OFF[m.status_short] ? (
               <Card id="analysis" title="วิเคราะห์เกม">
                 <p className="text-sm text-zinc-500">บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</p>
@@ -173,7 +173,7 @@ const OFF: Record<string, string> = { PST: 'เลื่อนการแข่
 // Header: type on white; the home ground's photo, washed pale, sits behind it when we have one
 // ---------------------------------------------------------------------------
 
-function MatchHead({ d }: { d: Data }) {
+function MatchHead({ d, standings }: { d: Data; standings: { home: TeamContext; away: TeamContext } }) {
   const m = d.match;
   const live = isLive(m.status_short, m.kickoff_at);
   const showScore = d.finished || live;
@@ -205,7 +205,7 @@ function MatchHead({ d }: { d: Data }) {
       </p>
 
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-8">
-        <TeamHead t={m.home} side="เจ้าบ้าน" />
+        <TeamHead t={m.home} side="เจ้าบ้าน" standing={standings.home.standing} />
         <div className="text-center">
           {showScore ? (
             <>
@@ -230,7 +230,7 @@ function MatchHead({ d }: { d: Data }) {
             </>
           )}
         </div>
-        <TeamHead t={m.away} side="ทีมเยือน" right />
+        <TeamHead t={m.away} side="ทีมเยือน" standing={standings.away.standing} right />
       </div>
     </header>
   );
@@ -244,13 +244,16 @@ function Sep() {
   );
 }
 
-function TeamHead({ t, side, right = false }: { t: Data['match']['home']; side: string; right?: boolean }) {
+function TeamHead({ t, side, standing, right = false }: { t: Data['match']['home']; side: string; standing: TeamContext['standing']; right?: boolean }) {
   return (
     <div className={`flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 ${right ? 'items-end text-right sm:flex-row-reverse' : 'items-start'}`}>
       <TeamLogo src={t.logo_url} alt="" size={48} />
       <div className="min-w-0">
         <p className="line-clamp-2 text-base font-semibold leading-tight tracking-tight text-zinc-950 sm:text-2xl">{t.name}</p>
-        <p className="mt-1 text-xs text-zinc-500">{side}</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          {side}
+          {standing ? <span className="tabular-nums"> · อันดับ {standing.rank} · {standing.points} แต้ม</span> : null}
+        </p>
       </div>
     </div>
   );
