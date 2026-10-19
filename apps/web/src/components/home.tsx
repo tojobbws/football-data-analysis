@@ -69,7 +69,7 @@ export function PreviewGrid({ previews }: { previews: PreviewCard[] }) {
       {previews.map((p) => (
         <li key={p.slug}>
           <Link
-            href={`/matches/${p.slug}#analysis`}
+            href={`/matches/${p.slug}`}
             className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 transition-shadow duration-200 hover:shadow-md"
           >
             <p className="truncate text-xs text-slate-500">
