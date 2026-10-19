@@ -369,6 +369,44 @@ export async function modelOutlookPerformance(): Promise<ModelOutlookScore[]> {
   return ((data ?? []) as ModelOutlookScore[]).sort((a, b) => Number(b.tested) - Number(a.tested));
 }
 
+export interface ModelResultRow {
+  league_id: number | null;
+  model_version_id: string;
+  matches: number;
+  correct: number;
+  avg_top_probability: number | null;
+  brier: number | null;
+  log_loss: number | null;
+  ou_matches: number;
+  ou_brier: number | null;
+}
+
+export interface ModelCalibrationRow {
+  model_version_id: string;
+  bucket: number;
+  outcomes: number;
+  avg_probability: number | null;
+  hit_rate: number | null;
+}
+
+/** ผลโมเดล: every finished match with a pre-kickoff probability, per model version, per league and calibration (ADR 0007). */
+export async function modelResults() {
+  const sb = db();
+  const [results, calibration, leagues] = await Promise.all([
+    sb.from('web_model_results').select('*'),
+    sb.from('web_model_calibration').select('*'),
+    sb.from('leagues').select('id, name'),
+  ]);
+  if (results.error) fail('model results', results.error);
+  if (calibration.error) fail('model calibration', calibration.error);
+  if (leagues.error) fail('model results leagues', leagues.error);
+  return {
+    results: (results.data ?? []) as ModelResultRow[],
+    calibration: ((calibration.data ?? []) as ModelCalibrationRow[]).sort((a, b) => a.bucket - b.bucket),
+    leagueNames: new Map((leagues.data ?? []).map((l) => [Number(l.id), String(l.name)])),
+  };
+}
+
 /** Last 5 finished matches of a team before `before`, with xG when available. */
 async function teamForm(teamId: number, before: string): Promise<FormRow[]> {
   const sb = db();

@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Empty, Section, StatusBadge } from '@/components/ui';
 import { MARKET, ROUND, ROUND_SHORT, odds, pct, selectionLabel, type Status } from '@/lib/labels';
-import { modelOutlookPerformance, performance, type ModelOutlookScore, type PerfBucket } from '@/lib/queries';
+import { modelOutlookPerformance, modelResults, performance, type ModelOutlookScore, type PerfBucket } from '@/lib/queries';
 import { dateTimeTH, shortDayTH } from '@/lib/time';
+import type { ModelResultRow } from '@/lib/queries';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 const MONTH = new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' });
 
 export default async function PerformancePage() {
-  const [{ buckets, recent, leagueNames }, outlook] = await Promise.all([performance(), modelOutlookPerformance()]);
+  const [{ buckets, recent, leagueNames }, outlook, modelRes] = await Promise.all([performance(), modelOutlookPerformance(), modelResults()]);
   const all = buckets.find((b) => b.dimension === 'all');
   const by = (dim: string) => buckets.filter((b) => b.dimension === dim).sort((a, b) => b.total_signals - a.total_signals);
   const signals = recent.filter((r) => r.kind === 'SIGNAL');
@@ -106,6 +107,8 @@ export default async function PerformancePage() {
       </Section>
 
       <OutlookSection rows={outlook} />
+
+      <ModelResultsSection data={modelRes} />
 
       <Section title="ตรวจสอบได้อย่างไร">
         <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-slate-600">
@@ -260,5 +263,119 @@ function OutlookSection({ rows }: { rows: ModelOutlookScore[] }) {
         <Empty>ยังไม่มีนัดที่จบพร้อมมุมมองโมเดลก่อนเตะ</Empty>
       )}
     </Section>
+  );
+}
+
+const MODEL_NAME: Record<string, string> = {
+  'dixon-coles-v0.2': 'โมเดลหลัก (Dixon-Coles)',
+  'elo-v0.1': 'Elo',
+  'ensemble-v0.1': 'โมเดลผสม (Dixon-Coles + Elo)',
+};
+const MAIN_MODEL = 'dixon-coles-v0.2';
+/** What always guessing 1/3 each scores: the line a model has to beat to know anything. */
+const BRIER_UNIFORM = 2 / 3;
+const LOG_LOSS_UNIFORM = Math.log(3);
+const MIN_LEAGUE_MATCHES = 30;
+const f3 = (v: number | null) => (v == null ? '–' : Number(v).toFixed(3));
+
+/** ผลโมเดล — every finished match the model priced before kickoff, not only the matches that got a เข็มทิศเกม. */
+function ModelResultsSection({ data }: { data: Awaited<ReturnType<typeof modelResults>> }) {
+  const overall = data.results.filter((r) => r.league_id === null && r.matches > 0).sort((a, b) => b.matches - a.matches);
+  const leagues = data.results
+    .filter((r) => r.league_id !== null && r.model_version_id === MAIN_MODEL && r.matches >= MIN_LEAGUE_MATCHES)
+    .sort((a, b) => b.matches - a.matches)
+    .slice(0, 15);
+  const calib = data.calibration.filter((c) => c.model_version_id === MAIN_MODEL);
+  const total = overall.find((r) => r.model_version_id === MAIN_MODEL)?.matches ?? 0;
+  return (
+    <Section title="ผลโมเดล (ทุกนัดที่จบแล้ว)" aside={total ? `${total} นัด` : undefined}>
+      <p className="mb-3 text-sm leading-relaxed text-slate-600">
+        วัดโอกาส แพ้ / เสมอ / ชนะ ที่โมเดลคำนวณ<b>ก่อนเตะ</b> กับผล 90 นาทีของ<b>ทุกนัด</b> ไม่ใช่เฉพาะนัดที่เรามีเข็มทิศเกม ใช้ค่าสุดท้ายก่อนเตะเท่านั้น และแยกจากผลของเข็มทิศเกมด้านบน
+        ค่า <b>Brier</b> และ <b>log loss</b> ยิ่งต่ำยิ่งดี — ถ้าเดาเท่ากันทุกผล (33% / 33% / 33%) จะได้ Brier {f3(BRIER_UNIFORM)} และ log loss {f3(LOG_LOSS_UNIFORM)}
+      </p>
+      {total ? (
+        <>
+          <div className="-mx-4 overflow-x-auto sm:mx-0">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500">
+                  <th className="px-4 pb-2 font-normal sm:px-0">โมเดล</th>
+                  <th className="pb-2 text-right font-normal">นัด</th>
+                  <th className="pb-2 text-right font-normal">ทายผลถูก / ที่คาด</th>
+                  <th className="pb-2 text-right font-normal">Brier</th>
+                  <th className="pb-2 pr-4 text-right font-normal sm:pr-0">Log loss</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {overall.map((r) => (
+                  <ResultRow key={r.model_version_id} r={r} label={MODEL_NAME[r.model_version_id] ?? r.model_version_id} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">โมเดลผสมมีเฉพาะลีกที่ผ่านการทดสอบ จำนวนนัดของแต่ละโมเดลจึงไม่เท่ากัน อย่าเทียบตัวเลขข้ามแถวโดยตรง</p>
+
+          {leagues.length ? (
+            <>
+              <h3 className="mb-2 mt-5 text-sm font-semibold">แยกตามลีก ({MODEL_NAME[MAIN_MODEL]} · ลีกที่มีอย่างน้อย {MIN_LEAGUE_MATCHES} นัด)</h3>
+              <div className="-mx-4 overflow-x-auto sm:mx-0">
+                <table className="w-full min-w-[560px] text-sm">
+                  <tbody className="divide-y divide-slate-100">
+                    {leagues.map((r) => (
+                      <ResultRow key={r.league_id} r={r} label={data.leagueNames.get(Number(r.league_id)) ?? `ลีก ${r.league_id}`} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+
+          {calib.length ? (
+            <>
+              <h3 className="mb-2 mt-5 text-sm font-semibold">โอกาสที่โมเดลให้ กับสิ่งที่เกิดขึ้นจริง ({MODEL_NAME[MAIN_MODEL]})</h3>
+              <div className="-mx-4 overflow-x-auto sm:mx-0">
+                <table className="w-full min-w-[420px] text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500">
+                      <th className="px-4 pb-2 font-normal sm:px-0">โมเดลให้โอกาส</th>
+                      <th className="pb-2 text-right font-normal">ผลลัพธ์</th>
+                      <th className="pb-2 text-right font-normal">โมเดลคาดเฉลี่ย</th>
+                      <th className="pb-2 pr-4 text-right font-normal sm:pr-0">เกิดขึ้นจริง</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {calib.map((c) => (
+                      <tr key={c.bucket}>
+                        <td className="px-4 py-2 sm:px-0">{c.bucket * 10}–{c.bucket * 10 + 10}%</td>
+                        <td className="py-2 text-right tabular-nums">{c.outcomes}</td>
+                        <td className="py-2 text-right tabular-nums">{pct(c.avg_probability, 0)}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums sm:pr-0">{pct(c.hit_rate, 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-500">สองคอลัมน์ท้ายยิ่งใกล้กัน แปลว่าตัวเลข % ของโมเดลเชื่อถือได้ ช่วงที่มีผลลัพธ์น้อยอย่าเพิ่งสรุป</p>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <Empty>ยังไม่มีนัดที่จบพร้อมโอกาสของโมเดลก่อนเตะ</Empty>
+      )}
+    </Section>
+  );
+}
+
+function ResultRow({ r, label }: { r: ModelResultRow; label: string }) {
+  return (
+    <tr>
+      <td className="px-4 py-2 sm:px-0">{label}</td>
+      <td className="py-2 text-right tabular-nums">{r.matches}</td>
+      <td className="py-2 text-right tabular-nums">
+        {pct(r.correct / Math.max(1, r.matches), 0)} / {pct(r.avg_top_probability, 0)}
+      </td>
+      <td className="py-2 text-right tabular-nums">{f3(r.brier)}</td>
+      <td className="py-2 pr-4 text-right tabular-nums sm:pr-0">{f3(r.log_loss)}</td>
+    </tr>
   );
 }
