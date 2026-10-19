@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { ScrollTopOnEnter } from '@/components/scroll-top-on-enter';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { liveMatches, matchesOnFootballDay } from '@/lib/queries';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
@@ -21,6 +22,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
 
   return (
     <main className="min-h-[70vh] bg-white">
+      <ScrollTopOnEnter />
       <ScoreboardBand>
         <DateStrip base="/matches" selected={date} today={today} liveCount={live.length} />
         <h1 className="sr-only">

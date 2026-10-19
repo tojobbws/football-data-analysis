@@ -1,3 +1,4 @@
+import { ScrollTopOnEnter } from '@/components/scroll-top-on-enter';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -91,6 +92,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   return (
     <div className="bg-white">
       <main className="mx-auto max-w-5xl px-4 pb-12 pt-5 sm:pt-8">
+        <ScrollTopOnEnter />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
         <MatchHead d={d} standings={previewTeams(d)} />
 
