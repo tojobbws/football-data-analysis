@@ -19,7 +19,7 @@ How far the model's fair probability for a pick sits above the market's, in perc
 _Avoid_: claiming the market got it wrong (ตลาดประเมินพลาด) — the record does not yet show the model beats the market
 
 **Pick**:
-A single published selection of the Game Compass for one match (market, side, line), made before kickoff and never edited afterwards. Its market is Asian handicap or over/under; 1X2 is never picked (a few early 1X2 picks stay as published).
+A single published selection of the Game Compass for one match (market, side, line), made before kickoff. A later publish round replaces it on fan pages as a new record; it is not rewritten in place (ADR 0007 lifts the tamper-proof requirement, it does not ask for edits). Its market is Asian handicap or over/under; 1X2 is never picked (a few early 1X2 picks stay as published).
 _Avoid_: tip, bet
 
 **Publish round (รอบเผยแพร่)**:
@@ -75,6 +75,14 @@ _Avoid_: closing odds (that is the price recorded on a pick)
 **CLV (closing line value)**:
 How much better the price at publish was than the closing odds; recorded on the pick at settlement, so it survives the odds snapshots it came from.
 
+**Model snapshot**:
+The model's probabilities for one match at one moment under one model version, kept for every match the model can analyse, not only picked ones. Append-only so history is kept; it is the base for measuring the model without selection bias. It is not a pick and carries no hash chain (ADR 0007). A **live** snapshot was computed before the match; a **backtest** snapshot was computed afterwards from earlier data only. Model results lead with live snapshots and show backtest ones apart, never merged.
+_Avoid_: pick, prediction (on fan pages)
+
+**Model result (ผลโมเดล)**:
+How the model's snapshots turned out against real results over all settled matches — hit rate of the most likely 1X2 outcome, Brier score, log loss, calibration, always with the sample size. Shown on /performance apart from the pick track record; it never mentions profit.
+_Avoid_: ROI, yield, profit; mixing it with the pick track record
+
 ### Around the pick
 
 **Supporting analysis**:
@@ -95,6 +103,22 @@ _Avoid_: predicted goals
 **Match phase**:
 Where the match itself stands — upcoming, live, or finished. Fan pages describe an unsettled pick by its match phase, not by the bare fact that it is unsettled.
 _Avoid_: using the pick's status to imply match state
+
+**Big match (คู่ใหญ่)**:
+A match ranked high by its popularity score, shown for reader interest whether or not it has a pick. A big match without a pick shows only the model outlook, where the league's model is tested; it is never a second pick.
+_Avoid_: calling it a best signal or a recommended match
+
+**Popularity score**:
+A number from team popularity, league and competition importance and derby or rivalry, kept in an admin-editable registry keyed by provider ids. It only orders what is shown; it never enters a probability, an edge, a pick or the daily featured list.
+_Avoid_: confidence, strength
+
+**Tie**:
+The pairing of a cup round's first and second leg between the same two teams, with its aggregate score; a single-leg round is a match, not a tie. Each competition and season has its own rules for deciding a tie.
+_Avoid_: one rule for every cup
+
+**Qualification probability**:
+The model's chance that a team goes through a two-legged tie, simulated from the remaining leg under that competition's rules. It is not the 90-minute win chance, and its extra-time and penalty parts are stated assumptions (extra time scaled from 30 minutes, penalties 50/50), shown on the page. Supporting analysis, never a pick.
+_Avoid_: using the 90-minute win chance as a stand-in
 
 ### Data
 

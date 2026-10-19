@@ -10,7 +10,7 @@ web
 
 **Primary:** a Thai football fan on a phone, shortly before matches. They arrive from search ("วิเคราะห์บอล", "ผลบอล") or from the brand's social posts, usually in the evening, to see tonight's fixtures, live scores and whether a match has a เข็มทิศเกม signal. Thai is their reading language.
 
-**Secondary (not confirmed as a design target):** readers who check the performance pages to judge whether the analysis can be trusted.
+**Also primary (2026-10-19, ADR 0007):** readers who want the results of the model's predictions across all matches, on the performance pages, to judge whether the analysis can be trusted.
 
 ## Product Purpose
 
@@ -24,7 +24,7 @@ Success means fans come back daily for scores and analysis, find the site throug
 
 ## Positioning
 
-Every analysis is recorded before kickoff, cannot be edited or deleted after publish (database triggers plus a public hash chain), and is settled automatically, wins and losses alike. Performance figures come from database views, never typed by hand, and include closing-line value. A tipping site cannot truthfully copy this record.
+Every analysis is recorded before kickoff and settled automatically, wins and losses alike. Performance figures come from database views, never typed by hand, and include closing-line value and sample sizes. Since 2026-10-19 (ADR 0007) a tamper-proof record is no longer a requirement: the existing triggers and hash chain stay as they are, new storage needs neither, and the model's predictions for every match are kept as snapshots and measured on /performance as "ผลโมเดล", apart from the pick record.
 
 At most one selection per match, or 🌫️ หมอกข้อมูล when no clear signal exists. The product never forces a pick. 🌫️ rounds are recorded in the hash chain and counted on /performance, but are not shown on match pages, lists or the home page (decided 2026-10-09: readers gain nothing from them there).
 
