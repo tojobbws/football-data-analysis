@@ -3,7 +3,7 @@ import type { MatchRow } from '@/lib/queries';
 import { FINISHED, selectionLabel } from '@/lib/labels';
 import { timeTH } from '@/lib/time';
 import { isLive, toSeed } from '@/lib/live';
-import { CompassMark } from './icons';
+import { CompassMark, CompassPicksTitle } from './icons';
 import { LiveGoal, LiveMinute, LiveWatch } from './live';
 import { StatusBadge, TeamLogo } from './ui';
 
@@ -15,7 +15,7 @@ const DONE: Record<string, string> = { FT: 'จบ', AET: 'ต่อเวลา
  * Matches grouped by league, scoreboard style: status | home / away stacked with their scores | 🧭.
  * `compact` = the home page density (no 🔎 teaser, tighter rows); list pages keep the teaser.
  */
-export function MatchList({ matches, compact = false }: { matches: MatchRow[]; compact?: boolean }) {
+export function MatchList({ matches, compact = false, watch }: { matches: MatchRow[]; compact?: boolean; watch?: Set<string> }) {
   const groups = new Map<number, { league: MatchRow['league']; rows: MatchRow[] }>();
   for (const m of matches) {
     const g = groups.get(m.league.id) ?? { league: m.league, rows: [] };
@@ -34,7 +34,7 @@ export function MatchList({ matches, compact = false }: { matches: MatchRow[]; c
           </header>
           <ul className="divide-y divide-slate-100">
             {rows.map((m) => (
-              <MatchItem key={m.id} m={m} compact={compact} />
+              <MatchItem key={m.id} m={m} compact={compact} watched={watch?.has(m.slug) ?? false} />
             ))}
           </ul>
         </section>
@@ -44,7 +44,7 @@ export function MatchList({ matches, compact = false }: { matches: MatchRow[]; c
 }
 
 /** One match row. `note` is a small line under it (a big match shows its league and rivalry there). */
-export function MatchItem({ m, compact, note }: { m: MatchRow; compact: boolean; note?: string }) {
+export function MatchItem({ m, compact, note, watched = false }: { m: MatchRow; compact: boolean; note?: string; watched?: boolean }) {
   const finished = FINISHED.includes(m.status_short);
   const live = isLive(m.status_short, m.kickoff_at);
   const off = OFF[m.status_short];
@@ -64,7 +64,7 @@ export function MatchItem({ m, compact, note }: { m: MatchRow; compact: boolean;
     <li className={live ? 'border-l-[3px] border-l-[var(--color-live)]' : ''}>
       <Link
         href={`/matches/${m.slug}`}
-        className={`grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 px-2 transition-colors duration-150 hover:bg-slate-50 sm:grid-cols-[3.5rem_minmax(0,1fr)_auto] sm:gap-x-3 sm:px-3 ${compact ? 'min-h-14 py-2' : 'min-h-16 gap-y-2 py-2.5'}`}
+        className={`grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-2 px-2 transition-colors duration-150 ${watched ? 'bg-[var(--color-compass-soft)]/40 ring-2 ring-inset ring-[var(--color-compass-bright)] hover:bg-[var(--color-compass-soft)]/70' : 'hover:bg-slate-50'} sm:grid-cols-[3.5rem_minmax(0,1fr)_auto] sm:gap-x-3 sm:px-3 ${compact ? 'min-h-14 py-2' : 'min-h-16 gap-y-2 py-2.5'}`}
       >
         {/* status column: minute (live) / final / time */}
         <div className="flex flex-col items-center justify-center text-center leading-none">
@@ -104,6 +104,12 @@ export function MatchItem({ m, compact, note }: { m: MatchRow; compact: boolean;
               c.status !== 'PENDING' ? (
                 <StatusBadge status={c.status} />
               ) : (
+                watched ? (
+                  <span className="inline-flex" title={`🧭 ${pick}`}>
+                    <CompassPicksTitle className="h-6 sm:h-7" />
+                    <span className="sr-only">🧭 เข็มทิศเกม: {pick}</span>
+                  </span>
+                ) : (
                 <>
                   <span className="hidden max-w-[12rem] items-center gap-1.5 rounded-full bg-[var(--color-compass-soft)] py-0.5 pl-0.5 pr-2.5 text-xs font-semibold text-[var(--color-compass)] sm:inline-flex" title={pick}>
                     <CompassMark size={22} />
@@ -114,6 +120,7 @@ export function MatchItem({ m, compact, note }: { m: MatchRow; compact: boolean;
                     <span className="sr-only">🧭 เข็มทิศเกม: {pick}</span>
                   </span>
                 </>
+                )
               )
             ) : null
           ) : null}

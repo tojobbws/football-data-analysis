@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
 import { BigMatches, ThaiMatches } from '@/components/big-matches';
 import { ArticleGrid, MoreLink } from '@/components/home';
-import { FeaturedPicks } from '@/components/featured-picks';
 import { MatchList } from '@/components/match-list';
-import { CompassPicksTitle } from '@/components/icons';
-import { SignalCard } from '@/components/signal-card';
 import { Empty, Section } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
 import { bigMatchesOf, thaiMatchesOf } from '@/lib/popularity';
@@ -44,6 +41,8 @@ export default async function TodayPage() {
   const big = bigMatchesOf(matches, registry);
   const thai = thaiMatchesOf(matches, registry);
   const picks = matches.filter((m) => m.compass?.kind === 'SIGNAL' && !FINISHED.includes(m.status_short));
+  // matches marked คู่น่าจับตา: the day's ranked list when switched on and filled, otherwise every pick of the day
+  const watch = new Set((ranks.size ? picks.filter((m) => ranks.has(m.id)) : picks).map((m) => m.slug));
   const leagues = [...new Set(matches.map((m) => m.league.name))];
   const todaysArticles = articles.filter((a) => footballDate(new Date(a.published_at)) === today);
   const origin = await siteUrl();
@@ -77,43 +76,9 @@ export default async function TodayPage() {
         </p>
       </header>
 
-      <FeaturedPicks matches={matches} ranks={ranks} />
-
       <BigMatches items={big} title={day === today ? 'คู่ใหญ่วันนี้' : 'คู่ใหญ่'} />
 
       <ThaiMatches matches={thai} />
-
-      <Section title={<CompassPicksTitle className="h-14 sm:h-16" />} aside="ล็อกก่อนเตะ แก้ไขไม่ได้">
-        {picks.length ? (
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {picks.map((m) => (
-              <li key={m.id}>
-                <SignalCard
-                  s={{
-                    slug: m.slug,
-                    league: m.league.name,
-                    kickoff_at: m.kickoff_at,
-                    home: m.home.name,
-                    away: m.away.name,
-                    home_logo: m.home.logo_url,
-                    away_logo: m.away.logo_url,
-                    market: m.compass!.market!,
-                    selection: m.compass!.selection!,
-                    line: m.compass!.line,
-                    signal_strength: m.compass!.signal_strength,
-                    model_probability: m.compass!.model_probability,
-                    market_probability: m.compass!.market_probability,
-                    odds_at_publish: m.compass!.odds_at_publish,
-                    round: m.compass!.publish_round,
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty>ยังไม่มีคู่ที่ผ่านเกณฑ์ — บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ</Empty>
-        )}
-      </Section>
 
       <section aria-labelledby="today-fixtures">
         <div className="mb-2 flex items-center justify-between gap-3">
@@ -122,7 +87,7 @@ export default async function TodayPage() {
           </h2>
           <MoreLink href={`/matches?date=${day}`} label="ดูตามวัน" />
         </div>
-        {matches.length ? <MatchList matches={matches} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
+        {matches.length ? <MatchList matches={matches} watch={watch} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
       </section>
 
       {/* each match's written preview is already in the list above; editorial articles show only when there are some */}
