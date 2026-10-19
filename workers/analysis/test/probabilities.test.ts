@@ -10,7 +10,7 @@ import { backtest, computeProbabilities, tune } from '../src/jobs.js';
 import { generateCandidatesJob } from '../src/candidates-job.js';
 import { playerImpactJob } from '../src/impact-job.js';
 import { publishJob } from '../src/publish-job.js';
-import { DEFAULT_RULES, SHADOW_RULES } from '@fp/analysis';
+import { DEFAULT_RULES, SHADOW_RULES, priceSelection } from '@fp/analysis';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -114,6 +114,25 @@ describe('computeProbabilities', () => {
     expect((first.inputs as Record<string, number>).matchesUsed).toBe(180);
 
     expect(await q(`select 1 from probability_predictions where fixture_id = 9002`)).toHaveLength(0);
+  });
+
+  it('keeps the scoreline matrix, and the stored matrices price the stored probabilities', async () => {
+    const [s] = (
+      await db.query<{ source: string; max_goals: number; sides_matrix: number[][]; totals_matrix: number[][] }>(
+        `select source, max_goals, sides_matrix, totals_matrix from scoreline_snapshots where fixture_id = 9001 and model_version_id = 'dixon-coles-v0.2'`,
+      )
+    ).rows;
+    expect(s!.source).toBe('live');
+    expect(s!.sides_matrix).toHaveLength(s!.max_goals + 1);
+    const sum = (m: number[][]) => m.flat().reduce((a, b) => a + b, 0);
+    expect(Math.abs(sum(s!.sides_matrix) - 1)).toBeLessThan(1e-4);
+    expect(Math.abs(sum(s!.totals_matrix) - 1)).toBeLessThan(1e-4);
+
+    const stored = async (market: string, selection: string, line: number | null) =>
+      Number((await db.query<{ probability: string }>(`select probability from probability_predictions where fixture_id = 9001 and model_version_id = 'dixon-coles-v0.2' and market = $1 and selection = $2 and line is not distinct from $3`, [market, selection, line])).rows[0]!.probability);
+    expect(Math.abs(priceSelection(s!.sides_matrix, { market: 'MATCH_WINNER', selection: 'HOME' }).probability - (await stored('MATCH_WINNER', 'HOME', null)))).toBeLessThan(1e-5);
+    expect(Math.abs(priceSelection(s!.sides_matrix, { market: 'ASIAN_HANDICAP', selection: 'HOME', line: -1.25 }).probability - (await stored('ASIAN_HANDICAP', 'HOME', -1.25)))).toBeLessThan(1e-5);
+    expect(Math.abs(priceSelection(s!.totals_matrix, { market: 'OVER_UNDER', selection: 'OVER', line: 2.75 }).probability - (await stored('OVER_UNDER', 'OVER', 2.75)))).toBeLessThan(1e-5);
   });
 
   it('does not recompute within the gap and the table is insert-only', async () => {

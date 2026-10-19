@@ -392,6 +392,14 @@ export class Repository {
     });
   }
 
+  /** Insert-only per (fixture, model version, computed_at, source); a re-run of the same instant changes nothing. */
+  insertScorelineSnapshot(row: Row) {
+    return writeRows(this.db, 'scoreline_snapshots', [row], {
+      conflict: ['fixture_id', 'model_version_id', 'computed_at', 'source'],
+      update: 'nothing',
+    });
+  }
+
   async insertModelConfigs(rows: ModelConfigInput[]): Promise<number> {
     let n = 0;
     for (const r of rows) {

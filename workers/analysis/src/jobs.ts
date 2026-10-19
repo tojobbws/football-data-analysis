@@ -3,6 +3,8 @@ import {
   baseRates,
   calibrateImpact,
   computeElo,
+  cropMatrix,
+  SNAPSHOT_MAX_GOALS,
   crossLeagueExpectedGoals,
   crossLeagueGate,
   UNKNOWN_LEAGUE,
@@ -402,6 +404,20 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
           }
         });
         written += await ctx.repo.insertProbabilityPredictions(rows);
+        await ctx.repo.insertScorelineSnapshot({
+          fixture_id: f.id,
+          model_version_id: DIXON_COLES_VERSION,
+          computed_at: computedAt,
+          source: 'live',
+          max_goals: SNAPSHOT_MAX_GOALS,
+          sides_lambda: round(gs.lambda, 4),
+          sides_mu: round(gs.mu, 4),
+          sides_rho: round(sides.rho, 4),
+          sides_matrix: cropMatrix(sidesMatrix),
+          totals_lambda: round(gt.lambda, 4),
+          totals_mu: round(gt.mu, 4),
+          totals_matrix: cropMatrix(totalsMatrix),
+        });
       }
     }
     return written;
