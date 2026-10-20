@@ -96,7 +96,7 @@ export function MatchPreviewCard({
 
 /** "preview-v0.8" -> 8; anything else (older or unknown) -> 0 */
 function previewMinor(version: string | undefined): number {
-  return Number(/^preview-v0.(d+)$/.exec(version ?? '')?.[1] ?? 0);
+  return Number(/^preview-v0\.(\d+)$/.exec(version ?? '')?.[1] ?? 0);
 }
 
 /**
