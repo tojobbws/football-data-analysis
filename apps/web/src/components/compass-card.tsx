@@ -95,6 +95,8 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
         <p className="mt-3 text-sm leading-relaxed text-zinc-700">
           {qualifiers.length ? `เมื่อ${qualifiers.join(' และ')} ` : ''}โมเดลให้โอกาสถูก <b className="font-semibold text-amber-800">{pct(c.model_probability)}</b> ส่วนตลาดประเมินไว้{' '}
           <b className="font-semibold text-zinc-950">{pct(c.market_probability)}</b>
+          {/* the market figure is the median of each bookmaker's pair on this line with its margin taken out, pushes left out like the model's */}
+          <span className="text-zinc-500"> (ราคากลางของเส้นนี้ หลังตัดค่าเผื่อของเจ้ามือ)</span>
         </p>
       ) : null}
       <CompassExplainer className="mt-1" />

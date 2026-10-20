@@ -10,7 +10,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { matchPreviewJob } from '../src/preview-job.js';
-import { goalBands, PREVIEW_VERSION, priceSelection, scoreMatrix, type PreviewTeam } from '@fp/analysis';
+import { bothTeamsScore, goalBands, PREVIEW_VERSION, priceSelection, scoreMatrix, type PreviewTeam } from '@fp/analysis';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -35,14 +35,15 @@ function fakeWriter(answers: Record<string, Partial<RankerResult> & { output?: u
   return w;
 }
 
-/** a v0.9 answer that names both teams, as the guard asks */
+/** a v1.0 answer around the home side (the model's lean in these fixtures), naming the teams as the guard asks */
 const prose = (home: string, away: string, over: Record<string, unknown> = {}) => ({
   output: {
     overview_th: `โมเดลให้ ${home} 50% เกมนี้ข้อมูลเอียงไปทาง ${home} เล็กน้อย ส่วน ${away} ยังตามอยู่`,
-    home_th: `${home} ฟอร์มดีจากข้อมูลล่าสุดในระบบของเรา`,
-    away_th: `${away} มีข้อมูลน้อยในระบบ จึงอ่านได้ไม่มาก`,
-    score_th: 'สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0 เป็นหนึ่งในหลายสกอร์',
-    uncertainty_th: '',
+    attack_th: `${home} ฟอร์มดีจากข้อมูลล่าสุดในระบบของเรา เกมรุกเดินได้ต่อเนื่อง`,
+    defence_th: `${home} ยังมีข้อมูลเกมรับไม่มาก จุดที่ต้องดูคือการเสียประตูช่วงท้าย`,
+    opponent_th: `${away} มีข้อมูลน้อยในระบบ จึงอ่านได้ไม่มากว่าจะสร้างปัญหาได้แค่ไหน`,
+    score_th: 'สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0 เป็นหนึ่งในหลายสกอร์ที่เป็นไปได้',
+    key_factor_th: '',
     ...over,
   },
 });
@@ -165,8 +166,14 @@ describe('matchPreviewJob', () => {
     expect(Number(a.p_goals_0_1) + Number(a.p_goals_2) + Number(a.p_goals_3plus)).toBeCloseTo(1, 3);
     expect(Number(a.p_goals_3plus)).toBeCloseTo(priceSelection(TOTALS, { market: 'OVER_UNDER', selection: 'OVER', line: 2.5 }).probability, 3);
     expect(Number(a.p_goals_3plus)).toBeCloseTo(goalBands(TOTALS).threePlus, 3);
-    // v0.8: four parts in the existing columns; the empty uncertainty and the v0.7 sections stay null
-    expect(a).toMatchObject({ attack_th: null, defence_th: null, h2h_th: null, summary_th: null, key_factor_th: null });
+    // v1.0: three points around the main side; team texts and the v0.7 sections stay null
+    expect(a).toMatchObject({ main_side: 'HOME', home_th: null, away_th: null, h2h_th: null, summary_th: null, key_factor_th: null });
+    expect(a.attack_th).toContain('Home A ฟอร์มดี');
+    expect(a.opponent_th).toContain('Away A');
+    // the summary's confidence comes from rules: limited data (short form) -> MEDIUM
+    expect(a).toMatchObject({ confidence: 'MEDIUM', confidence_notes: ['ข้อมูลบางส่วนจำกัด'] });
+    // both teams to score from the same totals matrix as the bands
+    expect(Number(a.p_btts)).toBeCloseTo(bothTeamsScore(TOTALS), 3);
     // both teams have fewer than 5 recent results in the DB -> LIMITED; no odds is a minor note
     expect(a.data_notes).toEqual([expect.stringContaining('Home A มีผลการแข่งขันล่าสุดในระบบเพียง 4 นัด'), expect.stringContaining('Away A มีผลการแข่งขันล่าสุดในระบบเพียง 3 นัด')]);
 
@@ -183,6 +190,7 @@ describe('matchPreviewJob', () => {
     // the AI never sees the goal bands (3+ is over 2.5, once written up as an over lean)
     expect(JSON.stringify(seen)).not.toMatch(/threePlus|upTo1|p_goals/);
     // which way each source leans: no odds and no Elo here, recent form and xG side with the model
+    expect(seen.focus).toEqual({ mainSide: 'HOME', main: 'Home A', opponent: 'Away A' });
     expect(seen.views).toEqual({ model: 'Home A', market: null, recentForm: 'Home A', recentXg: 'Home A', otherModel: null, marketP: null, disagreements: [] });
 
     // v0.7: venue, referee name only, table detail, form dates + competition, rest days, averages, key players
@@ -263,8 +271,8 @@ describe('matchPreviewJob', () => {
       { stage: 'EARLY', text_source: 'AI', ai_status: 'OK' },
       { stage: 'LINEUP', text_source: 'TEMPLATE', ai_status: 'SKIPPED' },
     ]);
-    const lineupRow = await one(`select home_th, facts from match_previews where fixture_id = 101 and stage = 'LINEUP'`);
-    expect(lineupRow.home_th).toContain('ประกาศตัวจริงแล้ว');
+    const lineupRow = await one(`select attack_th, facts from match_previews where fixture_id = 101 and stage = 'LINEUP'`);
+    expect(lineupRow.attack_th).toContain('ประกาศตัวจริงแล้ว');
     // LINEUP: formation and the key players who are not in the XI (Star Striker, id 101, starts)
     expect((lineupRow.facts as { home: PreviewTeam }).home.lineup).toEqual({ formation: '4-3-3', coach: null, keyPlayersNotStarting: ['Playmaker'] });
   });

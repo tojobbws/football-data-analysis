@@ -9,8 +9,11 @@
  * disagreement left out). Without an API key, or when the AI answer fails, the deterministic template
  * text is stored instead — so every match has a preview.
  *
- * preview-v0.8 writes four parts into the existing columns: overview_th, home_th / away_th, score_th
- * and the uncertainty in key_factor_th; attack_th, defence_th, h2h_th and summary_th stay null.
+ * preview-v1.0 is built around a main side (the model's lean, else the home side): its attack
+ * (attack_th), its weak spots (defence_th), the opponent (opponent_th), the reasons behind the most
+ * likely score (score_th), what could change the result (key_factor_th) and a lead (overview_th).
+ * The game summary's confidence level and both-teams-score chance are set here by rules, never by
+ * the AI. home_th, away_th, h2h_th and summary_th stay null.
  */
 import {
   isPersistentApiError,
@@ -22,8 +25,10 @@ import {
 } from '@fp/ai';
 import {
   assessDataSupport,
+  bothTeamsScore,
   buildTemplateText,
   compareViews,
+  confidenceLevel,
   DIXON_COLES_VERSION,
   ELO_VERSION,
   formAverages,
@@ -31,6 +36,7 @@ import {
   goalBands,
   matrixExpectedGoals,
   PREVIEW_VERSION,
+  previewFocus,
   previewScoreMatrix,
   previewStageFor,
   restDays,
@@ -98,8 +104,9 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
         ctx.log.warn('preview time budget used up; the rest wait for the next run', { budgetMinutes: opts.budgetMinutes, written });
         break;
       }
-      const { facts, bands } = await collectFacts(ctx, f, stage);
+      const { facts, bands, btts } = await collectFacts(ctx, f, stage);
       const support = assessDataSupport(facts);
+      const confidence = confidenceLevel(facts, support);
       const template = buildTemplateText(facts, support);
       const input: Record<string, unknown> = { ...facts, data_support: { level: support.level, notes_th: support.notes } };
 
@@ -161,13 +168,18 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
           p_goals_0_1: bands ? r4(bands.upTo1) : null,
           p_goals_2: bands ? r4(bands.two) : null,
           p_goals_3plus: bands ? r4(bands.threePlus) : null,
+          p_btts: btts == null ? null : r4(btts),
+          main_side: facts.focus?.mainSide ?? 'HOME',
+          confidence: confidence.level,
+          confidence_notes: confidence.notes,
           overview_th: text.overview_th,
-          home_th: text.home_th,
-          away_th: text.away_th,
+          attack_th: text.attack_th,
+          defence_th: text.defence_th,
+          opponent_th: text.opponent_th,
           score_th: text.score_th,
-          key_factor_th: text.uncertainty_th,
-          attack_th: null,
-          defence_th: null,
+          key_factor_th: text.key_factor_th,
+          home_th: null,
+          away_th: null,
           h2h_th: null,
           summary_th: null,
           facts: input,
@@ -194,7 +206,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
 type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[number];
 
 /** Everything a preview (and a Game Compass note) is written from; every derived number is computed here. */
-export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<{ facts: PreviewFacts; bands: GoalBands | null }> {
+export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<{ facts: PreviewFacts; bands: GoalBands | null; btts: number | null }> {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
   const [formHome, formAway, standings, injuries, lineup, probs, apiPred, h2h, qHome, qDraw, qAway, place, lineupTeams, keyHome, keyAway] = await Promise.all([
     ctx.repo.teamForm(f.homeTeamId, f.kickoffAt),
@@ -228,6 +240,7 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
         xgShare: number;
         home?: { weightedMatches?: number };
         away?: { weightedMatches?: number };
+        gates?: { MATCH_WINNER?: boolean };
         crossLeague?: { lambda: number; mu: number; weightCupOnly: number; cupMatchesUsed: number };
       }
     | undefined;
@@ -235,6 +248,7 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
   let model: PreviewModel | null = null;
   // card only, kept out of the facts the AI sees (see goalBands)
   let bands: GoalBands | null = null;
+  let btts: number | null = null;
   if (inputs && dc.length) {
     const ensemble = probs.filter((p) => p.modelVersionId === ENSEMBLE_VERSION && p.market === 'MATCH_WINNER');
     const oneXTwo = ensemble.length === 3 ? ensemble : dc.filter((p) => p.market === 'MATCH_WINNER');
@@ -252,6 +266,7 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
       });
     const eg = matrixExpectedGoals(matrix);
     bands = goalBands(matrix);
+    btts = bothTeamsScore(matrix);
     model = {
       modelVersionId: ensemble.length === 3 ? ENSEMBLE_VERSION : DIXON_COLES_VERSION,
       computedAt: dc[0]!.computedAt.toISOString(),
@@ -261,6 +276,8 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
       matchesUsed: Number(inputs.matchesUsed ?? 0),
       xgShare: Number(inputs.xgShare ?? 0),
       crossLeague: inputs.crossLeague ? { cupMatchesUsed: Number(inputs.crossLeague.cupMatchesUsed) } : null,
+      // the league's 1X2 model passed model:tune (runs before the gates were stored say nothing)
+      ...(inputs.gates ? { tested: Boolean(inputs.gates.MATCH_WINNER) } : {}),
     };
   }
 
@@ -359,5 +376,6 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
   const eloP = (sel: string) => elo.find((x) => x.selection === sel)?.probability;
   const otherModel = eloP('HOME') != null && eloP('AWAY') != null ? { home: eloP('HOME')!, away: eloP('AWAY')! } : null;
   facts.views = compareViews(facts, otherModel);
-  return { facts, bands };
+  facts.focus = previewFocus(facts, facts.views);
+  return { facts, bands, btts };
 }

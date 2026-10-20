@@ -9,7 +9,7 @@ import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/matc
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { QualificationCard } from '@/components/qualification';
 import { Badge, Card, Note } from '@/components/sheet';
-import { stageLabelTh } from '@fp/analysis';
+import { dataGaps, stageLabelTh } from '@fp/analysis';
 import { TeamLogo } from '@/components/ui';
 import { FINISHED, ROUND, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { isLive, toSeed } from '@/lib/live';
@@ -140,7 +140,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
             ) : null}
 
             {d.preview ? (
-              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} overInOutlook={d.outlook?.sides_tested === true && d.outlook.p_over25 != null} pick={previewPick} pickNote={pick?.note_th ?? null} teams={previewTeams(d)} logos={{ home: m.home.logo_url, away: m.away.logo_url }} />
+              <MatchPreviewCard id="analysis" p={d.preview} home={m.home.name} away={m.away.name} result={score90(d)} modelTested={d.outlook?.sides_tested === true} overInOutlook={d.outlook?.sides_tested === true && d.outlook.p_over25 != null} pick={previewPick} pickNote={pick?.note_th ?? null} teams={previewTeams(d)} logos={{ home: m.home.logo_url, away: m.away.logo_url }} gaps={d.finished ? [] : dataGaps({ h2hMatches: d.h2h.length, lineupsOut: d.lineups.some((p) => p.is_starter), injuryReports: d.injuries.length, pickLinePriced: pick ? pickLinePriced(d, pick) : null })} info={{ league: m.league.name, kickoffAt: m.kickoff_at, venue: m.venue?.name ? `${m.venue.name}${m.venue.city ? `, ${m.venue.city}` : ''}` : null }} />
             ) : !d.finished && !OFF[m.status_short] ? (
               <Card id="analysis" title="วิเคราะห์เกม">
                 <p className="text-sm text-zinc-500">บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</p>
@@ -311,6 +311,12 @@ function pickLineRows(d: Data, pick: Compass): Array<{ label: string; r: MarketR
     r: d.market.find((x) => x.market === pick.market && x.selection === s.selection && x.line != null && Number(x.line) === s.line),
     isPick: i === 0,
   }));
+}
+
+/** Both sides of the pick's line are in the latest consensus; null for a pick without a line (1X2). */
+function pickLinePriced(d: Data, pick: Compass): boolean | null {
+  const rows = pickLineRows(d, pick);
+  return rows ? rows.every((x) => x.r) : null;
 }
 
 function MarketSection({ d, pick }: { d: Data; pick: Compass | null }) {

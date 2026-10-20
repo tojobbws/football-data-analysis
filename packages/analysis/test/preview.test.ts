@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   assessDataSupport,
   buildTemplateText,
+  bothTeamsScore,
   compareViews,
+  confidenceLevel,
+  dataGaps,
+  previewFocus,
   EVEN,
   goalBands,
   matrixExpectedGoals,
@@ -217,20 +221,97 @@ describe('compareViews', () => {
   });
 });
 
+describe('dataGaps', () => {
+  it('no H2H, no lineup, no injury report, no price on the pick line: each listed, none of them changes the level', () => {
+    expect(dataGaps({ h2hMatches: 0, lineupsOut: false, injuryReports: 0, pickLinePriced: false })).toEqual([
+      'ไม่มีประวัติพบกันในฐานข้อมูลของเรา',
+      'ยังไม่ประกาศตัวจริง',
+      'แหล่งข้อมูลไม่มีรายงานผู้เล่นบาดเจ็บ ซึ่งไม่ได้แปลว่าไม่มีใครเจ็บ',
+      'ราคาล่าสุดไม่มีเส้นของเข็มทิศเกมครบทั้งสองฝั่ง',
+    ]);
+    const f = facts({ h2h: [], home: team('Arsenal', { injuries: [] }), away: team('Chelsea', { injuries: [] }) });
+    expect(assessDataSupport(f).level).toBe('GOOD');
+  });
+
+  it('nothing missing, or no pick (null): no line', () => {
+    expect(dataGaps({ h2hMatches: 3, lineupsOut: true, injuryReports: 2, pickLinePriced: true })).toEqual([]);
+    expect(dataGaps({ h2hMatches: 3, lineupsOut: true, injuryReports: 2, pickLinePriced: null })).toEqual([]);
+  });
+});
+
+describe('previewFocus', () => {
+  it("the model's lean is the main side; an even model or no model falls back to the home side", () => {
+    expect(previewFocus(facts(), compareViews(facts()))).toEqual({ mainSide: 'HOME', main: 'Arsenal', opponent: 'Chelsea' });
+    const awayLean = facts({ model: { ...facts().model!, p: { home: 0.2, draw: 0.25, away: 0.55 } } });
+    expect(previewFocus(awayLean, compareViews(awayLean))).toEqual({ mainSide: 'AWAY', main: 'Chelsea', opponent: 'Arsenal' });
+    const even = facts({ model: { ...facts().model!, p: { home: 0.36, draw: 0.3, away: 0.34 } } });
+    expect(previewFocus(even, compareViews(even)).mainSide).toBe('HOME');
+    expect(previewFocus(facts({ model: null })).mainSide).toBe('HOME');
+  });
+});
+
+describe('confidenceLevel', () => {
+  const tested = (over: Partial<PreviewFacts> = {}) => {
+    const f = facts({ ...over, model: { ...facts().model!, tested: true, ...(over.model ?? {}) } });
+    f.views = compareViews(f);
+    return f;
+  };
+
+  it('HIGH only when the data is enough, the model is tested, its lean is clear and nothing points elsewhere', () => {
+    const clear = tested({ model: { ...facts().model!, tested: true, p: { home: 0.6, draw: 0.22, away: 0.18 } }, market: { home: { opening: 1.6, current: 1.6, bookmakers: 6 }, draw: { opening: 4, current: 4, bookmakers: 6 }, away: { opening: 5.5, current: 5.5, bookmakers: 6 } } });
+    expect(confidenceLevel(clear, { level: 'GOOD' })).toMatchObject({ level: 'HIGH' });
+    // the same match on limited data
+    expect(confidenceLevel(clear, { level: 'LIMITED' })).toEqual({ level: 'MEDIUM', notes: ['ข้อมูลบางส่วนจำกัด'] });
+  });
+
+  it('MEDIUM for a slight lean, the market far from the model, or recent form against it', () => {
+    // 52% vs 24%: a clear lean, but the market (54%) and form agree -> only the slight-lean rule does not fire
+    expect(confidenceLevel(tested(), { level: 'GOOD' }).level).toBe('HIGH');
+    const slight = tested({ model: { ...facts().model!, tested: true, p: { home: 0.42, draw: 0.3, away: 0.28 } } });
+    expect(confidenceLevel(slight, { level: 'GOOD' })).toEqual({ level: 'MEDIUM', notes: ['โมเดลเอนเพียงเล็กน้อย'] });
+    const gap = tested({ model: { ...facts().model!, tested: true, p: { home: 0.72, draw: 0.16, away: 0.12 } } });
+    expect(confidenceLevel(gap, { level: 'GOOD' }).notes).toContain('ตลาดเห็นทางเดียวกันแต่ให้โอกาสน้อยกว่าโมเดลมาก');
+  });
+
+  it('LOW without a model, on thin data, while the model is still being measured, or when the market favours the other side', () => {
+    expect(confidenceLevel(facts({ model: null }), { level: 'THIN' })).toEqual({ level: 'LOW', notes: ['โมเดลยังไม่มีตัวเลขสำหรับคู่นี้'] });
+    expect(confidenceLevel(tested(), { level: 'THIN' }).level).toBe('LOW');
+    const untested = facts({ model: { ...facts().model!, tested: false } });
+    expect(confidenceLevel(untested, { level: 'GOOD' })).toEqual({ level: 'LOW', notes: ['โมเดลยังอยู่ระหว่างการวัดผลในรายการนี้'] });
+    const flipped = tested({ market: { home: { opening: 3, current: 3.2, bookmakers: 6 }, draw: { opening: 3.4, current: 3.4, bookmakers: 6 }, away: { opening: 2.2, current: 2.1, bookmakers: 6 } } });
+    expect(confidenceLevel(flipped, { level: 'GOOD' }).notes).toContain('ตลาดให้น้ำหนักอีกฝั่ง');
+  });
+});
+
+describe('bothTeamsScore', () => {
+  it('the chance that neither side keeps a clean sheet, from the same matrix as the goal bands', () => {
+    const m = [
+      [0.1, 0.1],
+      [0.2, 0.6],
+    ];
+    expect(bothTeamsScore(m)).toBeCloseTo(0.6, 12);
+    const real = previewScoreMatrix({ lambda: 1.5, mu: 1.2, rho: -0.05 });
+    expect(bothTeamsScore(real)).toBeGreaterThan(0.3);
+    expect(bothTeamsScore(real)).toBeLessThan(1 - goalBands(real).upTo1);
+  });
+});
+
 describe('buildTemplateText', () => {
-  it('four parts, every number from the facts; nothing stock when the facts name no risk', () => {
+  it('v1.0 parts around the main side, every number from the facts; nothing stock when the facts name no risk', () => {
     const f = facts();
     const t = buildTemplateText(f, assessDataSupport(f));
-    expect(Object.keys(t)).toEqual(['overview_th', 'home_th', 'away_th', 'score_th', 'uncertainty_th']);
+    expect(Object.keys(t)).toEqual(['overview_th', 'attack_th', 'defence_th', 'opponent_th', 'score_th', 'key_factor_th']);
     expect(t.overview_th).toContain('Arsenal ชนะ 52%');
     expect(t.overview_th).toContain('ตัวเลขเอียงไปทาง Arsenal');
     expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกัน');
-    expect(t.home_th).toContain('ชนะ 3 เสมอ 1 แพ้ 1');
-    expect(t.home_th).toContain('อันดับ 3');
-    expect(t.home_th).toContain('A. Player');
+    // Arsenal is the model's lean: its attack and its weak spots, then Chelsea as the opponent
+    expect(t.attack_th).toContain('Arsenal: 5 นัดล่าสุด ชนะ 3 เสมอ 1 แพ้ 1 ยิงได้ 7 ประตู');
+    expect(t.defence_th).toContain('Arsenal: เสีย 3 ประตูใน 5 นัดล่าสุด');
+    expect(t.defence_th).toContain('A. Player');
+    expect(t.opponent_th.startsWith('Chelsea: ')).toBe(true);
     expect(t.score_th).toContain('โมเดลคาดประตู (xG) Arsenal 1.70 ต่อ Chelsea 1.00');
     expect(t.score_th).toContain('Arsenal 1-0 Chelsea (12%)');
-    expect(t.uncertainty_th).toBeNull();
+    expect(t.key_factor_th).toBeNull();
     for (const s of Object.values(t)) expect(s ?? '').not.toMatch(/[—–]/);
   });
 
@@ -250,9 +331,9 @@ describe('buildTemplateText', () => {
     f.views = compareViews(f);
     const t = buildTemplateText(f, assessDataSupport(f));
     expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกันแต่ให้โอกาสเพียง 54%');
-    expect(t.uncertainty_th).toContain('Chelsea ขาด C. Palmer');
-    expect(t.uncertainty_th).toContain('ผลงานช่วงหลัง Chelsea ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล');
-    expect(t.uncertainty_th).toContain('Arsenal มีเวลาพักน้อยกว่า');
+    expect(t.key_factor_th).toContain('Chelsea ขาด C. Palmer');
+    expect(t.key_factor_th).toContain('ผลงานช่วงหลัง Chelsea ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล');
+    expect(t.key_factor_th).toContain('Arsenal มีเวลาพักน้อยกว่า');
   });
 });
 

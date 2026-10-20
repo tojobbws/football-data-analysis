@@ -7,7 +7,8 @@ import { Badge, Card, Note } from './sheet';
 import { TeamLogo } from './primitives';
 
 export const DATA_SUPPORT: Record<DataSupport, { label: string; variant: 'good' | 'warn' | 'bad' }> = {
-  GOOD: { label: 'ข้อมูลครบ', variant: 'good' },
+  // enough for the analysis; what is still missing (H2H, lineups, injury reports) is listed apart
+  GOOD: { label: 'ข้อมูลเพียงพอ', variant: 'good' },
   LIMITED: { label: 'ข้อมูลจำกัด', variant: 'warn' },
   THIN: { label: 'ข้อมูลน้อย', variant: 'bad' },
 };
@@ -44,6 +45,8 @@ export function MatchPreviewCard({
   overInOutlook = false,
   teams,
   logos,
+  gaps = [],
+  info,
   id,
 }: {
   p: MatchPreview;
@@ -59,17 +62,25 @@ export function MatchPreviewCard({
   teams?: { home: TeamContext; away: TeamContext };
   /** club crests from the teams table (API-Football); a missing one falls back to a plain disc */
   logos?: { home: string | null; away: string | null };
+  /** what the page does not have yet (dataGaps): shown quietly, never lowers the support level */
+  gaps?: string[];
+  /** preview-v1.0's pre-match block: competition, kickoff (Thai time) and venue from the fixture */
+  info?: { league: string; kickoffAt: string; venue: string | null };
   id?: string;
 }) {
   const notes = p.data_notes.filter((n) => !n.includes(UNTESTED_NOTE));
   // a LIMITED level whose only reason was the untested note reads as GOOD, like a preview written today
   const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
-  const fourPart = previewMinor(p.version) >= 8;
+  const build = previewBuild(p.version);
+  const v10 = build >= 100;
+  const fourPart = build >= 8;
   const numbers = <ModelNumbers p={p} result={result} modelTested={modelTested} pick={pick} overInOutlook={overInOutlook} fourPart={fourPart} />;
 
   return (
     <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`} action={<Badge variant={support.variant}>{support.label}</Badge>}>
-      {fourPart ? (
+      {v10 ? (
+        <V10Preview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes} info={info} support={support.label} modelTested={modelTested} result={result} />
+      ) : fourPart ? (
         <FourPartPreview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes}>
           {numbers}
         </FourPartPreview>
@@ -86,6 +97,7 @@ export function MatchPreviewCard({
         </>
       )}
 
+      {gaps.length ? <p className="mt-4 text-xs leading-relaxed text-zinc-500">ข้อมูลที่ยังไม่มี: {gaps.join(' · ')}</p> : null}
       <Note>
         {p.text_source === 'AI' ? 'เรียบเรียงโดย AI จากข้อมูลในระบบเท่านั้น ตัวเลขทุกตัวมาจากโมเดลและฐานข้อมูล' : 'สร้างจากตัวเลขในระบบโดยอัตโนมัติ'} · บันทึกก่อนเตะ แก้ไขไม่ได้ ·{' '}
         {fourPart ? 'เข็มทิศเกมเลือกโดยกฎของระบบ AI เป็นผู้อธิบายเท่านั้น ส่วนบทวิเคราะห์ไม่นับในผลงาน' : 'เป็นข้อมูลประกอบ ไม่ใช่เข็มทิศเกม และไม่นับในผลงาน'}
@@ -94,9 +106,166 @@ export function MatchPreviewCard({
   );
 }
 
-/** "preview-v0.8" -> 8; anything else (older or unknown) -> 0 */
-function previewMinor(version: string | undefined): number {
-  return Number(/^preview-v0\.(\d+)$/.exec(version ?? '')?.[1] ?? 0);
+/** "preview-v0.8" -> 8, "preview-v1.0" -> 100; anything else (older or unknown) -> 0 */
+function previewBuild(version: string | undefined): number {
+  const m = /^preview-v(\d+)\.(\d+)$/.exec(version ?? '');
+  return m ? Number(m[1]) * 100 + Number(m[2]) : 0;
+}
+
+const CONFIDENCE: Record<NonNullable<MatchPreview['confidence']>, { label: string; variant: 'good' | 'warn' | 'bad' }> = {
+  HIGH: { label: 'สูง', variant: 'good' },
+  MEDIUM: { label: 'ปานกลาง', variant: 'warn' },
+  LOW: { label: 'ต่ำ', variant: 'bad' },
+};
+
+/**
+ * preview-v1.0, the layout of the 2026-10-20 brief: the pre-match facts, three points (the main
+ * side's attack, its weak spots, the opponent), the model's most likely score in large type with its
+ * reasons, and a game summary (สรุปเกม). The score keeps its honest name (สกอร์ที่โมเดลให้โอกาส
+ * สูงสุด, never a forecast) and the summary's confidence comes from fixed rules. The Game Compass keeps
+ * its own name and its own block: the summary is not a second pick.
+ */
+function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: { label: string; sel: MarketSelection } | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null }) {
+  const mainAway = p.main_side === 'AWAY';
+  const main = { name: mainAway ? away : home, logo: mainAway ? logos?.away : logos?.home, form: (mainAway ? teams?.away : teams?.home)?.form ?? [] };
+  const opp = { name: mainAway ? home : away, logo: mainAway ? logos?.home : logos?.away, form: (mainAway ? teams?.home : teams?.away)?.form ?? [] };
+  const hasScore = p.predicted_home != null && p.predicted_away != null;
+  const ph = p.p_home == null ? null : Number(p.p_home);
+  const pa = p.p_away == null ? null : Number(p.p_away);
+  const lean = ph == null || pa == null ? null : Math.abs(ph - pa) < 0.1 ? 'สูสี ตัวเลขของโมเดลไม่เอนไปทางใดชัด' : `${ph > pa ? home : away} มีแนวโน้มทำผลงานได้ดีกว่า`;
+  const ifScore = pick && hasScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
+  const factors = [p.key_factor_th, ...limits].filter((x): x is string => Boolean(x));
+  const conf = p.confidence ? CONFIDENCE[p.confidence] : null;
+  const points = [
+    { n: 1, title: `เกมรุกของ ${main.name}`, text: p.attack_th, team: main },
+    { n: 2, title: `จุดอ่อนและสิ่งที่ ${main.name} ต้องระวัง`, text: p.defence_th, team: null },
+    { n: 3, title: `${opp.name} จะสร้างปัญหาได้แค่ไหน`, text: p.opponent_th, team: opp },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {info ? (
+        <section aria-labelledby="pv-info">
+          <SectionTitle id="pv-info">ข้อมูลก่อนเกม</SectionTitle>
+          <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
+            <dt className="text-zinc-500">รายการ</dt>
+            <dd className="text-zinc-800">{info.league}</dd>
+            <dt className="text-zinc-500">เวลาแข่ง</dt>
+            <dd className="text-zinc-800">{dateTimeTH(info.kickoffAt)} (เวลาไทย)</dd>
+            {info.venue ? (
+              <>
+                <dt className="text-zinc-500">สนาม</dt>
+                <dd className="text-zinc-800">{info.venue}</dd>
+              </>
+            ) : null}
+            <dt className="text-zinc-500">ข้อมูล</dt>
+            <dd className="text-zinc-800">
+              {support} · {STAGE[p.stage]} · บันทึก {dateTimeTH(p.created_at)}
+            </dd>
+          </dl>
+          <p className="mt-3 max-w-prose text-base leading-7 text-zinc-800">{p.overview_th}</p>
+        </section>
+      ) : (
+        <p className="max-w-prose text-base leading-7 text-zinc-800">{p.overview_th}</p>
+      )}
+
+      <section aria-labelledby="pv-points" className="border-t border-zinc-100 pt-4">
+        <SectionTitle id="pv-points">วิเคราะห์เกม 3 ประเด็น</SectionTitle>
+        <ol className="mt-3 space-y-4">
+          {points.map((x) => (
+            <li key={x.n}>
+              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-950">
+                {x.team && logos ? <TeamLogo src={x.team.logo ?? null} alt="" size={20} /> : null}
+                <span>
+                  {x.n}. {x.title}
+                </span>
+                {x.team?.form.length ? <FormChips results={x.team.form} /> : null}
+              </p>
+              {x.text ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{x.text}</p> : null}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section aria-labelledby="pv-score" className="border-t border-zinc-100 pt-4">
+        <SectionTitle id="pv-score">สกอร์ที่โมเดลให้โอกาสสูงสุด</SectionTitle>
+        {hasScore ? (
+          <div className="mt-3 flex items-center justify-center gap-3 rounded-lg bg-zinc-50 px-3 py-4 sm:gap-5">
+            <span className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right text-sm font-semibold text-zinc-950">
+              <span className="truncate">{home}</span>
+              {logos ? <TeamLogo src={logos.home} alt="" size={28} /> : null}
+            </span>
+            <span className="shrink-0 text-3xl font-semibold tabular-nums tracking-tight text-zinc-950">
+              {p.predicted_home}–{p.predicted_away}
+            </span>
+            <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold text-zinc-950">
+              {logos ? <TeamLogo src={logos.away} alt="" size={28} /> : null}
+              <span className="truncate">{away}</span>
+            </span>
+          </div>
+        ) : null}
+        {hasScore ? (
+          <p className="mt-2 text-center text-xs text-zinc-500">
+            โอกาสของสกอร์นี้ {pct(p.predicted_p)} · เป็นการประเมินก่อนเกม ยังมีสกอร์อื่นอีก {pct(1 - Number(p.predicted_p))}
+            {p.expected_home != null ? ` · ประตูที่โมเดลคาด (xG) ${Number(p.expected_home).toFixed(2)}–${Number(p.expected_away).toFixed(2)}` : ''}
+          </p>
+        ) : null}
+        <p className="mt-3 max-w-prose text-sm leading-relaxed text-zinc-700">{p.score_th}</p>
+        {ifScore ? (
+          <p className="mt-2 text-xs text-zinc-600">
+            ถ้าจบ {p.predicted_home}–{p.predicted_away} เข็มทิศเกม {pick!.label} = <b className="font-semibold text-zinc-950">{STATUS[ifScore].label}</b>
+          </p>
+        ) : null}
+        {result && hasScore ? (
+          <p className="mt-2 text-xs text-zinc-600">
+            ผลจริง <b className="tabular-nums text-zinc-950">{result.home}–{result.away}</b>
+          </p>
+        ) : null}
+        {hasScore && !modelTested ? <p className="mt-1 text-xs text-zinc-400">อยู่ระหว่างการวัดผล</p> : null}
+      </section>
+
+      <section aria-labelledby="pv-summary" className="border-t border-zinc-100 pt-4">
+        <SectionTitle id="pv-summary">สรุปเกม</SectionTitle>
+        <dl className="mt-2 divide-y divide-zinc-100 text-sm">
+          {lean ? <SummaryRow k="แนวโน้มผล" v={lean} /> : null}
+          {hasScore ? <SummaryRow k="สกอร์ที่โมเดลให้โอกาสสูงสุด" v={`${home} ${p.predicted_home}–${p.predicted_away} ${away} (${pct(p.predicted_p)})`} /> : null}
+          {p.p_goals_3plus != null ? (
+            <SummaryRow k="แนวโน้มประตู" v={`3 ประตูขึ้นไป ${pct(p.p_goals_3plus)}${p.p_btts != null ? ` · ทั้งสองทีมยิงได้ ${pct(p.p_btts)}` : ''}`} />
+          ) : null}
+          {factors.length ? <SummaryRow k="ปัจจัยสำคัญ" v={factors.join(' ')} /> : null}
+          {conf ? (
+            <div className="grid gap-1 py-2 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-3">
+              <dt className="text-zinc-500">ความมั่นใจ</dt>
+              <dd className="text-zinc-800">
+                <Badge variant={conf.variant}>{conf.label}</Badge>
+                {p.confidence_notes.length ? <span className="ml-2 text-zinc-600">{p.confidence_notes.join(' · ')}</span> : null}
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      </section>
+
+      {pick ? (
+        <section aria-labelledby="pv-pick" className="border-t border-zinc-100 pt-4">
+          <SectionTitle id="pv-pick">เข็มทิศเกม</SectionTitle>
+          <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{pick.label}</p>
+          {pickNote ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{pickNote}</p> : null}
+          <a href="#pick" className="mt-1.5 inline-block text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950">
+            ดูเงื่อนไขและโอกาสของเข็มทิศเกม
+          </a>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function SummaryRow({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="grid gap-1 py-2 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-3">
+      <dt className="text-zinc-500">{k}</dt>
+      <dd className="text-zinc-800">{v}</dd>
+    </div>
+  );
 }
 
 /**

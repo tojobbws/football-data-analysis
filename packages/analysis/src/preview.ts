@@ -12,7 +12,7 @@ import { noVig } from './candidates.js';
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.8';
+export const PREVIEW_VERSION = 'preview-v1.0';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -144,6 +144,15 @@ export interface PreviewModel {
   matchesUsed: number;
   xgShare: number;
   crossLeague: { cupMatchesUsed: number } | null;
+  /** the league's 1X2 model passed its back-test (model:tune); false = still being measured */
+  tested?: boolean;
+}
+
+/** The side the write-up is built around (preview-v1.0): the model's lean, or the home side when it is even. */
+export interface PreviewFocus {
+  mainSide: 'HOME' | 'AWAY';
+  main: string;
+  opponent: string;
 }
 
 export interface PreviewFacts {
@@ -168,6 +177,8 @@ export interface PreviewFacts {
   h2h: Array<{ kickoffAt: string; home: string; away: string; homeGoals: number; awayGoals: number }>;
   /** which way each source leans and where they disagree with the model (preview-v0.8; see compareViews) */
   views?: PreviewViews | null;
+  /** preview-v1.0: the main side and its opponent (see previewFocus) */
+  focus?: PreviewFocus | null;
 }
 
 export interface MarketQuote {
@@ -177,18 +188,26 @@ export interface MarketQuote {
 }
 
 /**
- * The sections of the write-up (preview-v0.8): the match in brief, each team's strengths and worries,
- * the model's numbers, and what could change the picture. The Game Compass part is the pick note,
- * written separately after the rules pick. Stored as overview_th / home_th / away_th / score_th and
- * key_factor_th; the v0.7 columns attack_th, defence_th, h2h_th and summary_th stay null.
+ * The write-up (preview-v1.0), three points then the score: the main side's attack (attack_th), its
+ * weak spots and what to watch (defence_th), the opponent (opponent_th), the reasons behind the
+ * model's most likely score (score_th), what could change the result (key_factor_th), and a short
+ * lead that also serves as the teaser on match lists (overview_th). The game summary and its
+ * confidence level are built from numbers and rules, not written. The Game Compass part is the
+ * pick note, written separately after the rules pick.
  */
 export interface PreviewText {
   overview_th: string;
-  home_th: string;
-  away_th: string;
+  attack_th: string;
+  defence_th: string;
+  opponent_th: string;
   score_th: string;
-  /** null when nothing specific to this match could change the picture */
-  uncertainty_th: string | null;
+  /** null when nothing specific to this match could change the result */
+  key_factor_th: string | null;
+}
+
+export function previewFocus(f: PreviewFacts, views: PreviewViews | null = f.views ?? null): PreviewFocus {
+  const away = views?.model === f.fixture.away;
+  return away ? { mainSide: 'AWAY', main: f.fixture.away, opponent: f.fixture.home } : { mainSide: 'HOME', main: f.fixture.home, opponent: f.fixture.away };
 }
 
 // ---------------------------------------------------------------------------
@@ -403,11 +422,72 @@ export function assessDataSupport(f: PreviewFacts): { level: DataSupport; notes:
   return { level, notes: notes.map((n) => n.text) };
 }
 
+/**
+ * What the page does not have yet, apart from the support level: none of these limits the model, so
+ * none lowers the level (owner, 2026-10-15), but readers see them in one quiet line (owner, 2026-10-20).
+ * An empty injury list means the provider reported nobody, not that nobody is injured.
+ */
+export function dataGaps(g: { h2hMatches: number; lineupsOut: boolean; injuryReports: number; pickLinePriced?: boolean | null }): string[] {
+  const out: string[] = [];
+  if (g.h2hMatches === 0) out.push('ไม่มีประวัติพบกันในฐานข้อมูลของเรา');
+  if (!g.lineupsOut) out.push('ยังไม่ประกาศตัวจริง');
+  if (g.injuryReports === 0) out.push('แหล่งข้อมูลไม่มีรายงานผู้เล่นบาดเจ็บ ซึ่งไม่ได้แปลว่าไม่มีใครเจ็บ');
+  if (g.pickLinePriced === false) out.push('ราคาล่าสุดไม่มีเส้นของเข็มทิศเกมครบทั้งสองฝั่ง');
+  return out;
+}
+
 export const DATA_SUPPORT_TH: Record<DataSupport, string> = {
-  GOOD: 'ข้อมูลครบ',
+  GOOD: 'ข้อมูลเพียงพอ',
   LIMITED: 'ข้อมูลจำกัด',
   THIN: 'ข้อมูลน้อย',
 };
+
+// ---------------------------------------------------------------------------
+// Confidence (preview-v1.0): fixed rules over the data, never the AI's call
+// ---------------------------------------------------------------------------
+
+export type Confidence = 'LOW' | 'MEDIUM' | 'HIGH';
+export const CONFIDENCE_TH: Record<Confidence, string> = { LOW: 'ต่ำ', MEDIUM: 'ปานกลาง', HIGH: 'สูง' };
+/** below this gap between the model's two sides the lean is only slight */
+const CLEAR_LEAN = 0.2;
+
+/**
+ * How far the summary can be trusted, with the reasons in Thai. LOW when the model has no numbers,
+ * the data is thin, the league's model is still being measured or the market favours the other side.
+ * MEDIUM when the data is limited, the lean is slight, or form, xG, the market's size of the gap or
+ * the second model point elsewhere. HIGH only when none of these holds. Never a percentage.
+ */
+export function confidenceLevel(f: PreviewFacts, support: { level: DataSupport }): { level: Confidence; notes: string[] } {
+  const m = f.model;
+  if (!m) return { level: 'LOW', notes: ['โมเดลยังไม่มีตัวเลขสำหรับคู่นี้'] };
+  const v = f.views ?? compareViews(f);
+  const low: string[] = [];
+  if (support.level === 'THIN') low.push('ข้อมูลของคู่นี้มีน้อย');
+  if (m.tested === false) low.push('โมเดลยังอยู่ระหว่างการวัดผลในรายการนี้');
+  if (v.disagreements.includes('MARKET')) low.push('ตลาดให้น้ำหนักอีกฝั่ง');
+  if (low.length) return { level: 'LOW', notes: low };
+
+  const medium: string[] = [];
+  if (support.level === 'LIMITED') medium.push('ข้อมูลบางส่วนจำกัด');
+  if (v.model === EVEN) medium.push('ตัวเลขของโมเดลสูสี');
+  else if (Math.abs(m.p.home - m.p.away) < CLEAR_LEAN) medium.push('โมเดลเอนเพียงเล็กน้อย');
+  if (v.disagreements.includes('MARKET_GAP')) medium.push('ตลาดเห็นทางเดียวกันแต่ให้โอกาสน้อยกว่าโมเดลมาก');
+  if (v.disagreements.includes('FORM') || v.disagreements.includes('XG')) medium.push('ผลงานช่วงหลังสวนกับตัวเลขของโมเดล');
+  if (v.disagreements.includes('OTHER_MODEL')) medium.push('โมเดลอีกตัวของเรามองต่าง');
+  if (medium.length) return { level: 'MEDIUM', notes: medium };
+  return { level: 'HIGH', notes: ['ข้อมูลเพียงพอ โมเดลผ่านการทดสอบ และตลาดกับผลงานช่วงหลังชี้ไปทางเดียวกัน'] };
+}
+
+/** Chance that both teams score, from the same matrix as the goal bands. */
+export function bothTeamsScore(matrix: number[][]): number {
+  let both = 0;
+  let total = 0;
+  matrix.forEach((row, h) => row.forEach((p, a) => {
+    total += p;
+    if (h > 0 && a > 0) both += p;
+  }));
+  return total > 0 ? both / total : 0;
+}
 
 // ---------------------------------------------------------------------------
 // Template text (fallback when the AI is unavailable or fails the guards)
@@ -421,6 +501,8 @@ export function buildTemplateText(f: PreviewFacts, _support: { level: DataSuppor
   const { home, away, league, round } = f.fixture;
   const m = f.model;
   const views = f.views ?? compareViews(f);
+  const focus = f.focus ?? previewFocus(f, views);
+  const [main, opp] = focus.mainSide === 'HOME' ? [f.home, f.away] : [f.away, f.home];
   const where = `${league}${round ? ` ${round}` : ''}`;
 
   let overview = `${home} พบ ${away} ใน ${where}`;
@@ -439,42 +521,56 @@ export function buildTemplateText(f: PreviewFacts, _support: { level: DataSuppor
 
   let score = 'โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด';
   if (m) {
-    score = `โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`;
     const best = m.scorelines[0];
-    if (best) score += ` สกอร์ที่โมเดลให้โอกาสสูงสุดคือ ${home} ${best.home}-${best.away} ${away} (${pct(best.p)}) ซึ่งเป็นเพียงหนึ่งในหลายสกอร์ที่เป็นไปได้`;
+    score = best
+      ? `สกอร์ที่โมเดลให้โอกาสสูงสุดคือ ${home} ${best.home}-${best.away} ${away} (${pct(best.p)}) ซึ่งเป็นเพียงหนึ่งในหลายสกอร์ที่เป็นไปได้ โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`
+      : `โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`;
   }
 
   return {
     overview_th: overview,
-    home_th: teamText(f.home),
-    away_th: teamText(f.away),
+    attack_th: attackText(main),
+    defence_th: defenceText(main, focus.mainSide === 'HOME' ? 'home' : 'away'),
+    opponent_th: `${opp.name}: ${attackText(opp).replace(`${opp.name}: `, '')}`,
     score_th: score,
-    uncertainty_th: uncertaintyText(f, views),
+    key_factor_th: uncertaintyText(f, views),
   };
 }
 
-function teamText(t: PreviewTeam): string {
+function attackText(t: PreviewTeam): string {
   const parts: string[] = [];
   const s = t.formSummary ?? formSummary(t.form);
   if (s) {
-    parts.push(`${s.matches} นัดล่าสุด ชนะ ${s.won} เสมอ ${s.drawn} แพ้ ${s.lost} ยิงได้ ${s.goalsFor} เสีย ${s.goalsAgainst}`);
-    if (s.xgFor != null) parts.push(`xG เฉลี่ย ${n2(s.xgFor)} เสีย ${n2(s.xgAgainst ?? 0)}`);
+    parts.push(`${s.matches} นัดล่าสุด ชนะ ${s.won} เสมอ ${s.drawn} แพ้ ${s.lost} ยิงได้ ${s.goalsFor} ประตู`);
+    if (s.xgFor != null) parts.push(`xG เฉลี่ย ${n2(s.xgFor)}`);
   } else {
     parts.push('ไม่มีผลการแข่งขันล่าสุดในระบบ');
   }
-  if (t.restDays != null) parts.push(`พักมา ${t.restDays} วัน`);
-  if (t.standing?.rank != null) parts.push(`อยู่อันดับ ${t.standing.rank}${t.standing.points != null ? ` (${t.standing.points} แต้ม)` : ''}`);
+  if (t.averages?.shotsOnTarget != null) parts.push(`ยิงเข้ากรอบเฉลี่ย ${t.averages.shotsOnTarget} ครั้ง`);
   const top = t.keyPlayers?.[0];
   if (top) parts.push(`ตัวหลักเกมรุก ${top.name} (${top.goals} ประตู ${top.assists} แอสซิสต์)`);
-  if (t.injuries.length) {
-    const names = t.injuries.map((i) => i.player).filter(Boolean).slice(0, 3).join(', ');
-    parts.push(`มีรายงานตัวเจ็บ/ติดโทษ ${t.injuries.length} คน${names ? ` (${names})` : ''}`);
-  }
   if (t.starters?.length) parts.push('ประกาศตัวจริงแล้ว');
   return `${t.name}: ${parts.join(' · ')}`;
 }
 
-/** What could change the picture, only when the facts name something; no stock "the first goal matters". */
+function defenceText(t: PreviewTeam, where: 'home' | 'away'): string {
+  const parts: string[] = [];
+  const s = t.formSummary ?? formSummary(t.form);
+  if (s) {
+    parts.push(`เสีย ${s.goalsAgainst} ประตูใน ${s.matches} นัดล่าสุด`);
+    if (s.xgAgainst != null) parts.push(`xG เสียเฉลี่ย ${n2(s.xgAgainst)}`);
+  }
+  const v = t.standing?.[where];
+  if (v?.played) parts.push(`${where === 'home' ? 'ในบ้าน' : 'นอกบ้าน'}เสีย ${v.goalsAgainst} ประตูจาก ${v.played} นัด`);
+  if (t.injuries.length) {
+    const names = t.injuries.map((i) => i.player).filter(Boolean).slice(0, 3).join(', ');
+    parts.push(`มีรายงานตัวเจ็บ/ติดโทษ ${t.injuries.length} คน${names ? ` (${names})` : ''}`);
+  }
+  if (t.restDays != null) parts.push(`พักมา ${t.restDays} วัน`);
+  return `${t.name}: ${parts.length ? parts.join(' · ') : 'ไม่มีข้อมูลเกมรับล่าสุดในระบบ'}`;
+}
+
+/** What could change the result, only when the facts name something; no stock "the first goal matters". */
 function uncertaintyText(f: PreviewFacts, views: PreviewViews): string | null {
   const parts: string[] = [];
   for (const t of [f.home, f.away]) {

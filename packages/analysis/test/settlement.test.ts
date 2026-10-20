@@ -55,6 +55,20 @@ describe('fair probability / EV', () => {
     expect(expectedValue(d, 1 / p)).toBeCloseTo(0, 10);
     expect(expectedValue(d, 1 / p + 0.1)).toBeGreaterThan(0);
   });
+
+  it('AH 0: win 22%, push 28%, loss 50% -> 22 / (22 + 50) with the push left out; the push returns the stake in EV', () => {
+    const d = { win: 0.22, halfWin: 0, push: 0.28, halfLoss: 0, loss: 0.5 };
+    expect(d.win + d.push + d.loss).toBeCloseTo(1, 12);
+    expect(fairProbability(d)).toBeCloseTo(0.22 / 0.72, 12);
+    // EV at the AH 0 price 4.475: the push adds nothing either way
+    expect(expectedValue(d, 4.475)).toBeCloseTo(0.22 * 3.475 - 0.5, 12);
+    expect(expectedValue(d, 1 / fairProbability(d))).toBeCloseTo(0, 12);
+    // the 1X2 away chance (22%) is not this view's chance (30.6%)
+    expect(fairProbability(d)).not.toBeCloseTo(d.win, 2);
+    // and the settlement of AH 0 agrees: away win -> WIN, draw -> PUSH, away loss -> LOSS
+    const sel = { market: 'ASIAN_HANDICAP', selection: 'AWAY', line: 0 } as const;
+    expect([settle(sel, 0, 1), settle(sel, 1, 1), settle(sel, 2, 1)]).toEqual(['WIN', 'PUSH', 'LOSS']);
+  });
 });
 
 describe('decideSettlement (Phase 7)', () => {
