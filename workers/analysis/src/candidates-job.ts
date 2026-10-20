@@ -7,6 +7,7 @@ import {
   SHADOW_RULES,
   type CandidateInput,
   type DecisionRules,
+  type MainLine,
   type MarketCode,
   type ModelPrice,
   type OutcomeDistribution,
@@ -149,7 +150,24 @@ export function generateCandidatesJob(
           bestBookmakerId: c.bestBookmakerId,
           oddsUpdatedAt: c.oddsUpdatedAt,
           distribution: c.distribution,
+          onMainLine: c.onMainLine,
         },
+      }));
+
+      // Why this line: the main line, where it came from, and how both of its sides were judged
+      const mainLines = Object.values(d.mainLines).map((ml) => ({
+        ...ml,
+        sides: d.candidates
+          .filter((c) => c.market === ml.market && c.onMainLine)
+          .map((c) => ({
+            selection: c.selection,
+            line: c.line,
+            modelProbability: c.modelProbability,
+            marketProbability: c.marketProbability,
+            ev: c.ev,
+            passed: c.passed,
+            rejectReasons: c.rejectReasons,
+          })),
       }));
 
       await ctx.repo.insertAnalysisRun(
@@ -161,6 +179,9 @@ export function generateCandidatesJob(
           inputs: inputsKey,
           summary: {
             ...d.summary,
+            decisionReason: d.decisionReason,
+            fogReasons: d.fogReasons,
+            mainLines,
             rules,
             modelSource,
             impact: impact && impactFresh ? { used: useImpact, home: impact.home, away: impact.away } : null,
@@ -199,6 +220,9 @@ export function generateCandidatesJob(
         fixture: f.id,
         kickoff: f.kickoffAt.toISOString().slice(0, 16),
         outcome: d.outcome === 'SIGNAL' ? '🧭 SIGNAL' : '🌫️ NO_CLEAR_SIGNAL',
+        reason: d.decisionReason,
+        mainAH: mainLineCell(d.mainLines.ASIAN_HANDICAP),
+        mainOU: mainLineCell(d.mainLines.OVER_UNDER),
         pick: d.pick ? `${d.pick.market} ${d.pick.selection}${d.pick.line === null ? '' : ' ' + d.pick.line}` : '-',
         edge: d.pick?.edge ?? '-',
         odds: d.pick?.odds ?? '-',
@@ -218,6 +242,11 @@ function gateOf(c: ModelConfig | undefined) {
   if (!c) return { enabled: false, z: 0 };
   const test = c.metrics.test as { z?: number } | undefined;
   return { enabled: c.enabled, z: Number(test?.z ?? 0) };
+}
+
+/** "-1.25 (6)" when usable, else the status */
+function mainLineCell(ml: MainLine) {
+  return ml.status === 'OK' ? `${ml.line} (${ml.nBookmakers})` : ml.status;
 }
 
 function topReason(r: Partial<Record<string, number>>) {

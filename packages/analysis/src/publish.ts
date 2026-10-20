@@ -28,7 +28,11 @@ export const REASON_TH: Record<string, string> = {
   EDGE_BELOW_MIN: 'โมเดลกับตลาดมองใกล้เคียงกัน',
   EV_BELOW_MIN: 'ความคุ้มค่าเชิงสถิติไม่พอ',
   EDGE_TOO_LARGE: 'โมเดลกับตลาดต่างกันมากผิดปกติ (อาจมีข้อมูลที่โมเดลไม่รู้)',
+  MAIN_LINE_UNAVAILABLE: 'ยังไม่มีเส้นหลักของตลาดที่เชื่อถือได้',
+  NOT_MAIN_LINE: 'ไม่ใช่เส้นหลักของตลาด',
 };
+
+const MAIN_LINE_TH: Record<string, string> = { ASIAN_HANDICAP: 'แฮนดิแคปเส้นหลัก', OVER_UNDER: 'สูง/ต่ำเส้นหลัก' };
 
 const fmtLine = (x: number) => (x > 0 ? `+${x}` : x === 0 ? '0' : `${x}`);
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
@@ -64,8 +68,12 @@ export interface ReasonInput {
     agreement: boolean | null;
     gateZ: number | null;
     modelSource: string;
+    /** the pick is on the market's main line (rules-v0.6); absent for older runs */
+    onMainLine?: boolean | null;
   } | null;
   rejectReasons?: Partial<Record<string, number>>;
+  /** main-line rules (v0.6): why each main line gave no pick; preferred over the counts in rejectReasons */
+  fogReasons?: Array<{ market: string | null; reason: string }> | null;
   impact?: { home: { attackLoss: number; defenceLoss: number; missing: MissingPlayer[] }; away: { attackLoss: number; defenceLoss: number; missing: MissingPlayer[] } } | null;
   marketMove?: { opening: number; current: number } | null;
 }
@@ -92,13 +100,14 @@ export function buildReason(r: ReasonInput): string {
     if (p.agreement === true) lines.push(`✓ ${BRAND.AGREE}: โมเดล Elo มองทิศเดียวกัน`);
     else if (p.agreement === false) lines.push('• โมเดล Elo มองต่าง — ใช้ความระมัดระวัง');
     if (p.gateZ !== null) lines.push(`✓ โมเดลผ่านการทดสอบย้อนหลังในลีกนี้ (z = ${p.gateZ.toFixed(1)})`);
-    lines.push(`✓ อ้างอิงราคาจาก ${p.nBookmakers} เจ้า (ราคากลาง ${p.odds.toFixed(2)})`);
+    lines.push(`✓ ${p.onMainLine ? 'เส้นหลักของตลาด · ' : ''}อ้างอิงราคาจาก ${p.nBookmakers} เจ้า (ราคากลาง ${p.odds.toFixed(2)})`);
     if (p.modelSource === 'DC+IMPACT') lines.push('✓ ปรับตามผู้เล่นที่ขาดแล้ว');
   } else {
     lines.push(`${BRAND.NO_SIGNAL} (${when})`);
     lines.push('ไม่มีตลาดใดมีข้อมูลสนับสนุนเพียงพอ ณ เวลาที่วิเคราะห์');
-    const top = Object.entries(r.rejectReasons ?? {})
-      .filter(([k]) => k !== 'MARKET_NOT_PICKABLE') // a policy, not something this match lacked
+    const fog = (r.fogReasons ?? []).slice(0, 2).map((f) => (f.market ? `${MAIN_LINE_TH[f.market] ?? f.market}: ` : '') + (REASON_TH[f.reason] ?? f.reason));
+    const top = fog.length ? fog : Object.entries(r.rejectReasons ?? {})
+      .filter(([k]) => k !== 'MARKET_NOT_PICKABLE' && k !== 'NOT_MAIN_LINE') // policies, not something this match lacked
       .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
       .slice(0, 2)
       .map(([k]) => REASON_TH[k] ?? k);

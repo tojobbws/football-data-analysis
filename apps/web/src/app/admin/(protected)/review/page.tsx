@@ -186,7 +186,7 @@ export default async function AdminReview() {
                 </tbody>
               </table>
             </Section>
-            <Section title="ตามเวอร์ชันกติกาเลือกพิก" aside="rules-v0.5 เริ่มใช้ 2026-10-17">
+            <Section title="ตามเวอร์ชันกติกาเลือกพิก" aside="rules-v0.5 เริ่มใช้ 2026-10-17 · rules-v0.6 (เส้นหลักเท่านั้น) 2026-10-20">
               <table className="w-full text-sm">
                 <tbody className="tabular-nums">
                   {review.by_rules.map((r) => (

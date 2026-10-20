@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import type { OutcomeDistribution } from '@fp/analysis';
+import { DEFAULT_RULES, readMainLines, type OutcomeDistribution } from '@fp/analysis';
 import { buildRegistry, type PopularityRegistry } from '@fp/shared/popularity';
 import { webEnv } from './env';
 import { db } from './supabase';
@@ -294,7 +294,7 @@ export const matchBySlug = cache(async (slug: string) => {
   };
 
   const finished = FINISHED.includes(m.status_short);
-  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, qualification, notes] = await Promise.all([
+  const [rounds, snapshot, formHome, formAway, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, qualification, notes, mainRun] = await Promise.all([
     sb.from('analysis_predictions').select(COMPASS_SELECT).eq('fixture_id', m.id).order('published_at'),
     sb
       .from('analysis_predictions')
@@ -327,6 +327,16 @@ export const matchBySlug = cache(async (slug: string) => {
     sb.from('web_match_previews').select(PREVIEW_SELECT).eq('fixture_id', m.id).maybeSingle(),
     sb.from('web_qualification').select('leg, stage, agg_a, agg_b, p_a, p_b, p_extra_time, p_penalties, assumptions, computed_at, sides_tested, team_a_id, team_b_id').eq('fixture_id', m.id).maybeSingle(),
     sb.from('web_pick_explanations').select('analysis_prediction_id, note_th').eq('fixture_id', m.id),
+    // the main lines the decision rules judged, from their last run before kickoff
+    sb
+      .from('analysis_runs')
+      .select('started_at, mainLines:summary->mainLines')
+      .eq('fixture_id', m.id)
+      .eq('decision_rule_version', DEFAULT_RULES.version)
+      .lt('started_at', m.kickoff_at)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
   for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, notes })) if (r.error) fail(name, r.error);
   const noteFor = new Map((notes.data ?? []).map((n) => [Number(n.analysis_prediction_id), String(n.note_th)]));
@@ -346,6 +356,8 @@ export const matchBySlug = cache(async (slug: string) => {
     injuries: (injuries.data ?? []) as Array<{ team_id: number; player_name: string | null; type: string | null; reason: string | null }>,
     lineups: (lineups.data ?? []) as Array<{ team_id: number; player_name: string | null; number: number | null; position: string | null; is_starter: boolean }>,
     market: (market.data ?? []) as Array<{ market: string; selection: string; line: number | null; bookmakers: number; opening_odds: number | null; current_odds: number | null; last_quote_at: string }>,
+    // optional extra: without a run under the current rules the market card falls back to the consensus table
+    mainLines: mainRun.error || !mainRun.data ? null : { ...readMainLines(mainRun.data), runAt: String((mainRun.data as { started_at: string }).started_at) },
     stats: (stats.data ?? []) as Array<{ team_id: number; type: string; value_num: number | null; value_text: string | null }>,
     events: (events.data ?? []) as Array<{ elapsed: number | null; extra: number | null; team_id: number | null; player_name: string | null; type: string; detail: string | null }>,
     outlook: (outlook.data ?? null) as ModelOutlook | null,

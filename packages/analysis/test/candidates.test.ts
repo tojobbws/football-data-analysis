@@ -9,7 +9,7 @@ function q(bk: number, market: OddsQuote['market'], selection: string, line: num
   return { bookmakerId: bk, market, selection, line, homeLine, odds, updatedAt: at };
 }
 
-/** Two bookmakers, AH home -0.5 at ~evens, 1X2, O/U 2.5 */
+/** Three bookmakers (enough for a main line), AH home -0.5 at ~evens, 1X2, O/U 2.5 */
 function quotes(at = fresh): OddsQuote[] {
   return ([
     q(1, 'MATCH_WINNER', 'HOME', null, null, 2.0),
@@ -18,14 +18,21 @@ function quotes(at = fresh): OddsQuote[] {
     q(2, 'MATCH_WINNER', 'HOME', null, null, 2.05),
     q(2, 'MATCH_WINNER', 'DRAW', null, null, 3.4),
     q(2, 'MATCH_WINNER', 'AWAY', null, null, 3.9),
+    q(3, 'MATCH_WINNER', 'HOME', null, null, 2.02),
+    q(3, 'MATCH_WINNER', 'DRAW', null, null, 3.45),
+    q(3, 'MATCH_WINNER', 'AWAY', null, null, 3.95),
     q(1, 'ASIAN_HANDICAP', 'HOME', -0.5, -0.5, 1.95),
     q(1, 'ASIAN_HANDICAP', 'AWAY', 0.5, -0.5, 1.95),
     q(2, 'ASIAN_HANDICAP', 'HOME', -0.5, -0.5, 1.97),
     q(2, 'ASIAN_HANDICAP', 'AWAY', 0.5, -0.5, 1.93),
+    q(3, 'ASIAN_HANDICAP', 'HOME', -0.5, -0.5, 1.96),
+    q(3, 'ASIAN_HANDICAP', 'AWAY', 0.5, -0.5, 1.94),
     q(1, 'OVER_UNDER', 'OVER', 2.5, null, 1.9),
     q(1, 'OVER_UNDER', 'UNDER', 2.5, null, 2.0),
     q(2, 'OVER_UNDER', 'OVER', 2.5, null, 1.92),
     q(2, 'OVER_UNDER', 'UNDER', 2.5, null, 1.98),
+    q(3, 'OVER_UNDER', 'OVER', 2.5, null, 1.91),
+    q(3, 'OVER_UNDER', 'UNDER', 2.5, null, 1.99),
   ] as OddsQuote[]).map((x) => ({ ...x, updatedAt: at }));
 }
 
@@ -61,7 +68,7 @@ describe('noVig / consensus', () => {
   it('builds per-book median consensus with best price', () => {
     const c = consensus(quotes(), NOW, 12);
     const under = c.find((x) => x.market === 'OVER_UNDER' && x.selection === 'UNDER')!;
-    expect(under.nBookmakers).toBe(2);
+    expect(under.nBookmakers).toBe(3);
     expect(under.bestOdds).toBe(2.0);
     expect(under.medianOdds).toBeCloseTo(1.99, 10);
     const sum = c.filter((x) => x.market === 'MATCH_WINNER').reduce((s, x) => s + x.marketProbability, 0);
@@ -224,7 +231,7 @@ describe('generateCandidates', () => {
 
   it('is deterministic', () => {
     expect(generateCandidates(input())).toEqual(generateCandidates(input()));
-    expect(DEFAULT_RULES.version).toBe('rules-v0.5');
+    expect(DEFAULT_RULES.version).toBe('rules-v0.6');
   });
 });
 
@@ -268,7 +275,7 @@ describe('closingMarket', () => {
       'OVER_UNDER|UNDER|2.5',
     ]);
     const home = rows.find((r) => r.market === 'ASIAN_HANDICAP' && r.selection === 'HOME')!;
-    expect(home.nBookmakers).toBe(2);
+    expect(home.nBookmakers).toBe(3);
     expect(home.marketProbability).toBeGreaterThan(0.49);
     expect(home.marketProbability).toBeLessThan(0.51);
   });

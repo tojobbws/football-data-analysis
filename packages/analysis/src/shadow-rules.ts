@@ -92,6 +92,8 @@ export const SHADOW_RULES: DecisionRules = {
   ...DEFAULT_RULES,
   version: 'rules-v0.4-shadow',
   modelBias: MODEL_BIAS_2026_10_12,
+  // frozen for the trial (ADR 0003): keeps choosing among every offered line, as when the trial began
+  mainLineOnly: false,
 };
 
 /**

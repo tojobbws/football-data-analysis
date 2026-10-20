@@ -9,7 +9,7 @@ import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/matc
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { QualificationCard } from '@/components/qualification';
 import { Badge, Card, Note } from '@/components/sheet';
-import { dataGaps, stageLabelTh } from '@fp/analysis';
+import { dataGaps, stageLabelTh, type MainLine, type MainLineMarket } from '@fp/analysis';
 import { TeamLogo } from '@/components/ui';
 import { FINISHED, ROUND, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { isLive, toSeed } from '@/lib/live';
@@ -319,39 +319,69 @@ function pickLinePriced(d: Data, pick: Compass): boolean | null {
   return rows ? rows.every((x) => x.r) : null;
 }
 
+/**
+ * Both sides of a market's main line. With a run under the current pick rules, the line and its latest
+ * prices are the ones the decision used (`d.mainLines`); the opening price still comes from the consensus.
+ * Without one (older matches) the line is read off the consensus table as before.
+ */
+function mainLineRows(d: Data, market: MainLineMarket): { rows: Array<{ label: string; r: MarketRow | undefined }>; ml: MainLine | null } {
+  const m = d.match;
+  const [a, b] = market === 'ASIAN_HANDICAP' ? (['HOME', 'AWAY'] as const) : (['OVER', 'UNDER'] as const);
+  const own = (s: string, l: number) => (market === 'ASIAN_HANDICAP' && s === 'AWAY' ? -l || 0 : l);
+  const rows = d.market.filter((r) => r.market === market);
+  const find = (s: string, l: number) => rows.find((x) => x.selection === s && x.line != null && Number(x.line) === own(s, l));
+  if (d.mainLines) {
+    const ml = d.mainLines[market] ?? null;
+    if (ml?.status !== 'OK' || ml.line == null || !ml.odds) return { rows: [], ml };
+    const line = ml.line;
+    return {
+      ml,
+      rows: [
+        [a, ml.odds.first],
+        [b, ml.odds.second],
+      ].map(([s, price]) => {
+        const consensus = find(s as string, line);
+        return {
+          label: selectionLabel(market, s as string, own(s as string, line), m.home.name, m.away.name),
+          r: { market, selection: s as string, line: own(s as string, line), bookmakers: ml.nBookmakers, opening_odds: consensus?.opening_odds ?? null, current_odds: price as number, last_quote_at: ml.updatedAt ?? '' },
+        };
+      }),
+    };
+  }
+  const line = mainLine(rows, a, b);
+  return { ml: null, rows: line == null ? [] : [a, b].map((s) => ({ label: selectionLabel(market, s, own(s, line), m.home.name, m.away.name), r: find(s, line) })) };
+}
+
+const MAIN_LINE_MISSING_TH: Record<string, string> = {
+  NO_QUOTES: 'ไม่มีเจ้าที่ให้ราคาครบสองฝั่ง',
+  TOO_FEW_BOOKMAKERS: 'ราคาครบสองฝั่งไม่ถึง 3 เจ้า',
+  STALE: 'ราคาล่าสุดเก่าเกินไป',
+  UNBALANCED: 'ไม่พบเส้นที่ราคาสองฝั่งใกล้กัน',
+};
+
 function MarketSection({ d, pick }: { d: Data; pick: Compass | null }) {
   const m = d.match;
   const mw = d.market.filter((r) => r.market === 'MATCH_WINNER');
-  const ah = d.market.filter((r) => r.market === 'ASIAN_HANDICAP');
-  const ou = d.market.filter((r) => r.market === 'OVER_UNDER');
-  const ahLine = mainLine(ah, 'HOME', 'AWAY');
-  const ouLine = mainLine(ou, 'OVER', 'UNDER');
+  const ah = mainLineRows(d, 'ASIAN_HANDICAP');
+  const ou = mainLineRows(d, 'OVER_UNDER');
   const pickRows = pick ? pickLineRows(d, pick) : null;
   const pickLabel = pickRows?.[0]?.label ?? null;
   // the pick's line is already in the table when it is the main line
-  const pickOnMain = pickRows != null && ((pick!.market === 'ASIAN_HANDICAP' && ahLine != null && Math.abs(Number(pick!.line)) === Math.abs(ahLine)) || (pick!.market === 'OVER_UNDER' && Number(pick!.line) === ouLine));
-  const groups: Array<{ name: string; rows: Array<{ label: string; r: MarketRow | undefined }> }> = [
-    ...(pickRows && !pickOnMain && pickRows.every((x) => x.r) ? [{ name: 'เส้นของเข็มทิศเกม', rows: pickRows }] : []),
+  const onMain = (g: typeof ah) => g.rows.some((x) => x.label === pickLabel);
+  const pickOnMain = pickRows != null && (onMain(ah) || onMain(ou));
+  const mainName = (name: string, g: typeof ah) => (g.ml ? `${name} · เส้นหลัก ${g.ml.nBookmakers} เจ้า` : name);
+  const groups: Array<{ name: string; rows: Array<{ label: string; r: MarketRow | undefined }>; missing?: string }> = [
     { name: '1X2', rows: (['HOME', 'DRAW', 'AWAY'] as const).map((s) => ({ label: selectionLabel('MATCH_WINNER', s, null, m.home.name, m.away.name), r: mw.find((x) => x.selection === s) })) },
-    {
-      name: 'แฮนดิแคป',
-      rows:
-        ahLine != null
-          ? [
-              { label: selectionLabel('ASIAN_HANDICAP', 'HOME', ahLine, m.home.name, m.away.name), r: ah.find((x) => x.selection === 'HOME' && Number(x.line) === ahLine) },
-              { label: selectionLabel('ASIAN_HANDICAP', 'AWAY', -ahLine || 0, m.home.name, m.away.name), r: ah.find((x) => x.selection === 'AWAY' && Number(x.line) === (-ahLine || 0)) },
-            ]
-          : [],
-    },
-    {
-      name: 'สูง/ต่ำ',
-      rows: ouLine != null ? (['OVER', 'UNDER'] as const).map((s) => ({ label: selectionLabel('OVER_UNDER', s, ouLine, m.home.name, m.away.name), r: ou.find((x) => x.selection === s && Number(x.line) === ouLine) })) : [],
-    },
+    { name: mainName('แฮนดิแคป', ah), rows: ah.rows, missing: ah.ml && ah.ml.status !== 'OK' ? MAIN_LINE_MISSING_TH[ah.ml.status] : undefined },
+    { name: mainName('สูง/ต่ำ', ou), rows: ou.rows, missing: ou.ml && ou.ml.status !== 'OK' ? MAIN_LINE_MISSING_TH[ou.ml.status] : undefined },
+    // a published pick off today's main line (an older round, or the market moved) stays apart from it
+    ...(pickRows && !pickOnMain && pickRows.every((x) => x.r) ? [{ name: 'เส้นตลาดอื่น · เส้นของเข็มทิศเกม', rows: pickRows }] : []),
   ]
     .map((g) => ({ ...g, rows: g.rows.filter((x) => x.r) }))
-    .filter((g) => g.rows.length);
+    .filter((g) => g.rows.length || g.missing);
   const last = d.market.reduce<string | null>((a, r) => (!a || r.last_quote_at > a ? r.last_quote_at : a), null);
   const books = d.market.length ? Math.max(...d.market.map((r) => r.bookmakers)) : 0;
+  const mainAt = [ah.ml, ou.ml].map((x) => (x?.status === 'OK' ? x.updatedAt : null)).filter((x): x is string => !!x).sort().pop() ?? null;
 
   return (
     <Card id="market" title="แรงตลาด" description={last ? `ค่ากลางจากสูงสุด ${books} เจ้ามือ · อัปเดต ${dateTimeTH(last)}` : 'ราคาก่อนเตะจากหลายเจ้ามือ'}>
@@ -373,6 +403,13 @@ function MarketSection({ d, pick }: { d: Data; pick: Compass | null }) {
                     {g.name}
                   </th>
                 </tr>
+                {g.missing ? (
+                  <tr>
+                    <td colSpan={4} className="py-1.5 text-xs text-zinc-500">
+                      ยังไม่มีเส้นหลักที่เชื่อถือได้ ({g.missing})
+                    </td>
+                  </tr>
+                ) : null}
                 {g.rows.map(({ label, r }) => {
                   const o = Number(r!.opening_odds);
                   const c = Number(r!.current_odds);
@@ -399,6 +436,12 @@ function MarketSection({ d, pick }: { d: Data; pick: Compass | null }) {
               เข็มทิศเกม <b className="font-semibold text-zinc-950">{pickLabel}</b> ใช้ราคากลางของเส้นนี้ {odds(pick.odds_at_publish)} ณ {dateTimeTH(pick.published_at)}
               {pickRows!.every((x) => x.r) ? '' : ' · ข้อมูลราคาล่าสุดไม่มีเส้นนี้ครบทั้งสองฝั่ง จึงเทียบกับราคาปัจจุบันไม่ได้'}
             </p>
+          ) : null}
+          {d.mainLines ? (
+            <Note>
+              เส้นหลัก = เส้นที่ราคาสองฝั่งใกล้กันที่สุด จากเจ้าที่ให้ราคาครบสองฝั่งอย่างน้อย 3 เจ้า · เข็มทิศเกมวิเคราะห์เฉพาะเส้นหลัก
+              {mainAt ? ` · ราคาเส้นหลัก ณ ${dateTimeTH(mainAt)}` : ''}
+            </Note>
           ) : null}
           <Note>ราคาลด (สีเขียว) = ตลาดให้น้ำหนักฝั่งนั้นมากขึ้น · ไฮไลต์เมื่อเปลี่ยนตั้งแต่ 3%</Note>
         </>

@@ -74,15 +74,18 @@ afterAll(async () => {
 
 const q = async (sql: string) => (await db.query<Record<string, unknown>>(sql)).rows;
 
-/** Two bookmakers price AH Home -1.25 at the model's probability minus 5pp (3% margin) -> a real edge on HOME. */
+/**
+ * Three bookmakers (enough for a main line) price AH Home -1.25 at the model's probability minus 5pp
+ * (3% margin) -> a real edge on HOME.
+ */
 async function ahMarketBelowModel(modelVersion: string, at: string) {
   const [row] = await q(`select probability from probability_predictions
                          where fixture_id = 9001 and model_version_id = '${modelVersion}' and market = 'ASIAN_HANDICAP'
                            and selection = 'HOME' and line = -1.25 order by computed_at desc limit 1`);
   const fairHome = Number(row!.probability) - 0.05;
-  await db.query(`insert into bookmakers (id, name) values (9, 'Book B') on conflict do nothing`);
+  await db.query(`insert into bookmakers (id, name) values (9, 'Book B'), (7, 'Book C') on conflict do nothing`);
   const values: string[] = [];
-  for (const bk of [8, 9]) {
+  for (const bk of [8, 9, 7]) {
     values.push(`(9001, ${bk}, 'ASIAN_HANDICAP', 4, 'Asian Handicap', 'HOME', -1.25, -1.25, 'Home -1.25', ${(1 / (fairHome * 1.03)).toFixed(3)}, '${at}')`);
     values.push(`(9001, ${bk}, 'ASIAN_HANDICAP', 4, 'Asian Handicap', 'AWAY', 1.25, -1.25, 'Away +1.25', ${(1 / ((1 - fairHome) * 1.03)).toFixed(3)}, '${at}')`);
   }
@@ -203,13 +206,29 @@ describe('candidate generator job (Phase 5)', () => {
   it('with a real market below the model -> 🧭 SIGNAL with rank 1 and latest-decision view', async () => {
     await ahMarketBelowModel('dixon-coles-v0.2', new Date(RUN_AT.getTime() - 3_600_000).toISOString());
 
-    await generateCandidatesJob(ctx, { hours: 72, now: new Date(RUN_AT.getTime() + 4 * 3_600_000), rules: { ...DEFAULT_RULES, version: 'rules-test', minOdds: 1.1 } });
+    // the fixture's only AH line is priced off the model's ~70% -> allow it as the main line here
+    const rules = { ...DEFAULT_RULES, version: 'rules-test', minOdds: 1.1, maxMainLineOffEven: 0.5 };
+    await generateCandidatesJob(ctx, { hours: 72, now: new Date(RUN_AT.getTime() + 4 * 3_600_000), rules });
     const latest = (await q(`select * from analysis_latest_decision where fixture_id = 9001`))[0]!;
     expect(latest.outcome).toBe('SIGNAL');
     expect(latest.market).toBe('ASIAN_HANDICAP');
     expect(latest.selection).toBe('HOME');
+    expect(Number(latest.line)).toBe(-1.25);
     expect(Number(latest.edge)).toBeGreaterThan(0.03);
     expect(latest.strength).toBe('LEAN'); // gate z unknown (0) in this fixture -> capped at LEAN
+    // the run explains its line: where the main line came from, how many books, how both sides were judged
+    const summary = latest.summary as { decisionReason: string; mainLines: Array<Record<string, unknown> & { sides: Array<Record<string, unknown>> }> };
+    expect(summary.decisionReason).toBe('SIGNAL_ON_MAIN_LINE');
+    const ah = summary.mainLines.find((m) => m.market === 'ASIAN_HANDICAP')!;
+    expect(ah).toMatchObject({ status: 'OK', source: 'CONSENSUS_CLOSEST_TO_EVEN', line: -1.25, nBookmakers: 3 });
+    expect(ah.sides.map((s) => s.selection).sort()).toEqual(['AWAY', 'HOME']);
+    const home = ah.sides.find((s) => s.selection === 'HOME')!;
+    expect(home.passed).toBe(true);
+    expect(home.modelProbability).toBeCloseTo(Number(latest.model_probability), 5);
+    expect(home.marketProbability).toBeCloseTo(Number(latest.market_probability), 5);
+    expect(typeof home.ev).toBe('number');
+    const [pickRow] = await q(`select factors from analysis_candidates where id = ${latest.candidate_id}`);
+    expect((pickRow!.factors as { onMainLine: boolean }).onMainLine).toBe(true);
     // the shadow rules ran on the same inputs and kept their decision aside
     const shadow = await q(`select rules_version, outcome, passed from shadow_decisions where fixture_id = 9001 and publish_round = 'LATEST'`);
     expect(shadow).toHaveLength(1);

@@ -4,6 +4,8 @@
  * For one fixture: compare model probabilities (Probability Engine) with the
  * bookmaker consensus (no-vig), evaluate EVERY offered selection, apply the
  * decision rules, rank what passes, and pick at most ONE — or NO_CLEAR_SIGNAL.
+ * Since rules-v0.6 only the market's main AH and O/U line can be picked (ADR 0008); the other
+ * lines are still evaluated and stored, rejected as NOT_MAIN_LINE.
  *
  * Deterministic and reproducible: same inputs + same rules version = same output.
  * The AI layer (Phase 6) may only explain or downgrade this decision, never invent numbers.
@@ -72,6 +74,12 @@ export interface DecisionRules {
   strongEdge: number;
   mediumEdge: number;
   maxUnmodelledLoss: number;
+  /** v0.6: only the main AH / O/U line may be picked; false = every offered line (v0.5, shadow rules) */
+  mainLineOnly: boolean;
+  /** bookmakers quoting both sides of a line, fresh and sane, before it can be the main line */
+  minMainLineBookmakers: number;
+  /** a balanced line whose sides sit further than this from 50/50 is not trusted as the main line */
+  maxMainLineOffEven: number;
   /**
    * Shadow rules only: the model's usual lean against the market per selection and line
    * (`MARKET|SELECTION|line`, probability points), taken off the model probability before the
@@ -81,7 +89,9 @@ export interface DecisionRules {
 }
 
 export const DEFAULT_RULES: DecisionRules = {
-  version: 'rules-v0.5',
+  // v0.6 (ADR 0008): the pick sits on the main line only. Under v0.5 the edge cap pushed the pick
+  // onto whichever far line still fell under it (Liverpool -2.5 beside a -1.25 main line, 2026-10-20)
+  version: 'rules-v0.6',
   pickMarkets: PICK_MARKETS,
   minEdge: 0.03,
   // 0.15 in v0.3/v0.4: picks 12+ points above the market hit 38.9% (n=18) against 58.3% at 6–9 (n=12), ADR 0006
@@ -97,6 +107,9 @@ export const DEFAULT_RULES: DecisionRules = {
   strongEdge: 0.06,
   mediumEdge: 0.045,
   maxUnmodelledLoss: 0.25,
+  mainLineOnly: true,
+  minMainLineBookmakers: 3,
+  maxMainLineOffEven: 0.15,
 };
 
 export type SignalStrength = 'STRONG' | 'MEDIUM' | 'LEAN';
@@ -112,7 +125,9 @@ export type RejectReason =
   | 'ODDS_OUT_OF_RANGE'
   | 'EDGE_BELOW_MIN'
   | 'EV_BELOW_MIN'
-  | 'EDGE_TOO_LARGE';
+  | 'EDGE_TOO_LARGE'
+  | 'MAIN_LINE_UNAVAILABLE'
+  | 'NOT_MAIN_LINE';
 
 export interface Candidate {
   market: MarketCode;
@@ -138,15 +153,67 @@ export interface Candidate {
   rejectReasons: RejectReason[];
   distribution: OutcomeDistribution | null;
   oddsUpdatedAt: string;
+  /** on its market's main line; null for 1X2 */
+  onMainLine: boolean | null;
 }
+
+/**
+ * Why the decision came out as it did:
+ *  SIGNAL_ON_MAIN_LINE   - a pick on the main line (v0.6)
+ *  SIGNAL                - a pick under rules that may use any line (v0.5, shadow rules)
+ *  MAIN_LINE_UNAVAILABLE - no pick market had a main line to judge
+ *  NO_QUALIFIED_SIGNAL   - nothing passed the rules
+ */
+export type DecisionReason = 'SIGNAL_ON_MAIN_LINE' | 'SIGNAL' | 'MAIN_LINE_UNAVAILABLE' | 'NO_QUALIFIED_SIGNAL';
 
 export interface Decision {
   rulesVersion: string;
   outcome: 'SIGNAL' | 'NO_CLEAR_SIGNAL';
+  decisionReason: DecisionReason;
   pick: Candidate | null;
   /** passed candidates first (by supportScore), then rejected ones */
   candidates: Candidate[];
-  summary: { evaluated: number; passed: number; rejectReasons: Partial<Record<RejectReason, number>> };
+  /** the main AH and O/U line of this evaluation */
+  mainLines: Record<MainLineMarket, MainLine>;
+  /**
+   * Main-line rules without a pick: why, per pick market (the main-line side closest to passing),
+   * after the reasons that hold for the whole fixture (market null). Empty otherwise.
+   */
+  fogReasons: Array<{ market: MainLineMarket | null; reason: RejectReason }>;
+  /** under main-line rules, rejectReasons count only main-line (and 1X2) candidates: why the main line failed */
+  summary: { evaluated: number; passed: number; notMainLine: number; rejectReasons: Partial<Record<RejectReason, number>> };
+}
+
+export type MainLineMarket = 'ASIAN_HANDICAP' | 'OVER_UNDER';
+
+/**
+ * OK                 - usable
+ * NO_QUOTES          - no line has a bookmaker quoting both sides
+ * TOO_FEW_BOOKMAKERS - no line has `minMainLineBookmakers` bookmakers quoting both sides
+ * STALE              - such a line exists only among quotes older than `maxOddsAgeHours`
+ * UNBALANCED         - the most balanced line is still far from 50/50: not a main line
+ */
+export type MainLineStatus = 'OK' | 'NO_QUOTES' | 'TOO_FEW_BOOKMAKERS' | 'STALE' | 'UNBALANCED';
+
+export interface MainLine {
+  market: MainLineMarket;
+  status: MainLineStatus;
+  /**
+   * API-Football marks no main line on pre-match odds, so it is derived: the line whose two sides,
+   * de-margined per bookmaker and taken at the median, sit closest to 50/50.
+   */
+  source: 'CONSENSUS_CLOSEST_TO_EVEN';
+  /** AH: the home team's line; O/U: the total. Set for every status but NO_QUOTES, usable only when OK */
+  line: number | null;
+  /** bookmakers quoting both sides of the line */
+  nBookmakers: number;
+  /** bookmakers with a quote on the line that was left out (one side missing, or the sides don't form a market) */
+  incompleteBookmakers: number;
+  /** no-vig probability of HOME (AH) or OVER (O/U) */
+  firstProbability: number | null;
+  /** median price of HOME / AWAY or OVER / UNDER */
+  odds: { first: number; second: number } | null;
+  updatedAt: string | null;
 }
 
 /** Accepted range for sum(1/odds) of one bookmaker's complete market. */
@@ -227,19 +294,28 @@ export function consensus(quotes: readonly OddsQuote[], now: Date, maxAgeHours: 
     bestBookmakerId: number;
     updatedAt: Date;
     allSides: Record<string, number>;
+    /** bookmakers on this book left out: a side missing or not priced, or the sides don't form a market */
+    incompleteBookmakers: number;
   }> = [];
 
   for (const [key, book] of books) {
     const perBookmaker = byBook.get(key)!;
     const probs: Record<string, number[]> = {};
     const prices: Record<string, Array<{ odds: number; bk: number; at: Date }>> = {};
+    let incomplete = 0;
     for (const [bk, sides] of perBookmaker) {
       const qs = book.sides.map((s) => sides.get(sideKey(s.selection, s.line)));
-      if (qs.some((x) => !x || !(x.odds > 1))) continue;
+      if (qs.some((x) => !x || !(x.odds > 1))) {
+        incomplete++;
+        continue;
+      }
       // sanity: a real book has a small positive margin. Sum of 1/odds < 1 (or absurdly high)
       // means the sides are not actually the same market -> never trust it.
       const book1 = qs.reduce((acc, x) => acc + 1 / x!.odds, 0);
-      if (book1 < MIN_BOOK_SUM || book1 > MAX_BOOK_SUM) continue;
+      if (book1 < MIN_BOOK_SUM || book1 > MAX_BOOK_SUM) {
+        incomplete++;
+        continue;
+      }
       const nv = noVig(qs.map((x) => x!.odds));
       book.sides.forEach((s, i) => {
         const k = sideKey(s.selection, s.line);
@@ -267,6 +343,7 @@ export function consensus(quotes: readonly OddsQuote[], now: Date, maxAgeHours: 
         bestBookmakerId: best.bk,
         updatedAt: new Date(Math.max(...ps.map((p) => p.at.getTime()))),
         allSides,
+        incompleteBookmakers: incomplete,
       });
     });
   }
@@ -282,12 +359,20 @@ export function generateCandidates(input: CandidateInput, rules: DecisionRules =
   const cons = consensus(input.quotes, input.now, rules.maxOddsAgeHours);
   const mw = cons.find((c) => c.market === 'MATCH_WINNER')?.allSides ?? null;
   const minData = Math.min(input.teamData.homeWeightedMatches, input.teamData.awayWeightedMatches);
+  const mains = mainLines(input.quotes, input.now, rules);
 
   const candidates: Candidate[] = cons.map((c) => {
     const reasons: RejectReason[] = [...fixtureReasons];
     if (!rules.pickMarkets.includes(c.market)) reasons.push('MARKET_NOT_PICKABLE');
     const gate = input.gates[c.market];
     if (!gate?.enabled) reasons.push('MARKET_GATED_OFF');
+    const main = c.market === 'MATCH_WINNER' ? null : mains[c.market];
+    const onMainLine = main ? main.status === 'OK' && isOnLine(c.market, c.selection, c.line, main.line) : null;
+    if (rules.mainLineOnly && main) {
+      // a far line never stands in for a missing or stale main line
+      if (main.status !== 'OK') reasons.push('MAIN_LINE_UNAVAILABLE');
+      else if (!onMainLine) reasons.push('NOT_MAIN_LINE');
+    }
 
     const mp = input.model.find((m) => m.market === c.market && m.selection === c.selection && lineKey(m.line) === lineKey(c.line));
     if (!mp) reasons.push('NO_MODEL_PRICE');
@@ -345,22 +430,160 @@ export function generateCandidates(input: CandidateInput, rules: DecisionRules =
       rejectReasons: reasons,
       distribution: dist,
       oddsUpdatedAt: c.updatedAt.toISOString(),
+      onMainLine,
     };
   });
 
   candidates.sort((a, b) => Number(b.passed) - Number(a.passed) || b.supportScore - a.supportScore || (b.edge ?? -1) - (a.edge ?? -1));
   const pick = candidates[0]?.passed ? candidates[0] : null;
 
+  // the far lines' reasons would drown out why the main line itself failed
+  const counted = candidates.filter((c) => !c.rejectReasons.includes('NOT_MAIN_LINE'));
   const counts: Partial<Record<RejectReason, number>> = {};
-  for (const c of candidates) for (const r of c.rejectReasons) counts[r] = (counts[r] ?? 0) + 1;
+  for (const c of counted) for (const r of c.rejectReasons) counts[r] = (counts[r] ?? 0) + 1;
+
+  const pickMains = rules.pickMarkets.filter((m): m is MainLineMarket => m !== 'MATCH_WINNER').map((m) => mains[m]);
+  const decisionReason: DecisionReason = pick
+    ? rules.mainLineOnly
+      ? 'SIGNAL_ON_MAIN_LINE'
+      : 'SIGNAL'
+    : rules.mainLineOnly && pickMains.length && pickMains.every((m) => m.status !== 'OK')
+      ? 'MAIN_LINE_UNAVAILABLE'
+      : 'NO_QUALIFIED_SIGNAL';
+
+  const fogReasons: Decision['fogReasons'] = [];
+  if (!pick && rules.mainLineOnly) {
+    for (const reason of fixtureReasons) fogReasons.push({ market: null, reason });
+    for (const m of rules.pickMarkets) {
+      if (m === 'MATCH_WINNER') continue;
+      if (mains[m].status !== 'OK') {
+        fogReasons.push({ market: m, reason: 'MAIN_LINE_UNAVAILABLE' });
+        continue;
+      }
+      // candidates are sorted by edge among the rejected, so the first is the side closest to passing
+      const side = candidates.find((c) => c.market === m && c.onMainLine);
+      const reason = side?.rejectReasons.find((r) => !fixtureReasons.includes(r));
+      if (reason) fogReasons.push({ market: m, reason });
+    }
+  }
 
   return {
     rulesVersion: rules.version,
     outcome: pick ? 'SIGNAL' : 'NO_CLEAR_SIGNAL',
+    decisionReason,
     pick,
     candidates,
-    summary: { evaluated: candidates.length, passed: candidates.filter((c) => c.passed).length, rejectReasons: counts },
+    mainLines: mains,
+    fogReasons,
+    summary: {
+      evaluated: candidates.length,
+      passed: candidates.filter((c) => c.passed).length,
+      notMainLine: candidates.length - counted.length,
+      rejectReasons: counts,
+    },
   };
+}
+
+/** AH: the side at L pairs with the other side at -L, so HOME -1.25 and AWAY +1.25 are both on home line -1.25. */
+function isOnLine(market: MarketCode, selection: string, line: number | null, mainLine: number | null): boolean {
+  if (line === null || mainLine === null) return false;
+  const own = market === 'ASIAN_HANDICAP' && selection === 'AWAY' ? (line === 0 ? 0 : -line) : line;
+  return lineKey(own) === lineKey(mainLine);
+}
+
+type ConsensusRow = ReturnType<typeof consensus>[number];
+
+/** Both sides of each line of a market: AH keyed by the home line, O/U by the total. */
+function linePairs(cons: readonly ConsensusRow[], market: MainLineMarket) {
+  const [first, second] = market === 'ASIAN_HANDICAP' ? ['HOME', 'AWAY'] : ['OVER', 'UNDER'];
+  const pairs: Array<{ line: number; first: ConsensusRow; second: ConsensusRow }> = [];
+  for (const a of cons.filter((c) => c.market === market && c.selection === first && c.line !== null)) {
+    const other = market === 'ASIAN_HANDICAP' ? (a.line === 0 ? 0 : -a.line!) : a.line;
+    const b = cons.find((c) => c.market === market && c.selection === second && lineKey(c.line) === lineKey(other));
+    if (b) pairs.push({ line: a.line!, first: a, second: b });
+  }
+  return pairs;
+}
+
+/**
+ * The line whose sides sit closest to 50/50 among lines with at least `minBookmakers` bookmakers;
+ * ties go to the line with more bookmakers, then the smaller line, so the choice is deterministic.
+ */
+function balancedLine<T extends { line: number; first: ConsensusRow }>(pairs: readonly T[], minBookmakers: number): T | null {
+  const off = (p: T) => Math.abs(p.first.marketProbability - 0.5);
+  return (
+    pairs
+      .filter((p) => p.first.nBookmakers >= minBookmakers)
+      .sort((a, b) => off(a) - off(b) || b.first.nBookmakers - a.first.nBookmakers || Math.abs(a.line) - Math.abs(b.line))[0] ?? null
+  );
+}
+
+/**
+ * The market's main AH and O/U line from fresh quotes. Only fresh quotes can define it: a bookmaker
+ * that stopped quoting a line after the market moved keeps its old quote as its latest one. When no
+ * fresh line qualifies the status says why, and the decision rules pick nothing on that market.
+ */
+export function mainLines(quotes: readonly OddsQuote[], now: Date, rules: Pick<DecisionRules, 'maxOddsAgeHours' | 'minMainLineBookmakers' | 'maxMainLineOffEven'>): Record<MainLineMarket, MainLine> {
+  const fresh = consensus(quotes, now, rules.maxOddsAgeHours);
+  const all = consensus(quotes, now, Infinity);
+  const one = (market: MainLineMarket): MainLine => {
+    const of = (p: { line: number; first: ConsensusRow; second: ConsensusRow } | null, status: MainLineStatus): MainLine => ({
+      market,
+      status,
+      source: 'CONSENSUS_CLOSEST_TO_EVEN',
+      line: p?.line ?? null,
+      nBookmakers: p?.first.nBookmakers ?? 0,
+      incompleteBookmakers: p?.first.incompleteBookmakers ?? 0,
+      firstProbability: p ? round(p.first.marketProbability, 5) : null,
+      odds: p ? { first: round(p.first.medianOdds, 3), second: round(p.second.medianOdds, 3) } : null,
+      updatedAt: p ? new Date(Math.max(p.first.updatedAt.getTime(), p.second.updatedAt.getTime())).toISOString() : null,
+    });
+    const freshPairs = linePairs(fresh, market);
+    const best = balancedLine(freshPairs, rules.minMainLineBookmakers);
+    if (best) return of(best, Math.abs(best.first.marketProbability - 0.5) > rules.maxMainLineOffEven ? 'UNBALANCED' : 'OK');
+    const allPairs = linePairs(all, market);
+    const older = balancedLine(allPairs, rules.minMainLineBookmakers);
+    if (older) return of(older, 'STALE');
+    const thin = balancedLine(freshPairs, 1) ?? balancedLine(allPairs, 1);
+    return thin ? of(thin, 'TOO_FEW_BOOKMAKERS') : of(null, 'NO_QUOTES');
+  };
+  return { ASIAN_HANDICAP: one('ASIAN_HANDICAP'), OVER_UNDER: one('OVER_UNDER') };
+}
+
+const MAIN_LINE_STATUSES: readonly MainLineStatus[] = ['OK', 'NO_QUOTES', 'TOO_FEW_BOOKMAKERS', 'STALE', 'UNBALANCED'];
+
+/**
+ * The main lines stored in a run's summary (`analysis_runs.summary.mainLines`), as the site reads
+ * them back: the exact line and prices the decision used. Malformed entries are dropped, not repaired.
+ */
+export function readMainLines(summary: unknown): Partial<Record<MainLineMarket, MainLine>> {
+  const list = (summary as { mainLines?: unknown } | null)?.mainLines;
+  const out: Partial<Record<MainLineMarket, MainLine>> = {};
+  if (!Array.isArray(list)) return out;
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+  for (const m of list as Array<Record<string, unknown>>) {
+    if (m?.market !== 'ASIAN_HANDICAP' && m?.market !== 'OVER_UNDER') continue;
+    const status = m.status as MainLineStatus;
+    if (!MAIN_LINE_STATUSES.includes(status)) continue;
+    const line = num(m.line);
+    if (m.line != null && line === null) continue;
+    const odds = m.odds as { first?: unknown; second?: unknown } | null;
+    const first = num(odds?.first);
+    const second = num(odds?.second);
+    if (status === 'OK' && (line === null || first === null || second === null)) continue;
+    out[m.market] = {
+      market: m.market,
+      status,
+      source: 'CONSENSUS_CLOSEST_TO_EVEN',
+      line,
+      nBookmakers: num(m.nBookmakers) ?? 0,
+      incompleteBookmakers: num(m.incompleteBookmakers) ?? 0,
+      firstProbability: num(m.firstProbability),
+      odds: first !== null && second !== null ? { first, second } : null,
+      updatedAt: typeof m.updatedAt === 'string' ? m.updatedAt : null,
+    };
+  }
+  return out;
 }
 
 /**
@@ -423,7 +646,8 @@ export const CLOSING_MAX_AGE_HOURS = 24;
 
 /**
  * The market at kickoff, compactly: the 1X2 and, for Asian handicap and over/under, only the main
- * line (the one whose sides are closest to 50/50). Quotes from kickoff onwards are ignored.
+ * line (the one whose sides are closest to 50/50, same choice as `mainLines` but from any number of
+ * bookmakers, since this is a record, not a pick). Quotes from kickoff onwards are ignored.
  */
 export function closingMarket(quotes: readonly OddsQuote[], kickoffAt: Date) {
   const cons = consensus(
@@ -431,21 +655,9 @@ export function closingMarket(quotes: readonly OddsQuote[], kickoffAt: Date) {
     kickoffAt,
     CLOSING_MAX_AGE_HOURS,
   );
-  type Side = (typeof cons)[number];
-  const mainLine = (market: MarketCode, first: string, second: string, pair: (line: number | null) => number | null) => {
-    let best: [Side, Side] | null = null;
-    for (const a of cons.filter((c) => c.market === market && c.selection === first)) {
-      const b = cons.find((c) => c.market === market && c.selection === second && lineKey(c.line) === lineKey(pair(a.line)));
-      if (!b) continue;
-      const off = Math.abs(a.marketProbability - 0.5);
-      const bestOff = best ? Math.abs(best[0].marketProbability - 0.5) : Infinity;
-      if (off < bestOff || (off === bestOff && a.nBookmakers > best![0].nBookmakers)) best = [a, b];
-    }
-    return best ?? [];
+  const main = (market: MainLineMarket) => {
+    const p = balancedLine(linePairs(cons, market), 1);
+    return p ? [p.first, p.second] : [];
   };
-  return [
-    ...cons.filter((c) => c.market === 'MATCH_WINNER'),
-    ...mainLine('ASIAN_HANDICAP', 'HOME', 'AWAY', (l) => (l === null || l === 0 ? l : -l)),
-    ...mainLine('OVER_UNDER', 'OVER', 'UNDER', (l) => l),
-  ];
+  return [...cons.filter((c) => c.market === 'MATCH_WINNER'), ...main('ASIAN_HANDICAP'), ...main('OVER_UNDER')];
 }

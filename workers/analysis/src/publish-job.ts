@@ -96,6 +96,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
       const pick = run.outcome === 'SIGNAL' ? cands.find((c) => c.rank === 1) ?? null : null;
       const summary = run.summary as {
         rejectReasons?: Record<string, number>;
+        fogReasons?: Array<{ market: string | null; reason: string }>;
         modelSource?: string;
         impact?: { used: boolean; home: ImpactSide; away: ImpactSide } | null;
       };
@@ -106,7 +107,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
 
       const move = pick ? await ctx.repo.selectionMovement(f.id, pick.market, pick.selection, pick.line) : null;
       const label = pick ? selectionLabel(pick.market, pick.selection, pick.line, header.home, header.away) : null;
-      const factors = (pick?.factors ?? {}) as { strength?: string | null; agreement?: boolean | null; gateZ?: number | null; nBookmakers?: number; modelSource?: string; distribution?: OutcomeDistribution | null };
+      const factors = (pick?.factors ?? {}) as { strength?: string | null; agreement?: boolean | null; gateZ?: number | null; nBookmakers?: number; modelSource?: string; distribution?: OutcomeDistribution | null; onMainLine?: boolean | null };
 
       const reason = buildReason({
         kind: pick ? 'SIGNAL' : 'NO_CLEAR_SIGNAL',
@@ -124,9 +125,11 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
               agreement: factors.agreement ?? null,
               gateZ: factors.gateZ ?? null,
               modelSource: summary.modelSource ?? 'DC',
+              onMainLine: factors.onMainLine ?? null,
             }
           : null,
         rejectReasons: summary.rejectReasons,
+        fogReasons: summary.fogReasons ?? null,
         impact: impactFull ? { home: impactFull.home, away: impactFull.away } : null,
         marketMove: move ? { opening: move.opening, current: move.current } : null,
       });

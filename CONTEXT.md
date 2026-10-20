@@ -7,8 +7,12 @@ A football analysis media site: the model publishes one analysed view per match,
 ### Picks and settlement
 
 **เข็มทิศเกม (Game Compass)**:
-The site's published analytical lean for a match — one pick, or fog when there is no clear signal. The pick is where the model's view differs most clearly from the market's, within limits; it is not the most likely outcome of the match.
+The site's published analytical lean for a match — one pick, or fog when there is no clear signal. The pick is a side of the market's main line where the model's view differs clearly from the market's, within limits (ADR 0008); it is not the most likely outcome of the match, and never a far line chosen for its larger gap.
 _Avoid_: tip, bet, prediction (on fan pages); "the option the data supports most" (reads as the most likely outcome)
+
+**Main line (เส้นหลัก)**:
+The Asian handicap or over/under line the market is mainly trading: among lines with at least 3 bookmakers quoting both sides fresh, the one whose de-margined sides sit closest to 50/50. The provider does not mark it, so it is derived from the quotes; when no line qualifies there is no main line and no pick on that market. Other offered lines are "other market lines" (เส้นตลาดอื่น).
+_Avoid_: calling the line with the most bookmakers the main line; showing a far line as the market's price
 
 **Market (ตลาด)**:
 The combined view of the football market on a selection's chance, read from many bookmakers' prices. On fan explanations it is called ตลาด and described as that combined view.
