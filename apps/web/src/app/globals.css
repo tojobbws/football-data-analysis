@@ -6,7 +6,7 @@
   /* surfaces */
   --color-ink: #0b1324; /* text + dark chrome (navbar, scoreboard) */
   --color-ink-2: #15203a; /* raised surface on ink */
-  --color-canvas: #f3f5f8; /* page background */
+  --color-canvas: #ffffff; /* page background */
 
   /* brand */
   --color-pitch: #0f766e; /* primary: links, active nav, data bars (5.4:1 on white) */
