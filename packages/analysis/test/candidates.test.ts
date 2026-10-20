@@ -158,6 +158,45 @@ describe('generateCandidates', () => {
     expect(generateCandidates(input({ unmodelledLoss: 0.1 })).outcome).toBe('SIGNAL');
   });
 
+  describe('the pick is priced on its own line only (Al Diriyah–Al Riyadh, AH 0 beside a ±1 main line)', () => {
+    // model: AH 0 for the away side, the fair chance with the draw (push) left out
+    const ah0 = { market: 'ASIAN_HANDICAP' as const, selection: 'AWAY', line: 0, probability: 0.30287, distribution: { win: 0.2167, halfWin: 0, push: 0.2845, halfLoss: 0, loss: 0.4988 } };
+    const onlyPlusOne = [
+      ...quotes().filter((x) => x.market === 'MATCH_WINNER'),
+      q(1, 'ASIAN_HANDICAP', 'HOME', -1, -1, 1.93),
+      q(1, 'ASIAN_HANDICAP', 'AWAY', 1, -1, 1.8),
+      q(2, 'ASIAN_HANDICAP', 'HOME', -1, -1, 1.95),
+      q(2, 'ASIAN_HANDICAP', 'AWAY', 1, -1, 1.82),
+    ];
+
+    it('no AH 0 quotes: no AH 0 candidate at all, never a price borrowed from AH +1 or the 1X2', () => {
+      const d = generateCandidates(input({ quotes: onlyPlusOne, model: [...input().model, ah0] }));
+      expect(d.candidates.find((c) => c.market === 'ASIAN_HANDICAP' && c.line === 0)).toBeUndefined();
+      // the +1 line is offered but the model has no price for it: rejected, not matched to the 0 line
+      expect(d.candidates.find((c) => c.market === 'ASIAN_HANDICAP' && c.selection === 'AWAY' && c.line === 1)!.rejectReasons).toContain('NO_MODEL_PRICE');
+    });
+
+    it('with AH 0 quotes the edge compares like with like: both chances leave the draw out', () => {
+      const withZero = [...onlyPlusOne, q(1, 'ASIAN_HANDICAP', 'HOME', 0, 0, 1.17), q(1, 'ASIAN_HANDICAP', 'AWAY', 0, 0, 4.5), q(2, 'ASIAN_HANDICAP', 'HOME', 0, 0, 1.19), q(2, 'ASIAN_HANDICAP', 'AWAY', 0, 0, 4.45)];
+      const d = generateCandidates(input({ quotes: withZero, model: [...input().model, ah0] }));
+      const c = d.candidates.find((x) => x.market === 'ASIAN_HANDICAP' && x.selection === 'AWAY' && x.line === 0)!;
+      // market: the AH 0 pair with the margin out, median over the two books (not 1 / 1X2 away odds)
+      const pair = (h: number, a: number) => noVig([h, a])[1]!;
+      expect(c.marketProbability).toBeCloseTo((pair(1.17, 4.5) + pair(1.19, 4.45)) / 2, 4);
+      expect(c.odds).toBeCloseTo(4.475, 3);
+      expect(c.edge).toBeCloseTo(0.30287 - c.marketProbability, 4);
+      // EV from the full distribution at the same line's price: the draw returns the stake
+      expect(c.ev).toBeCloseTo(0.2167 * (4.475 - 1) - 0.4988, 4);
+    });
+
+    it('stale AH 0 quotes drop out instead of standing in as the reference price', () => {
+      const old = new Date(NOW.getTime() - (DEFAULT_RULES.maxOddsAgeHours + 1) * 3_600_000);
+      const staleZero = [...onlyPlusOne, q(1, 'ASIAN_HANDICAP', 'HOME', 0, 0, 1.17, old), q(1, 'ASIAN_HANDICAP', 'AWAY', 0, 0, 4.5, old), q(2, 'ASIAN_HANDICAP', 'HOME', 0, 0, 1.19, old), q(2, 'ASIAN_HANDICAP', 'AWAY', 0, 0, 4.45, old)];
+      const d = generateCandidates(input({ quotes: staleZero, model: [...input().model, ah0] }));
+      expect(d.candidates.find((c) => c.market === 'ASIAN_HANDICAP' && c.line === 0)).toBeUndefined();
+    });
+  });
+
   it('requires at least 2 bookmakers', () => {
     const d = generateCandidates(input({ quotes: quotes().filter((x) => x.bookmakerId === 1) }));
     expect(d.summary.rejectReasons.THIN_MARKET).toBe(d.summary.evaluated);

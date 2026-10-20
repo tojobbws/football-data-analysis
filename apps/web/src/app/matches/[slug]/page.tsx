@@ -153,7 +153,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
           </div>
 
           <aside className="min-w-0 space-y-6 lg:sticky lg:top-32" aria-label="ข้อมูลประกอบ">
-            <MarketSection d={d} />
+            <MarketSection d={d} pick={pick} />
             <StandingsSection d={d} />
             <H2HSection d={d} />
           </aside>
@@ -284,14 +284,48 @@ function mainLine(rows: MarketRow[], a: 'HOME' | 'OVER', b: 'AWAY' | 'UNDER'): n
   return best?.line ?? null;
 }
 
-function MarketSection({ d }: { d: Data }) {
+/**
+ * Both sides of the pick's own line, from the selection's point of view as the consensus stores it
+ * (AH: the side at L pairs with the other side at -L). The main line is often another one (Al Riyadh 0
+ * beside a ±1 table, 2026-10-20), so the price behind the pick is shown on its own line.
+ */
+function pickLineRows(d: Data, pick: Compass): Array<{ label: string; r: MarketRow | undefined; isPick: boolean }> | null {
+  const m = d.match;
+  if (pick.line == null || !pick.market || !pick.selection) return null;
+  const line = Number(pick.line);
+  const sides =
+    pick.market === 'ASIAN_HANDICAP'
+      ? [
+          { selection: pick.selection, line },
+          { selection: pick.selection === 'HOME' ? 'AWAY' : 'HOME', line: -line || 0 },
+        ]
+      : pick.market === 'OVER_UNDER'
+        ? [
+            { selection: pick.selection, line },
+            { selection: pick.selection === 'OVER' ? 'UNDER' : 'OVER', line },
+          ]
+        : null;
+  if (!sides) return null;
+  return sides.map((s, i) => ({
+    label: selectionLabel(pick.market!, s.selection, s.line, m.home.name, m.away.name),
+    r: d.market.find((x) => x.market === pick.market && x.selection === s.selection && x.line != null && Number(x.line) === s.line),
+    isPick: i === 0,
+  }));
+}
+
+function MarketSection({ d, pick }: { d: Data; pick: Compass | null }) {
   const m = d.match;
   const mw = d.market.filter((r) => r.market === 'MATCH_WINNER');
   const ah = d.market.filter((r) => r.market === 'ASIAN_HANDICAP');
   const ou = d.market.filter((r) => r.market === 'OVER_UNDER');
   const ahLine = mainLine(ah, 'HOME', 'AWAY');
   const ouLine = mainLine(ou, 'OVER', 'UNDER');
+  const pickRows = pick ? pickLineRows(d, pick) : null;
+  const pickLabel = pickRows?.[0]?.label ?? null;
+  // the pick's line is already in the table when it is the main line
+  const pickOnMain = pickRows != null && ((pick!.market === 'ASIAN_HANDICAP' && ahLine != null && Math.abs(Number(pick!.line)) === Math.abs(ahLine)) || (pick!.market === 'OVER_UNDER' && Number(pick!.line) === ouLine));
   const groups: Array<{ name: string; rows: Array<{ label: string; r: MarketRow | undefined }> }> = [
+    ...(pickRows && !pickOnMain && pickRows.every((x) => x.r) ? [{ name: 'เส้นของเข็มทิศเกม', rows: pickRows }] : []),
     { name: '1X2', rows: (['HOME', 'DRAW', 'AWAY'] as const).map((s) => ({ label: selectionLabel('MATCH_WINNER', s, null, m.home.name, m.away.name), r: mw.find((x) => x.selection === s) })) },
     {
       name: 'แฮนดิแคป',
@@ -340,7 +374,9 @@ function MarketSection({ d }: { d: Data }) {
                   const moved = o ? Math.abs(delta) / o >= 0.03 : false;
                   return (
                     <tr key={label}>
-                      <td className="max-w-[9rem] truncate py-1.5 pr-2 text-zinc-800">{label}</td>
+                      <td className="max-w-[9rem] truncate py-1.5 pr-2 text-zinc-800">
+                        {label === pickLabel ? <b className="font-semibold text-zinc-950">{label}</b> : label}
+                      </td>
                       <td className="py-1.5 text-right tabular-nums text-zinc-500">{odds(r!.opening_odds)}</td>
                       <td className="py-1.5 text-right font-semibold tabular-nums text-zinc-950">{odds(r!.current_odds)}</td>
                       <td className={`py-1.5 pl-2 text-right text-xs tabular-nums ${moved ? (delta < 0 ? 'font-medium text-emerald-700' : 'font-medium text-rose-700') : 'text-zinc-400'}`}>
@@ -352,6 +388,12 @@ function MarketSection({ d }: { d: Data }) {
               </tbody>
             ))}
           </table>
+          {pick && pickLabel ? (
+            <p className="mt-3 text-xs leading-relaxed text-zinc-600">
+              เข็มทิศเกม <b className="font-semibold text-zinc-950">{pickLabel}</b> ใช้ราคากลางของเส้นนี้ {odds(pick.odds_at_publish)} ณ {dateTimeTH(pick.published_at)}
+              {pickRows!.every((x) => x.r) ? '' : ' · ข้อมูลราคาล่าสุดไม่มีเส้นนี้ครบทั้งสองฝั่ง จึงเทียบกับราคาปัจจุบันไม่ได้'}
+            </p>
+          ) : null}
           <Note>ราคาลด (สีเขียว) = ตลาดให้น้ำหนักฝั่งนั้นมากขึ้น · ไฮไลต์เมื่อเปลี่ยนตั้งแต่ 3%</Note>
         </>
       ) : (
