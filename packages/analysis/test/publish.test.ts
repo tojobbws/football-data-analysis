@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReason, prematchDue, publishRoundFor, selectionLabel } from '../src/index.js';
+import { buildReason, prematchCause, prematchDue, publishRoundFor, selectionLabel } from '../src/index.js';
 
 describe('selectionLabel', () => {
   it('formats every market', () => {
@@ -85,5 +85,47 @@ describe('prematchDue', () => {
   it('needs at least 15 minutes before kickoff', () => {
     expect(prematchDue({ ...base, now: new Date('2026-10-15T16:31:00Z') })).toBe(false);
     expect(prematchDue({ ...base, now: new Date('2026-10-15T16:30:00Z') })).toBe(true);
+  });
+});
+
+describe('prematchCause: EARLY published under replaced pick rules (ADR 0009)', () => {
+  // Liverpool–Villarreal: EARLY was a rules-v0.5 pick on -2.5; rules-v0.6 judges the main line only
+  const base = {
+    kickoffAt: new Date('2026-10-20T19:00:00Z'),
+    now: new Date('2026-10-20T12:05:00Z'),
+    early: { kind: 'SIGNAL', publishedAt: new Date('2026-10-19T19:18:00Z'), rulesVersion: 'rules-v0.5' },
+    gateTunedAt: new Date('2026-10-19T02:00:00Z'),
+    lineupPublished: false,
+    prematchPublished: false,
+    rulesVersion: 'rules-v0.6',
+  };
+
+  it('is due for a pick and for fog alike, whatever the new decision will be', () => {
+    expect(prematchCause(base)).toBe('RULES_CHANGED');
+    expect(prematchCause({ ...base, early: { ...base.early, kind: 'NO_CLEAR_SIGNAL' } })).toBe('RULES_CHANGED');
+  });
+
+  it('not when EARLY already used the current rules, or its rules are unknown', () => {
+    expect(prematchCause({ ...base, early: { ...base.early, rulesVersion: 'rules-v0.6' } })).toBeNull();
+    expect(prematchCause({ ...base, early: { ...base.early, rulesVersion: null } })).toBeNull();
+    expect(prematchCause({ ...base, rulesVersion: undefined })).toBeNull();
+  });
+
+  it('once only, never after LINEUP, never inside the last 15 minutes', () => {
+    expect(prematchCause({ ...base, prematchPublished: true })).toBeNull();
+    expect(prematchCause({ ...base, lineupPublished: true })).toBeNull();
+    expect(prematchCause({ ...base, now: new Date('2026-10-20T18:46:00Z') })).toBeNull();
+  });
+
+  it('the re-tune cause is unchanged', () => {
+    const retune = { ...base, early: { ...base.early, kind: 'NO_CLEAR_SIGNAL', rulesVersion: 'rules-v0.6' }, gateTunedAt: new Date('2026-10-20T09:00:00Z') };
+    expect(prematchCause(retune)).toBe('GATES_RETUNED');
+  });
+
+  it('the published reason names the cause', () => {
+    const text = (cause: 'RULES_CHANGED' | 'GATES_RETUNED') =>
+      buildReason({ kind: 'NO_CLEAR_SIGNAL', round: 'PREMATCH', prematchCause: cause, home: 'Liverpool', away: 'Villarreal', fogReasons: [{ market: 'ASIAN_HANDICAP', reason: 'EDGE_TOO_LARGE' }] });
+    expect(text('RULES_CHANGED')).toContain('(ก่อนเตะ หลังปรับกติกาให้วิเคราะห์เฉพาะเส้นหลักของตลาด)');
+    expect(text('GATES_RETUNED')).toContain('(ก่อนเตะ หลังปรับโมเดลของลีก)');
   });
 });

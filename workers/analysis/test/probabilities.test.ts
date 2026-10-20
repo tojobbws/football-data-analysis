@@ -331,7 +331,20 @@ describe('publish (Phase 6)', () => {
     expect(await publishJob(ctx, { now: new Date(P.getTime() + 5 * 60_000) })).toBe(0); // same round never twice
   });
 
-  it('LINEUP round: confirmed lineups + real market edge -> 🧭 SIGNAL priced with DC+IMPACT, chained to EARLY', async () => {
+  it('PREMATCH after a rules change: EARLY under the old rules gets one new round from the new rules (ADR 0009)', async () => {
+    const R = new Date(KO.getTime() - 6 * 3_600_000);
+    const rules = { ...DEFAULT_RULES, version: 'rules-test-next' };
+    await generateCandidatesJob(ctx, { hours: 72, now: R, rules });
+    expect(await publishJob(ctx, { now: new Date(R.getTime() + 60_000), rulesVersion: rules.version })).toBe(1);
+
+    const rows = await q(`select publish_round, decision_rule_version, reason from analysis_predictions where fixture_id = 9001 order by published_at`);
+    expect(rows.map((r) => `${r.publish_round} ${r.decision_rule_version}`)).toEqual([`EARLY ${DEFAULT_RULES.version}`, 'PREMATCH rules-test-next']);
+    expect(String(rows[1]!.reason)).toContain('ก่อนเตะ หลังปรับกติกาให้วิเคราะห์เฉพาะเส้นหลักของตลาด');
+    // once only; and nothing for a match whose EARLY already used the rules in force
+    expect(await publishJob(ctx, { now: new Date(R.getTime() + 5 * 60_000), rulesVersion: rules.version })).toBe(0);
+  });
+
+  it('LINEUP round: confirmed lineups + real market edge -> 🧭 SIGNAL priced with DC+IMPACT, chained after PREMATCH', async () => {
     const L = new Date(KO.getTime() - 60 * 60_000);
     await db.query(`insert into fixture_lineups (fixture_id, team_id, formation) values (9001, 1, '4-3-3'), (9001, 10, '4-4-2')`);
     await ahMarketBelowModel('dc-impact-v0.1', new Date(L.getTime() - 10 * 60_000).toISOString());
@@ -340,13 +353,13 @@ describe('publish (Phase 6)', () => {
     await generateCandidatesJob(ctx, { hours: 72, now: L, rules });
     expect(await publishJob(ctx, { now: new Date(L.getTime() + 60_000), rulesVersion: rules.version })).toBe(1);
 
-    const early = (await q(`select record_hash from analysis_predictions where fixture_id = 9001 and publish_round = 'EARLY'`))[0]!;
+    const prev = (await q(`select record_hash from analysis_predictions where fixture_id = 9001 and publish_round = 'PREMATCH'`))[0]!;
     const lu = (await q(`select * from analysis_predictions where fixture_id = 9001 and publish_round = 'LINEUP'`))[0]!;
     expect(lu.kind).toBe('SIGNAL');
     expect(lu.market).toBe('ASIAN_HANDICAP');
     expect(lu.selection).toBe('HOME');
     expect(lu.model_version_id).toBe('dc-impact-v0.1');
-    expect(lu.prev_hash).toBe(early.record_hash);
+    expect(lu.prev_hash).toBe(prev.record_hash);
     expect(String(lu.reason)).toContain('🧭 เข็มทิศเกม: Team 1 -1.25');
     expect(String(lu.reason)).toContain('ปรับตามผู้เล่นที่ขาดแล้ว');
     expect(lu.status).toBe('PENDING');

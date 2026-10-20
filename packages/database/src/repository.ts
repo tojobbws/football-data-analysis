@@ -826,10 +826,13 @@ export class Repository {
 
   // ---------- publish ----------
 
-  async publication(fixtureId: number, round: string): Promise<{ kind: string; publishedAt: Date } | null> {
-    const res = await this.db.query<{ kind: string; published_at: string | Date }>('select kind, published_at from analysis_predictions where fixture_id = $1 and publish_round = $2', [fixtureId, round]);
+  async publication(fixtureId: number, round: string): Promise<{ kind: string; publishedAt: Date; rulesVersion: string | null } | null> {
+    const res = await this.db.query<{ kind: string; published_at: string | Date; decision_rule_version: string | null }>(
+      'select kind, published_at, decision_rule_version from analysis_predictions where fixture_id = $1 and publish_round = $2',
+      [fixtureId, round],
+    );
     const r = res.rows[0];
-    return r ? { kind: String(r.kind), publishedAt: new Date(r.published_at) } : null;
+    return r ? { kind: String(r.kind), publishedAt: new Date(r.published_at), rulesVersion: r.decision_rule_version ?? null } : null;
   }
 
   /** When the league's pick gates (sides / totals) were last tuned. */

@@ -56,6 +56,8 @@ export interface MissingPlayer {
 export interface ReasonInput {
   kind: 'SIGNAL' | 'NO_CLEAR_SIGNAL';
   round: PublishRound;
+  /** why a PREMATCH round was published; absent = the league re-tune (ADR 0005) */
+  prematchCause?: PrematchCause | null;
   home: string;
   away: string;
   pick?: {
@@ -90,7 +92,14 @@ function impactLine(team: string, t: { attackLoss: number; defenceLoss: number; 
 /** Thai explanation, built only from stored numbers. */
 export function buildReason(r: ReasonInput): string {
   const lines: string[] = [];
-  const when = r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : r.round === 'PREMATCH' ? 'ก่อนเตะ หลังปรับโมเดลของลีก' : 'ล่วงหน้าก่อนเกม';
+  const when =
+    r.round === 'LINEUP'
+      ? 'หลังประกาศรายชื่อตัวจริง'
+      : r.round === 'PREMATCH'
+        ? r.prematchCause === 'RULES_CHANGED'
+          ? 'ก่อนเตะ หลังปรับกติกาให้วิเคราะห์เฉพาะเส้นหลักของตลาด'
+          : 'ก่อนเตะ หลังปรับโมเดลของลีก'
+        : 'ล่วงหน้าก่อนเกม';
 
   if (r.kind === 'SIGNAL' && r.pick) {
     const p = r.pick;
@@ -132,24 +141,37 @@ export function buildReason(r: ReasonInput): string {
  * EARLY  : kickoff within (earlyMinHours, earlyHours]
  * LINEUP : lineups of both teams known and kickoff within [lineupMinMinutes, lineupMaxMinutes]
  */
-/**
- * PREMATCH (docs/adr/0005-prematch-round.md): one extra round, only for a match whose EARLY round
- * was fog published before the league's gates were re-tuned. It is published whatever the decision
- * (pick or fog), once, at least 15 minutes before kickoff and before any LINEUP round, from a
- * decision made after the re-tune. It adds a row to the record; nothing published is changed.
- */
-export function prematchDue(p: {
+export type PrematchCause = 'GATES_RETUNED' | 'RULES_CHANGED';
+
+export interface PrematchInput {
   kickoffAt: Date;
   now: Date;
-  early: { kind: string; publishedAt: Date } | null;
+  /** `rulesVersion`: the pick rules the EARLY round was published under */
+  early: { kind: string; publishedAt: Date; rulesVersion?: string | null } | null;
   gateTunedAt: Date | null;
   lineupPublished: boolean;
   prematchPublished: boolean;
+  /** the pick rules in force now; omitted = only the re-tune cause applies */
+  rulesVersion?: string;
   minMinutes?: number;
-}): boolean {
-  if (p.prematchPublished || p.lineupPublished || !p.early || p.early.kind !== 'NO_CLEAR_SIGNAL' || !p.gateTunedAt) return false;
-  if (p.gateTunedAt.getTime() <= p.early.publishedAt.getTime()) return false;
-  return (p.kickoffAt.getTime() - p.now.getTime()) / 60_000 >= (p.minMinutes ?? 15);
+}
+
+/**
+ * PREMATCH: one extra round, published whatever the decision (pick or fog), once, at least 15 minutes
+ * before kickoff and before any LINEUP round. It adds a row to the record; nothing published is changed.
+ *  - GATES_RETUNED (ADR 0005): the EARLY round was fog published before the league's gates were re-tuned.
+ *  - RULES_CHANGED (ADR 0009): the EARLY round was published under pick rules that have since been replaced.
+ */
+export function prematchCause(p: PrematchInput): PrematchCause | null {
+  if (p.prematchPublished || p.lineupPublished || !p.early) return null;
+  if ((p.kickoffAt.getTime() - p.now.getTime()) / 60_000 < (p.minMinutes ?? 15)) return null;
+  if (p.rulesVersion && p.early.rulesVersion && p.early.rulesVersion !== p.rulesVersion) return 'RULES_CHANGED';
+  if (p.early.kind === 'NO_CLEAR_SIGNAL' && p.gateTunedAt && p.gateTunedAt.getTime() > p.early.publishedAt.getTime()) return 'GATES_RETUNED';
+  return null;
+}
+
+export function prematchDue(p: PrematchInput): boolean {
+  return prematchCause(p) !== null;
 }
 
 export function publishRoundFor(

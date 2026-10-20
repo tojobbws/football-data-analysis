@@ -221,20 +221,17 @@ export async function matchDayCounts(fromDate: string, days: number): Promise<Ma
 export async function upcomingSignals(limit = 6) {
   const { data, error } = await db()
     .from('published_analysis')
-    .select('public_id, fixture_slug, kickoff_at, league_name, home_team, away_team, market, selection, line, model_probability, market_probability, odds_at_publish, signal_strength, publish_round')
-    .eq('kind', 'SIGNAL')
-    .eq('status', 'PENDING')
+    .select('public_id, fixture_slug, kickoff_at, published_at, kind, league_name, home_team, away_team, market, selection, line, model_probability, market_probability, odds_at_publish, signal_strength, publish_round')
     .gt('kickoff_at', new Date().toISOString())
     .order('kickoff_at')
-    .limit(limit * 2);
+    .order('published_at')
+    .limit(200);
   if (error) fail('published_analysis', error);
-  // one card per match (LINEUP round supersedes EARLY)
+  // one card per match from its latest round, as on the match page: a later round replaces an earlier
+  // pick, also when the later round is fog (rows are in published order within a match)
   const seen = new Map<string, NonNullable<typeof data>[number]>();
-  for (const r of data ?? []) {
-    const prev = seen.get(r.fixture_slug);
-    if (!prev || r.publish_round === 'LINEUP') seen.set(r.fixture_slug, r);
-  }
-  const rows = [...seen.values()].slice(0, limit);
+  for (const r of data ?? []) seen.set(r.fixture_slug, r);
+  const rows = [...seen.values()].filter((r) => r.kind === 'SIGNAL').slice(0, limit);
   // team logos for the card (the published view carries names only)
   const logos = new Map<string, { home: string | null; away: string | null }>();
   if (rows.length) {

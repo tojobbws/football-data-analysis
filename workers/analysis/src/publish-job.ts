@@ -9,10 +9,11 @@
  *   EARLY  — within 24h of kickoff (before lineups)
  *   LINEUP — 15–80 min before kickoff, after confirmed lineups (Player Impact uses real lineups)
  *   PREMATCH — once, only when EARLY was fog published before the league's gates were re-tuned
- *              (docs/adr/0005-prematch-round.md)
+ *              (docs/adr/0005-prematch-round.md), or EARLY was published under pick rules that
+ *              have since been replaced (docs/adr/0009-prematch-after-rules-change.md)
  * 🌫️ NO_CLEAR_SIGNAL is published too: coverage and honesty count as much as hits.
  */
-import { buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchDue, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PublishRound } from '@fp/analysis';
+import { buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours } from '@fp/shared';
 
@@ -41,20 +42,22 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
       const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
       let round: PublishRound | null = publishRoundFor(f.kickoffAt, now, hasLineups);
       let gateTunedAt: Date | null = null;
+      let cause: PrematchCause | null = null;
       if (round !== 'LINEUP') {
         // also inside the EARLY window: EARLY is already published there, so its round is used up
         const early = await ctx.repo.publication(f.id, 'EARLY');
         if (early) {
           gateTunedAt = await ctx.repo.gateTunedAt(f.leagueId);
-          const due = prematchDue({
+          cause = prematchCause({
             kickoffAt: f.kickoffAt,
             now,
             early,
             gateTunedAt,
             lineupPublished: await ctx.repo.isPublished(f.id, 'LINEUP'),
             prematchPublished: await ctx.repo.isPublished(f.id, 'PREMATCH'),
+            rulesVersion,
           });
-          if (due) round = 'PREMATCH';
+          if (cause) round = 'PREMATCH';
         }
       }
       if (!round) continue;
@@ -112,6 +115,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
       const reason = buildReason({
         kind: pick ? 'SIGNAL' : 'NO_CLEAR_SIGNAL',
         round,
+        prematchCause: round === 'PREMATCH' ? cause : null,
         home: header.home,
         away: header.away,
         pick: pick
