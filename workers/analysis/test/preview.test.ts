@@ -10,7 +10,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { matchPreviewJob } from '../src/preview-job.js';
-import { PREVIEW_VERSION, type PreviewTeam } from '@fp/analysis';
+import { goalBands, PREVIEW_VERSION, priceSelection, scoreMatrix, type PreviewTeam } from '@fp/analysis';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -35,17 +35,14 @@ function fakeWriter(answers: Record<string, Partial<RankerResult> & { output?: u
   return w;
 }
 
-const prose = (over: Record<string, unknown> = {}) => ({
+/** a v0.9 answer that names both teams, as the guard asks */
+const prose = (home: string, away: string, over: Record<string, unknown> = {}) => ({
   output: {
-    overview_th: 'โมเดลให้เจ้าบ้าน 50% เกมนี้ข้อมูลเอียงไปทางเจ้าบ้านเล็กน้อย',
-    home_th: 'เจ้าบ้านฟอร์มดีจากข้อมูลล่าสุด',
-    away_th: 'ทีมเยือนมีข้อมูลน้อยในระบบ',
-    attack_th: 'เกมรุกของเจ้าบ้านมีตัวเลขรองรับมากกว่า',
-    defence_th: 'แนวรับของทีมเยือนเสียประตูบ่อยกว่า',
-    h2h_th: '',
-    key_factor_th: 'ถ้าเจ้าบ้านได้ประตูแรก เกมจะเป็นจังหวะของเจ้าบ้าน',
-    score_th: 'สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0',
-    summary_th: 'ตัวเลขเอียงไปทางเจ้าบ้านเล็กน้อย',
+    overview_th: `โมเดลให้ ${home} 50% เกมนี้ข้อมูลเอียงไปทาง ${home} เล็กน้อย ส่วน ${away} ยังตามอยู่`,
+    home_th: `${home} ฟอร์มดีจากข้อมูลล่าสุดในระบบของเรา`,
+    away_th: `${away} มีข้อมูลน้อยในระบบ จึงอ่านได้ไม่มาก`,
+    score_th: 'สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0 เป็นหนึ่งในหลายสกอร์',
+    uncertainty_th: '',
     ...over,
   },
 });
@@ -134,7 +131,15 @@ beforeAll(async () => {
       inputs({ matchesUsed: 40, home: { weightedMatches: 3 }, away: { weightedMatches: 2 }, crossLeague: { lambda: 1.2, mu: 1.1, weightCupOnly: 0.5, cupMatchesUsed: 40 } }),
     ],
   );
+  await db.query(
+    `insert into scoreline_snapshots (fixture_id, model_version_id, computed_at, source, sides_lambda, sides_mu, sides_rho, sides_matrix, totals_lambda, totals_mu, totals_matrix)
+     values (101, 'dixon-coles-v0.2', $1, 'live', 1.6, 0.9, -0.05, $2, 2.2, 0.6, $3)`,
+    [at, JSON.stringify(scoreMatrix(1.6, 0.9, -0.05)), JSON.stringify(TOTALS)],
+  );
 }, 60_000);
+
+/** totals matrix of fixture 101's run: more goals than the sides rates (1.6 / 0.9) */
+const TOTALS = scoreMatrix(2.2, 0.6, -0.05);
 
 afterAll(async () => {
   await db?.close();
@@ -143,21 +148,25 @@ afterAll(async () => {
 describe('matchPreviewJob', () => {
   it('writes an AI preview where the text passes the guards, template text otherwise, and never skips a match', async () => {
     const writer = fakeWriter({
-      'Home A': prose(),
-      'Home B': prose({ score_th: 'สกอร์น่าจะเป็น 2-1 โดยเจ้าบ้านมีโอกาส 72%' }), // invented number + foreign scoreline
+      'Home A': prose('Home A', 'Away A'),
+      'Home B': prose('Home B', 'Away B', { score_th: 'สกอร์น่าจะเป็น 2-1 โดยเจ้าบ้านมีโอกาส 72%' }), // invented number + foreign scoreline
       'Home C': { output: null, stopReason: 'refusal', refusal: { category: 'general_harms', explanation: null } },
     });
     expect(await matchPreviewJob(ctx, { now: NOW, writer })).toBe(3);
     expect(writer.calls).toBe(3);
 
     const a = await one(`select * from match_previews where fixture_id = 101`);
-    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: PREVIEW_PROMPT_VERSION, version: PREVIEW_VERSION, predicted_home: 1, predicted_away: 0 });
+    expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: PREVIEW_PROMPT_VERSION, version: PREVIEW_VERSION, predicted_home: 2, predicted_away: 0 });
     expect(a.overview_th).toContain('50%');
     expect(Number(a.p_home)).toBe(0.5); // ensemble, like 📊 มุมมองโมเดล
-    expect(Number(a.expected_home)).toBeCloseTo(1.6, 1);
-    // goal bands from the same matrix, stored for the card
+    // goals from the run's totals matrix (the outlook's over 2.5), not the sides one (lambda 1.6)
+    expect(Number(a.expected_home)).toBeCloseTo(2.2, 1);
+    expect(Number(a.expected_away)).toBeCloseTo(0.6, 1);
     expect(Number(a.p_goals_0_1) + Number(a.p_goals_2) + Number(a.p_goals_3plus)).toBeCloseTo(1, 3);
-    expect(Number(a.p_goals_3plus)).toBeGreaterThan(0);
+    expect(Number(a.p_goals_3plus)).toBeCloseTo(priceSelection(TOTALS, { market: 'OVER_UNDER', selection: 'OVER', line: 2.5 }).probability, 3);
+    expect(Number(a.p_goals_3plus)).toBeCloseTo(goalBands(TOTALS).threePlus, 3);
+    // v0.8: four parts in the existing columns; the empty uncertainty and the v0.7 sections stay null
+    expect(a).toMatchObject({ attack_th: null, defence_th: null, h2h_th: null, summary_th: null, key_factor_th: null });
     // both teams have fewer than 5 recent results in the DB -> LIMITED; no odds is a minor note
     expect(a.data_notes).toEqual([expect.stringContaining('Home A มีผลการแข่งขันล่าสุดในระบบเพียง 4 นัด'), expect.stringContaining('Away A มีผลการแข่งขันล่าสุดในระบบเพียง 3 นัด')]);
 
@@ -173,6 +182,8 @@ describe('matchPreviewJob', () => {
     expect((seen.data_support as { level: string }).level).toBe('LIMITED');
     // the AI never sees the goal bands (3+ is over 2.5, once written up as an over lean)
     expect(JSON.stringify(seen)).not.toMatch(/threePlus|upTo1|p_goals/);
+    // which way each source leans: no odds and no Elo here, recent form and xG side with the model
+    expect(seen.views).toEqual({ model: 'Home A', market: null, recentForm: 'Home A', recentXg: 'Home A', otherModel: null, marketP: null, disagreements: [] });
 
     // v0.7: venue, referee name only, table detail, form dates + competition, rest days, averages, key players
     const fx = seen.fixture as Record<string, unknown>;
@@ -198,9 +209,11 @@ describe('matchPreviewJob', () => {
 
     const b = await one(`select * from match_previews where fixture_id = 102`);
     expect(b).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'INVALID', data_support: 'THIN' });
-    expect(b.guard_violations).toEqual(expect.arrayContaining(['score_th: number not in input: 72%', 'scoreline not in input: 2-1']));
+    expect(b.guard_violations).toEqual(expect.arrayContaining(['score_th: number not in input: 72%', 'score_th: scoreline not from the model: 2-1']));
     expect((b.data_notes as string[])[0]).toContain('บอลถ้วยที่ทีมมาจากคนละลีก');
     expect(b.score_th).toContain('สกอร์ที่โมเดลให้โอกาสสูงสุด');
+    // a cross-league cup with 40 cup matches is THIN; the template names no stock risk
+    expect(b.overview_th).toContain('Home B พบ Away B');
     expect(b.predicted_home).not.toBeNull();
 
     const c = await one(`select * from match_previews where fixture_id = 103`);
@@ -217,8 +230,8 @@ describe('matchPreviewJob', () => {
     expect(down.calls).toBe(2);
 
     const second = fakeWriter({
-      'Home B': prose({ overview_th: 'บอลถ้วยข้ามลีก ข้อมูลเทียบกันได้น้อย โมเดลเอียงไปทางเจ้าบ้านเล็กน้อยเท่านั้น', score_th: 'สกอร์ของโมเดลสูสี ข้อมูลยังบางมาก' }),
-      'Home C': prose({ overview_th: 'โมเดลให้ 99% แน่นอน' }),
+      'Home B': prose('Home B', 'Away B', { overview_th: 'บอลถ้วยข้ามลีก Home B กับ Away B ข้อมูลเทียบกันได้น้อย โมเดลเอียงไปทางเจ้าบ้านเล็กน้อยเท่านั้น', score_th: 'สกอร์ของโมเดลสูสี ข้อมูลยังบางมากสำหรับคู่นี้' }),
+      'Home C': prose('Home C', 'Away C', { overview_th: 'โมเดลให้ Home C 99% แน่นอนว่าชนะ Away C' }),
     });
     expect(await matchPreviewJob(ctx, { now: NOW, writer: second })).toBe(2);
     const b = (await db.query<Record<string, unknown>>(`select text_source, ai_status from match_previews where fixture_id = 102 order by id`)).rows;
@@ -229,7 +242,7 @@ describe('matchPreviewJob', () => {
     expect((await one(`select text_source from web_match_previews where fixture_id = 102`)).text_source).toBe('AI');
 
     // two attempts is the limit, even when both failed (103); without a writer nothing is retried
-    const third = fakeWriter({ 'Home C': prose() });
+    const third = fakeWriter({ 'Home C': prose('Home C', 'Away C') });
     expect(await matchPreviewJob(ctx, { now: NOW, writer: third })).toBe(0);
     expect(third.calls).toBe(0);
     expect(Number((await one(`select count(*) n from match_previews where fixture_id = 103`)).n)).toBe(2);
@@ -317,7 +330,7 @@ describe('matchPreviewJob', () => {
       `insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short, slug) values (107, 39, 2026, $1, 15, 16, 'NS', 'm107')`,
       [KO.toISOString()],
     );
-    const writer = fakeWriter({ 'Home G': prose() });
+    const writer = fakeWriter({ 'Home G': prose('Home G', 'Away G') });
     expect(await matchPreviewJob(ctx, { now: NOW, writer, budgetMinutes: -1 })).toBe(0);
     expect(writer.calls).toBe(0);
     expect((await db.query(`select 1 from match_previews where fixture_id = 107`)).rows).toHaveLength(0);

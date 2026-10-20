@@ -8,10 +8,11 @@
  * only turns these facts into prose; when it is unavailable or its text fails the guards, the
  * template text built here is shown instead so every match still gets a write-up.
  */
+import { noVig } from './candidates.js';
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 
-export const PREVIEW_VERSION = 'preview-v0.7';
+export const PREVIEW_VERSION = 'preview-v0.8';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -134,9 +135,11 @@ export function formAverages(rows: ReadonlyArray<{ shotsOnTarget: number | null;
 export interface PreviewModel {
   modelVersionId: string;
   computedAt: string;
+  /** 1X2: the sides model (or the ensemble), as the model outlook card shows it */
   p: { home: number; draw: number; away: number };
+  /** from the totals matrix since preview-v0.8, the one behind the outlook's over 2.5 and the goal bands */
   expectedGoals: { home: number; away: number };
-  /** most likely scorelines, best first */
+  /** most likely scorelines of the same matrix as expectedGoals, best first */
   scorelines: Array<{ home: number; away: number; p: number }>;
   matchesUsed: number;
   xgShare: number;
@@ -163,6 +166,8 @@ export interface PreviewFacts {
   market: { home: MarketQuote | null; draw: MarketQuote | null; away: MarketQuote | null } | null;
   apiPrediction: { homePct: number | null; drawPct: number | null; awayPct: number | null; advice: string | null } | null;
   h2h: Array<{ kickoffAt: string; home: string; away: string; homeGoals: number; awayGoals: number }>;
+  /** which way each source leans and where they disagree with the model (preview-v0.8; see compareViews) */
+  views?: PreviewViews | null;
 }
 
 export interface MarketQuote {
@@ -171,18 +176,103 @@ export interface MarketQuote {
   bookmakers: number;
 }
 
-/** The sections of the write-up; home_th / away_th are each team's form section. */
+/**
+ * The sections of the write-up (preview-v0.8): the match in brief, each team's strengths and worries,
+ * the model's numbers, and what could change the picture. The Game Compass part is the pick note,
+ * written separately after the rules pick. Stored as overview_th / home_th / away_th / score_th and
+ * key_factor_th; the v0.7 columns attack_th, defence_th, h2h_th and summary_th stay null.
+ */
 export interface PreviewText {
   overview_th: string;
   home_th: string;
   away_th: string;
-  attack_th: string;
-  defence_th: string;
-  /** null when the teams have no recent meetings */
-  h2h_th: string | null;
-  key_factor_th: string;
   score_th: string;
-  summary_th: string;
+  /** null when nothing specific to this match could change the picture */
+  uncertainty_th: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Views: where the model, the market and recent form point
+// ---------------------------------------------------------------------------
+
+/** A team name, or EVEN when the source does not lean either way. */
+export type Lean = string;
+
+export interface PreviewViews {
+  /** null without the source */
+  model: Lean | null;
+  market: Lean | null;
+  /** points per match over the recent results */
+  recentForm: Lean | null;
+  /** xG for minus xG against per match over the recent results */
+  recentXg: Lean | null;
+  /** the second rating model (Elo) beside the main one */
+  otherModel: Lean | null;
+  /** the market's 1X2 chances with the margin taken out (current consensus) */
+  marketP: { home: number; draw: number; away: number } | null;
+  /**
+   * Where a source points the other way from the model, or the market's chance of the model's side
+   * is far from the model's. The write-up has to say so (validatePreviewOutput).
+   */
+  disagreements: Disagreement[];
+}
+
+export type Disagreement = 'MARKET' | 'MARKET_GAP' | 'FORM' | 'XG' | 'OTHER_MODEL';
+
+export const EVEN = 'EVEN';
+/** below these gaps a source counts as not leaning */
+const LEAN_P = 0.1;
+const LEAN_PPG = 0.5;
+const LEAN_XG = 0.3;
+/** model vs market chance of the model's side, beyond which the gap itself is a disagreement */
+const MARKET_GAP = 0.15;
+
+const r4 = (x: number) => Math.round(x * 1e4) / 1e4;
+
+/**
+ * Which way each source leans, from facts already in the preview. Deterministic, so the guards can
+ * hold the write-up to it: a model lean that the market or recent form contradicts must be said.
+ */
+export function compareViews(f: PreviewFacts, otherModel: { home: number; away: number } | null = null): PreviewViews {
+  const { home, away } = f.fixture;
+  const lean = (h: number, a: number, min: number): Lean => (Math.abs(h - a) < min ? EVEN : h > a ? home : away);
+  const q = f.market;
+  let marketP: PreviewViews['marketP'] = null;
+  if (q?.home && q.draw && q.away) {
+    const [h, d, a] = noVig([q.home.current, q.draw.current, q.away.current]);
+    marketP = { home: r4(h!), draw: r4(d!), away: r4(a!) };
+  }
+  const summary = (t: PreviewTeam) => t.formSummary ?? formSummary(t.form);
+  const ppg = (t: PreviewTeam) => {
+    const s = summary(t);
+    return s ? (3 * s.won + s.drawn) / s.matches : null;
+  };
+  const xgDiff = (t: PreviewTeam) => {
+    const s = summary(t);
+    return s?.xgFor != null && s.xgAgainst != null ? s.xgFor - s.xgAgainst : null;
+  };
+  const [ph, pa, xh, xa] = [ppg(f.home), ppg(f.away), xgDiff(f.home), xgDiff(f.away)];
+
+  const views: PreviewViews = {
+    model: f.model ? lean(f.model.p.home, f.model.p.away, LEAN_P) : null,
+    market: marketP ? lean(marketP.home, marketP.away, LEAN_P) : null,
+    recentForm: ph != null && pa != null ? lean(ph, pa, LEAN_PPG) : null,
+    recentXg: xh != null && xa != null ? lean(xh, xa, LEAN_XG) : null,
+    otherModel: otherModel ? lean(otherModel.home, otherModel.away, LEAN_P) : null,
+    marketP,
+    disagreements: [],
+  };
+  const m = views.model;
+  if (f.model && m && m !== EVEN) {
+    const against = (v: Lean | null) => v != null && v !== EVEN && v !== m;
+    const side = m === home ? 'home' : 'away';
+    if (against(views.market)) views.disagreements.push('MARKET');
+    else if (marketP && Math.abs(f.model.p[side] - marketP[side]) >= MARKET_GAP) views.disagreements.push('MARKET_GAP');
+    if (against(views.recentForm)) views.disagreements.push('FORM');
+    if (against(views.recentXg)) views.disagreements.push('XG');
+    if (against(views.otherModel)) views.disagreements.push('OTHER_MODEL');
+  }
+  return views;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,11 +374,14 @@ export function assessDataSupport(f: PreviewFacts): { level: DataSupport; notes:
     add('THIN', 'ยังไม่มีตัวเลขจากโมเดลสำหรับคู่นี้ — รายการนี้มีนัดที่จบแล้วในฐานข้อมูลน้อยเกินไป');
   } else {
     if (m.crossLeague) {
-      const few = m.crossLeague.cupMatchesUsed < FEW_CUP_MATCHES;
-      add(
-        few ? 'THIN' : 'LIMITED',
-        `เป็นบอลถ้วยที่ทีมมาจากคนละลีก นัดในถ้วยที่ใช้คำนวณมีเพียง ${m.crossLeague.cupMatchesUsed} นัด โมเดลจึงอาศัยผลงานในลีกของแต่ละทีมมาเทียบกัน ทำให้ข้อมูลที่เปรียบเทียบกันได้ตรง ๆ มีน้อย`,
-      );
+      // cupMatchesUsed counts every past match of the competition, all seasons: hundreds is normal, and
+      // "มีเพียง 900 นัด" (Liverpool–Villarreal, 2026-10-18) read as a gap that is not there
+      const n = m.crossLeague.cupMatchesUsed;
+      if (n < FEW_CUP_MATCHES) {
+        add('THIN', `เป็นบอลถ้วยที่ทีมมาจากคนละลีก และนัดในถ้วยที่ใช้คำนวณมีเพียง ${n} นัด โมเดลจึงอาศัยผลงานในลีกของแต่ละทีมเป็นหลัก`);
+      } else {
+        add('LIMITED', 'เป็นบอลถ้วยที่ทีมมาจากคนละลีก โมเดลต้องเทียบความแข็งของแต่ละลีกก่อนเทียบทีม ตัวเลขจึงไม่แม่นเท่าคู่ที่อยู่ลีกเดียวกัน');
+      }
     } else if (internationalCup) {
       add(
         m.matchesUsed < FEW_CUP_MATCHES ? 'THIN' : 'LIMITED',
@@ -323,47 +416,40 @@ export const DATA_SUPPORT_TH: Record<DataSupport, string> = {
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const n2 = (x: number) => x.toFixed(2);
 
-export function buildTemplateText(f: PreviewFacts, support: { level: DataSupport; notes: string[] }): PreviewText {
+/** The data's own limits are listed beside the write-up on the page, so the template does not repeat them. */
+export function buildTemplateText(f: PreviewFacts, _support: { level: DataSupport; notes: string[] }): PreviewText {
   const { home, away, league, round } = f.fixture;
   const m = f.model;
+  const views = f.views ?? compareViews(f);
   const where = `${league}${round ? ` ${round}` : ''}`;
 
   let overview = `${home} พบ ${away} ใน ${where}`;
   if (m) {
-    const fav = m.p.home > m.p.away ? home : away;
-    const gap = Math.abs(m.p.home - m.p.away);
     overview += ` โมเดลให้ ${home} ชนะ ${pct(m.p.home)} เสมอ ${pct(m.p.draw)} ${away} ชนะ ${pct(m.p.away)}`;
-    overview += gap < 0.1 ? ' — เป็นเกมที่สูสีตามตัวเลข' : ` — ตัวเลขเอียงไปทาง ${fav}`;
-    if (f.market?.home && f.market.away) {
-      const mkt = f.market.home.current < f.market.away.current ? home : away;
-      overview += mkt === fav ? ' และตลาดมองไปทางเดียวกัน' : ` ขณะที่ตลาดให้น้ำหนัก ${mkt} มากกว่า`;
+    overview += views.model === EVEN ? ' เป็นเกมที่สูสีตามตัวเลข' : ` ตัวเลขเอียงไปทาง ${views.model}`;
+    if (views.marketP && views.market) {
+      const side = views.model === away ? 'away' : 'home';
+      if (views.disagreements.includes('MARKET')) overview += ` ขณะที่ตลาดให้น้ำหนัก ${views.market} มากกว่า`;
+      else if (views.disagreements.includes('MARKET_GAP')) overview += ` ตลาดมองไปทางเดียวกันแต่ให้โอกาสเพียง ${pct(views.marketP[side])}`;
+      else overview += ' และตลาดมองไปทางเดียวกัน';
     }
   } else {
     overview += ' โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงอ่านเกมจากฟอร์มและสถิติที่มีเท่านั้น';
   }
-  if (support.level !== 'GOOD') overview += ` (${DATA_SUPPORT_TH[support.level]}: ${support.notes[0]})`;
 
-  const score = m
-    ? (() => {
-        const [best, ...rest] = m.scorelines;
-        if (!best) return 'โมเดลยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด';
-        let s = `สกอร์ที่โมเดลให้โอกาสสูงสุดคือ ${home} ${best.home}-${best.away} ${away} (${pct(best.p)})`;
-        if (rest.length) s += ` รองลงมา ${rest.map((r) => `${r.home}-${r.away} (${pct(r.p)})`).join(' และ ')}`;
-        s += ` ประตูคาดหวัง ${n2(m.expectedGoals.home)} ต่อ ${n2(m.expectedGoals.away)}`;
-        return s;
-      })()
-    : 'ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด เพราะโมเดลไม่มีข้อมูลพอสำหรับรายการนี้';
+  let score = 'โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด';
+  if (m) {
+    score = `โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`;
+    const best = m.scorelines[0];
+    if (best) score += ` สกอร์ที่โมเดลให้โอกาสสูงสุดคือ ${home} ${best.home}-${best.away} ${away} (${pct(best.p)}) ซึ่งเป็นเพียงหนึ่งในหลายสกอร์ที่เป็นไปได้`;
+  }
 
   return {
     overview_th: overview,
     home_th: teamText(f.home),
     away_th: teamText(f.away),
-    attack_th: attackText(f),
-    defence_th: defenceText(f),
-    h2h_th: h2hText(f),
-    key_factor_th: keyFactorText(f),
     score_th: score,
-    summary_th: summaryText(f),
+    uncertainty_th: uncertaintyText(f, views),
   };
 }
 
@@ -388,63 +474,18 @@ function teamText(t: PreviewTeam): string {
   return `${t.name}: ${parts.join(' · ')}`;
 }
 
-function attackText(f: PreviewFacts): string {
-  const line = (t: PreviewTeam) => {
-    const s = t.formSummary ?? formSummary(t.form);
-    if (!s) return `${t.name} ไม่มีผลล่าสุดในระบบ`;
-    let x = `${t.name} ยิงได้ ${s.goalsFor} ประตูใน ${s.matches} นัด`;
-    if (s.xgFor != null) x += ` xG เฉลี่ย ${n2(s.xgFor)}`;
-    if (t.averages?.shotsOnTarget != null) x += ` ยิงเข้ากรอบเฉลี่ย ${t.averages.shotsOnTarget} ครั้ง`;
-    return x;
-  };
-  return `${line(f.home)} ส่วน${line(f.away)}`;
-}
-
-function defenceText(f: PreviewFacts): string {
-  const line = (t: PreviewTeam, where: 'home' | 'away') => {
-    const s = t.formSummary ?? formSummary(t.form);
-    if (!s) return `${t.name} ไม่มีผลล่าสุดในระบบ`;
-    let x = `${t.name} เสีย ${s.goalsAgainst} ประตูใน ${s.matches} นัด`;
-    if (s.xgAgainst != null) x += ` xG เสียเฉลี่ย ${n2(s.xgAgainst)}`;
-    const v = t.standing?.[where];
-    if (v?.played) x += ` และ${where === 'home' ? 'ในบ้าน' : 'นอกบ้าน'}เสีย ${v.goalsAgainst} ประตูจาก ${v.played} นัด`;
-    return x;
-  };
-  return `${line(f.home, 'home')} ส่วน${line(f.away, 'away')}`;
-}
-
-function h2hText(f: PreviewFacts): string | null {
-  if (!f.h2h.length) return null;
-  let home = 0;
-  let away = 0;
-  for (const m of f.h2h) {
-    const winner = m.homeGoals > m.awayGoals ? m.home : m.homeGoals < m.awayGoals ? m.away : null;
-    if (winner === f.fixture.home) home++;
-    else if (winner === f.fixture.away) away++;
-  }
-  const draws = f.h2h.length - home - away;
-  const last = f.h2h[0]!;
-  return `${f.h2h.length} นัดหลังที่พบกัน ${f.fixture.home} ชนะ ${home} เสมอ ${draws} ${f.fixture.away} ชนะ ${away} ครั้งล่าสุด ${last.home} ${last.homeGoals}-${last.awayGoals} ${last.away}`;
-}
-
-function keyFactorText(f: PreviewFacts): string {
+/** What could change the picture, only when the facts name something; no stock "the first goal matters". */
+function uncertaintyText(f: PreviewFacts, views: PreviewViews): string | null {
+  const parts: string[] = [];
   for (const t of [f.home, f.away]) {
     const missing = t.injuries.find((i) => i.isKeyPlayer && i.player);
-    if (missing) return `การขาด ${missing.player} ซึ่งเป็นตัวหลักของ ${t.name} อาจเปลี่ยนรูปเกมได้`;
+    if (missing) parts.push(`${t.name} ขาด ${missing.player} ซึ่งเป็นตัวหลักในเกมรุก`);
     const benched = t.lineup?.keyPlayersNotStarting[0];
-    if (benched) return `${benched} ไม่ได้อยู่ในตัวจริงของ ${t.name} ซึ่งอาจส่งผลกับเกมรุก`;
+    if (benched) parts.push(`${benched} ไม่ได้อยู่ในตัวจริงของ ${t.name}`);
   }
+  if (views.disagreements.includes('FORM') && views.recentForm) parts.push(`ผลงานช่วงหลัง ${views.recentForm} ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล`);
+  else if (views.disagreements.includes('XG') && views.recentXg) parts.push(`xG ช่วงหลัง ${views.recentXg} ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล`);
   const [h, a] = [f.home.restDays, f.away.restDays];
-  if (h != null && a != null && Math.abs(h - a) >= 2) {
-    const tired = h < a ? f.home : f.away;
-    return `${tired.name} มีเวลาพักน้อยกว่า ความสดของผู้เล่นอาจเป็นปัจจัยในช่วงท้ายเกม`;
-  }
-  return 'ประตูแรกอาจเป็นตัวกำหนดรูปเกม ทีมที่ได้นำก่อนจะเลือกจังหวะเกมได้ง่ายขึ้น';
-}
-
-function summaryText(f: PreviewFacts): string {
-  const m = f.model;
-  if (!m) return `${f.fixture.home} พบ ${f.fixture.away} เป็นเกมที่ต้องอ่านจากฟอร์มและสถิติ เพราะโมเดลยังไม่มีตัวเลข`;
-  if (Math.abs(m.p.home - m.p.away) < 0.1) return `ตัวเลขของโมเดลมองว่า ${f.fixture.home} กับ ${f.fixture.away} สูสีกัน`;
-  return `ตัวเลขของโมเดลเอียงไปทาง ${m.p.home > m.p.away ? f.fixture.home : f.fixture.away} แต่ยังเป็นเพียงหนึ่งในหลายผลที่เป็นไปได้`;
+  if (h != null && a != null && Math.abs(h - a) >= 2) parts.push(`${(h < a ? f.home : f.away).name} มีเวลาพักน้อยกว่า`);
+  return parts.length ? parts.join(' ') : null;
 }

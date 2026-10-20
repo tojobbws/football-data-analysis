@@ -62,7 +62,10 @@ export interface MatchPreview {
   away_th: string;
   score_th: string;
   created_at: string;
-  /** sections of preview-v0.7 (null on older rows; h2h_th also null without meetings) */
+  /** which build of the write-up: preview-v0.8 is the four-part layout */
+  version: string;
+  /** sections of preview-v0.7 (null on older rows; h2h_th also null without meetings); from preview-v0.8
+   * only key_factor_th is written, holding what could change the picture */
   attack_th: string | null;
   defence_th: string | null;
   h2h_th: string | null;
@@ -70,7 +73,7 @@ export interface MatchPreview {
   summary_th: string | null;
 }
 
-const PREVIEW_SELECT = `fixture_id, stage, text_source, ai_status, data_support, data_notes, predicted_home, predicted_away, predicted_p,
+const PREVIEW_SELECT = `fixture_id, stage, version, text_source, ai_status, data_support, data_notes, predicted_home, predicted_away, predicted_p,
   expected_home, expected_away, p_home, p_draw, p_away, overview_th, home_th, away_th, score_th, created_at,
   p_goals_0_1, p_goals_2, p_goals_3plus, attack_th, defence_th, h2h_th, key_factor_th, summary_th`;
 

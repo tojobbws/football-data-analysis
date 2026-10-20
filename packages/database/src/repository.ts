@@ -473,6 +473,15 @@ export class Repository {
     return rows[0]?.sides_matrix ?? null;
   }
 
+  /** The totals scoreline matrix (over/under) of the live run at `computedAt`, or null when that run kept none. */
+  async totalsMatrixAt(fixtureId: number, modelVersion: string, computedAt: Date): Promise<number[][] | null> {
+    const { rows } = await this.db.query<{ totals_matrix: number[][] }>(
+      `select totals_matrix from scoreline_snapshots where fixture_id = $1 and model_version_id = $2 and source = 'live' and computed_at = $3 limit 1`,
+      [fixtureId, modelVersion, computedAt.toISOString()],
+    );
+    return rows[0]?.totals_matrix ?? null;
+  }
+
   async lastQualificationAt(fixtureId: number): Promise<Date | null> {
     const { rows } = await this.db.query<{ t: Date }>('select max(computed_at) as t from qualification_snapshots where fixture_id = $1', [fixtureId]);
     return rows[0]?.t ? new Date(rows[0].t) : null;

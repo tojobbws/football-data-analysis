@@ -30,6 +30,8 @@ export interface TeamContext {
  * The score section leads with the goal bands (0–1 / 2 / 3+): a low top scoreline beside the outlook's over 2.5
  * read as a contradiction. Previews written before the bands (preview-v0.5) keep the scoreline and point to the outlook.
  * Previews from preview-v0.7 are written in sections and shown that way; older ones keep the four-part layout.
+ * From preview-v0.8 the write-up has four parts (the match, each side, the model's numbers, the Game Compass);
+ * its goal numbers come from the same totals matrix as the model outlook's over 2.5.
  */
 export function MatchPreviewCard({
   p,
@@ -62,11 +64,16 @@ export function MatchPreviewCard({
   const notes = p.data_notes.filter((n) => !n.includes(UNTESTED_NOTE));
   // a LIMITED level whose only reason was the untested note reads as GOOD, like a preview written today
   const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
-  const numbers = <ModelNumbers p={p} result={result} modelTested={modelTested} pick={pick} overInOutlook={overInOutlook} />;
+  const fourPart = previewMinor(p.version) >= 8;
+  const numbers = <ModelNumbers p={p} result={result} modelTested={modelTested} pick={pick} overInOutlook={overInOutlook} fourPart={fourPart} />;
 
   return (
     <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`} action={<Badge variant={support.variant}>{support.label}</Badge>}>
-      {p.attack_th != null ? (
+      {fourPart ? (
+        <FourPartPreview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes}>
+          {numbers}
+        </FourPartPreview>
+      ) : p.attack_th != null ? (
         <SectionedPreview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes}>
           {numbers}
         </SectionedPreview>
@@ -80,9 +87,69 @@ export function MatchPreviewCard({
       )}
 
       <Note>
-        {p.text_source === 'AI' ? 'เรียบเรียงโดย AI จากข้อมูลในระบบเท่านั้น ตัวเลขทุกตัวมาจากโมเดลและฐานข้อมูล' : 'สร้างจากตัวเลขในระบบโดยอัตโนมัติ'} · บันทึกก่อนเตะ แก้ไขไม่ได้ · เป็นข้อมูลประกอบ ไม่ใช่เข็มทิศเกม และไม่นับในผลงาน
+        {p.text_source === 'AI' ? 'เรียบเรียงโดย AI จากข้อมูลในระบบเท่านั้น ตัวเลขทุกตัวมาจากโมเดลและฐานข้อมูล' : 'สร้างจากตัวเลขในระบบโดยอัตโนมัติ'} · บันทึกก่อนเตะ แก้ไขไม่ได้ ·{' '}
+        {fourPart ? 'เข็มทิศเกมเลือกโดยกฎของระบบ AI เป็นผู้อธิบายเท่านั้น ส่วนบทวิเคราะห์ไม่นับในผลงาน' : 'เป็นข้อมูลประกอบ ไม่ใช่เข็มทิศเกม และไม่นับในผลงาน'}
       </Note>
     </Card>
+  );
+}
+
+/** "preview-v0.8" -> 8; anything else (older or unknown) -> 0 */
+function previewMinor(version: string | undefined): number {
+  return Number(/^preview-v0.(d+)$/.exec(version ?? '')?.[1] ?? 0);
+}
+
+/**
+ * preview-v0.8: four parts a fan reads in half a minute. The match and who has the edge, each side's
+ * strength and worry, the model's numbers with what could change them, and the Game Compass (only
+ * when there is a pick: fog is not shown on fan pages). The pick and its note come from the rules
+ * engine and the pick-note job; this text never chooses one.
+ */
+function FourPartPreview({ p, home, away, teams, logos, pick, pickNote, limits, children }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: { label: string } | null; pickNote?: string | null; limits: string[]; children: ReactNode }) {
+  // what could change the picture, plus the data's own limits: one place for both
+  const cautions = [p.key_factor_th, ...limits].filter((x): x is string => Boolean(x));
+
+  return (
+    <div className="space-y-5">
+      <section aria-labelledby="pv-overview">
+        <SectionTitle id="pv-overview">ภาพรวมเกม</SectionTitle>
+        <p className="mt-2 max-w-prose text-base leading-7 text-zinc-800">{p.overview_th}</p>
+      </section>
+
+      <section aria-labelledby="pv-teams" className="border-t border-zinc-100 pt-4">
+        <SectionTitle id="pv-teams">จุดแข็งและจุดเสี่ยง</SectionTitle>
+        <TeamTexts p={p} home={home} away={away} teams={teams} logos={logos} className="mt-3" />
+      </section>
+
+      <section aria-labelledby="pv-model" className="border-t border-zinc-100 pt-4">
+        <SectionTitle id="pv-model">สกอร์ที่โมเดลประเมิน</SectionTitle>
+        <div className="mt-2">{children}</div>
+        {cautions.length ? (
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-zinc-950">ข้อควรระวัง</p>
+            <ul className="mt-1.5 space-y-1.5 text-sm leading-relaxed text-zinc-700">
+              {cautions.map((r) => (
+                <li key={r} className="flex gap-2.5">
+                  <span className="mt-[0.6em] h-px w-2.5 shrink-0 bg-zinc-300" aria-hidden />
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
+      {pick ? (
+        <section aria-labelledby="pv-pick" className="border-t border-zinc-100 pt-4">
+          <SectionTitle id="pv-pick">เข็มทิศเกม</SectionTitle>
+          <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{pick.label}</p>
+          {pickNote ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{pickNote}</p> : null}
+          <a href="#pick" className="mt-1.5 inline-block text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950">
+            ดูเงื่อนไขและโอกาสของเข็มทิศเกม
+          </a>
+        </section>
+      ) : null}
+    </div>
   );
 }
 
@@ -216,7 +283,7 @@ export function FormChips({ results, className = '' }: { results: Array<'W' | 'D
 }
 
 /** The model's numbers: goal bands (or the single scoreline on rows before preview-v0.5) beside score_th. */
-function ModelNumbers({ p, result, modelTested, pick, overInOutlook }: { p: MatchPreview; result?: { home: number; away: number } | null; modelTested: boolean; pick?: { label: string; sel: MarketSelection } | null; overInOutlook: boolean }) {
+function ModelNumbers({ p, result, modelTested, pick, overInOutlook, fourPart = false }: { p: MatchPreview; result?: { home: number; away: number } | null; modelTested: boolean; pick?: { label: string; sel: MarketSelection } | null; overInOutlook: boolean; fourPart?: boolean }) {
   const hasScore = p.predicted_home != null && p.predicted_away != null;
   const ifScore = pick && hasScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
   const hit = result && hasScore ? (result.home === p.predicted_home && result.away === p.predicted_away ? 'ตรงสกอร์' : sameOutcome(result, p) ? 'ตรงผล' : 'ไม่ตรง') : null;
@@ -234,7 +301,7 @@ function ModelNumbers({ p, result, modelTested, pick, overInOutlook }: { p: Matc
   return bands ? (
     <div className="grid gap-x-8 gap-y-3 sm:grid-cols-[15rem_minmax(0,1fr)]">
       <div>
-        <p className="text-xs text-zinc-500">จำนวนประตูรวม</p>
+        <p className="text-xs text-zinc-500">{fourPart ? 'โอกาสของจำนวนประตูรวม' : 'จำนวนประตูรวม'}</p>
         <dl className="mt-1 divide-y divide-zinc-100">
           {bands.map((b) => (
             <div key={b.key} className="flex items-center justify-between gap-3 py-1.5 text-sm">
@@ -248,7 +315,16 @@ function ModelNumbers({ p, result, modelTested, pick, overInOutlook }: { p: Matc
         </dl>
         {hasScore ? (
           <div className="mt-3 border-t border-zinc-100 pt-3 text-xs leading-relaxed text-zinc-500">
-            <ScoreDetails p={p} ifScore={ifScore} pick={pick} modelTested={modelTested} hit={hit} result={result} showXg={false} />
+            {fourPart ? (
+              <p className="text-zinc-600">
+                สกอร์ที่โมเดลให้โอกาสสูงสุด{' '}
+                <b className="font-semibold tabular-nums text-zinc-950">
+                  {p.predicted_home}–{p.predicted_away}
+                </b>{' '}
+                ({pct(p.predicted_p)})
+              </p>
+            ) : null}
+            <ScoreDetails p={p} ifScore={ifScore} pick={pick} modelTested={modelTested} hit={hit} result={result} showXg={fourPart} />
           </div>
         ) : null}
       </div>
@@ -294,7 +370,7 @@ function ScoreDetails({ p, ifScore, pick, modelTested, hit, result, showXg = tru
     <>
       {showXg && p.expected_home != null ? (
         <p className="mt-1 text-xs text-zinc-500">
-          xG {Number(p.expected_home).toFixed(2)}–{Number(p.expected_away).toFixed(2)}
+          ประตูที่โมเดลคาด (xG) {Number(p.expected_home).toFixed(2)}–{Number(p.expected_away).toFixed(2)}
         </p>
       ) : null}
       {ifScore ? (

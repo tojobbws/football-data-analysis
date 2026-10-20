@@ -97,7 +97,7 @@ _Avoid_: predicted score, สกอร์คาดการณ์
 A market whose model is not enabled for picks (not yet back-tested, or failed it); it can't produce a pick. Its figures may appear in the model outlook of a league whose side model is tested, always with a quiet "being measured" note, never anywhere else on fan pages.
 
 **Goal band**:
-A range of total goals in the match — 0–1, 2, 3 or more — with the model's chance of each; the headline of the preview's score section, because it lines up with over/under where a single scoreline does not. Recorded with the preview, so its "3 or more" may differ a little from the model outlook's "over 2.5", which can be computed at another time; each shows when it was computed.
+A range of total goals in the match — 0–1, 2, 3 or more — with the model's chance of each; the headline of the preview's score section, because it lines up with over/under where a single scoreline does not. Since preview-v0.8 it comes from the same totals matrix as the model outlook's "over 2.5", so the two agree when computed in the same run; recorded with the preview, it can still differ from a later outlook, and each shows when it was computed.
 _Avoid_: predicted goals
 
 **Match phase**:

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   assessDataSupport,
   buildTemplateText,
+  compareViews,
+  EVEN,
   goalBands,
   matrixExpectedGoals,
   previewScoreMatrix,
@@ -132,7 +134,15 @@ describe('assessDataSupport', () => {
     );
     expect(s.level).toBe('THIN');
     expect(s.notes[0]).toContain('บอลถ้วยที่ทีมมาจากคนละลีก');
-    expect(s.notes[0]).toContain('40 นัด');
+    expect(s.notes[0]).toContain('มีเพียง 40 นัด');
+  });
+
+  it('LIMITED for a cross-league cup with a long history, without calling hundreds of matches few', () => {
+    const s = assessDataSupport(facts({ fixture: { ...facts().fixture, league: 'UEFA Champions League', leagueCountry: 'World', leagueType: 'Cup' }, model: { ...facts().model!, crossLeague: { cupMatchesUsed: 900 } } }));
+    expect(s.level).toBe('LIMITED');
+    expect(s.notes[0]).toContain('บอลถ้วยที่ทีมมาจากคนละลีก');
+    expect(s.notes[0]).not.toContain('900');
+    expect(s.notes[0]).not.toContain('เพียง');
   });
 
   it('LIMITED for an international cup without the cross-league model, THIN when the model is missing', () => {
@@ -167,49 +177,82 @@ describe('assessDataSupport', () => {
   });
 });
 
+describe('compareViews', () => {
+  it('model, market and recent form all lean the same way: no disagreement', () => {
+    const v = compareViews(facts());
+    expect(v).toMatchObject({ model: 'Arsenal', market: 'Arsenal', recentForm: EVEN, recentXg: EVEN, otherModel: null, disagreements: [] });
+    // the market's 1X2 with the margin taken out, summing to 1
+    expect(v.marketP!.home + v.marketP!.draw + v.marketP!.away).toBeCloseTo(1, 3);
+    expect(v.marketP!.home).toBeCloseTo(0.542, 2);
+  });
+
+  it('sources that point away from the model are listed (Liverpool–Villarreal: model 80%, market 63%, Villarreal the better recent xG)', () => {
+    const better = { venue: 'H' as const, result: 'W' as const, goalsFor: 2, goalsAgainst: 0, xgFor: 2.4, xgAgainst: 0.8 };
+    const f = facts({
+      fixture: { ...facts().fixture, home: 'Liverpool', away: 'Villarreal' },
+      home: team('Liverpool'),
+      away: team('Villarreal', { form: Array(5).fill(better) }),
+      model: { ...facts().model!, p: { home: 0.8024, draw: 0.0854, away: 0.1122 } },
+      market: { home: { opening: 1.47, current: 1.53, bookmakers: 10 }, draw: { opening: 4.6, current: 4.6, bookmakers: 10 }, away: { opening: 6.1, current: 5.72, bookmakers: 10 } },
+    });
+    const v = compareViews(f, { home: 0.3, away: 0.45 });
+    expect(v.model).toBe('Liverpool');
+    expect(v.market).toBe('Liverpool');
+    expect(v.recentForm).toBe('Villarreal');
+    expect(v.recentXg).toBe('Villarreal');
+    expect(v.otherModel).toBe('Villarreal');
+    expect(v.marketP!.home).toBeCloseTo(0.625, 2);
+    expect(v.disagreements).toEqual(['MARKET_GAP', 'FORM', 'XG', 'OTHER_MODEL']);
+
+    // the market on the other side is a plain MARKET disagreement (and no gap on top of it)
+    const flipped = compareViews({ ...f, market: { home: { opening: 3, current: 3.2, bookmakers: 6 }, draw: { opening: 3.4, current: 3.4, bookmakers: 6 }, away: { opening: 2.2, current: 2.1, bookmakers: 6 } } });
+    expect(flipped.disagreements[0]).toBe('MARKET');
+    expect(flipped.disagreements).not.toContain('MARKET_GAP');
+  });
+
+  it('an even model has nothing to disagree with; missing sources are null', () => {
+    const v = compareViews(facts({ model: { ...facts().model!, p: { home: 0.36, draw: 0.3, away: 0.34 } }, market: null }));
+    expect(v).toMatchObject({ model: EVEN, market: null, marketP: null, disagreements: [] });
+    expect(compareViews(facts({ model: null })).model).toBeNull();
+  });
+});
+
 describe('buildTemplateText', () => {
-  it('writes every number from the facts and flags limited data', () => {
+  it('four parts, every number from the facts; nothing stock when the facts name no risk', () => {
     const f = facts();
     const t = buildTemplateText(f, assessDataSupport(f));
+    expect(Object.keys(t)).toEqual(['overview_th', 'home_th', 'away_th', 'score_th', 'uncertainty_th']);
     expect(t.overview_th).toContain('Arsenal ชนะ 52%');
     expect(t.overview_th).toContain('ตัวเลขเอียงไปทาง Arsenal');
     expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกัน');
     expect(t.home_th).toContain('ชนะ 3 เสมอ 1 แพ้ 1');
     expect(t.home_th).toContain('อันดับ 3');
     expect(t.home_th).toContain('A. Player');
+    expect(t.score_th).toContain('โมเดลคาดประตู (xG) Arsenal 1.70 ต่อ Chelsea 1.00');
     expect(t.score_th).toContain('Arsenal 1-0 Chelsea (12%)');
-    expect(t.score_th).toContain('ประตูคาดหวัง 1.70 ต่อ 1.00');
-    expect(t.score_th).not.toContain('เกิน');
-
-    const thin = facts({ model: null });
-    const tt = buildTemplateText(thin, assessDataSupport(thin));
-    expect(tt.overview_th).toContain('ข้อมูลน้อย');
-    expect(tt.score_th).toContain('ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด');
+    expect(t.uncertainty_th).toBeNull();
+    for (const s of Object.values(t)) expect(s ?? '').not.toMatch(/[—–]/);
   });
 
-  it('fills every section: attack, defence, h2h (null without meetings), key factor, summary', () => {
-    const f = facts({
-      home: team('Arsenal', {
-        restDays: 3,
-        averages: { matches: 5, shotsOnTarget: 5.4, possession: 58 },
-        keyPlayers: [{ name: 'B. Saka', goals: 6, assists: 4, appearances: 8 }],
-        standing: { rank: 3, played: 8, points: 17, win: 5, draw: 2, lose: 1, goalsFor: 14, goalsAgainst: 6, home: { played: 4, win: 3, draw: 1, lose: 0, goalsFor: 8, goalsAgainst: 2 } },
-      }),
-      away: team('Chelsea', { restDays: 6, injuries: [{ player: 'C. Palmer', type: 'Missing Fixture', reason: 'Injury', isKeyPlayer: true, goals: 5, assists: 3 }] }),
-    });
-    const t = buildTemplateText(f, assessDataSupport(f));
-    expect(t.home_th).toContain('พักมา 3 วัน');
-    expect(t.home_th).toContain('B. Saka (6 ประตู 4 แอสซิสต์)');
-    expect(t.attack_th).toContain('Arsenal ยิงได้ 7 ประตูใน 5 นัด');
-    expect(t.attack_th).toContain('ยิงเข้ากรอบเฉลี่ย 5.4 ครั้ง');
-    expect(t.defence_th).toContain('ในบ้านเสีย 2 ประตูจาก 4 นัด');
-    expect(t.h2h_th).toBe('1 นัดหลังที่พบกัน Arsenal ชนะ 1 เสมอ 0 Chelsea ชนะ 0 ครั้งล่าสุด Chelsea 1-2 Arsenal');
-    expect(t.key_factor_th).toContain('C. Palmer');
-    expect(t.summary_th).toContain('เอียงไปทาง Arsenal');
+  it('no model: says so in the overview and the score part', () => {
+    const thin = facts({ model: null });
+    const t = buildTemplateText(thin, assessDataSupport(thin));
+    expect(t.overview_th).toContain('โมเดลยังไม่มีตัวเลข');
+    expect(t.score_th).toContain('ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด');
+  });
 
-    const quiet = buildTemplateText(facts({ h2h: [] }), assessDataSupport(facts()));
-    expect(quiet.h2h_th).toBeNull();
-    expect(quiet.key_factor_th).toContain('ประตูแรก');
+  it('a market far from the model, a missing key player, a rest gap and recent form against the model are named', () => {
+    const f = facts({
+      home: team('Arsenal', { restDays: 3, form: Array(5).fill({ venue: 'H', result: 'L', goalsFor: 0, goalsAgainst: 2, xgFor: 0.7, xgAgainst: 1.9 }) }),
+      away: team('Chelsea', { restDays: 6, injuries: [{ player: 'C. Palmer', type: 'Missing Fixture', reason: 'Injury', isKeyPlayer: true, goals: 5, assists: 3 }] }),
+      model: { ...facts().model!, p: { home: 0.72, draw: 0.16, away: 0.12 } },
+    });
+    f.views = compareViews(f);
+    const t = buildTemplateText(f, assessDataSupport(f));
+    expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกันแต่ให้โอกาสเพียง 54%');
+    expect(t.uncertainty_th).toContain('Chelsea ขาด C. Palmer');
+    expect(t.uncertainty_th).toContain('ผลงานช่วงหลัง Chelsea ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล');
+    expect(t.uncertainty_th).toContain('Arsenal มีเวลาพักน้อยกว่า');
   });
 });
 

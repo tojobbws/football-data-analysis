@@ -3,10 +3,14 @@
  *
  * Not a pick and never counted in 🧭 stats. Per fixture and stage (EARLY within 48h, LINEUP once the
  * XIs are confirmed) the job collects what the system knows (form, xG, standings, injuries, lineups,
- * the model's latest pre-kickoff numbers, market consensus, H2H), rates the data support and writes
- * the Thai text. The AI only turns the facts into prose; its text is guarded like the shadow ranking
- * (no invented numbers, no foreign scorelines, no gambling words). Without an API key, or when the
- * AI answer fails, the deterministic template text is stored instead — so every match has a preview.
+ * the model's latest pre-kickoff numbers, market consensus, H2H, which way each source leans), rates
+ * the data support and writes the Thai text. The AI only turns the facts into prose; its text is
+ * guarded like the shadow ranking (no invented numbers, no foreign scorelines, no gambling words, no
+ * disagreement left out). Without an API key, or when the AI answer fails, the deterministic template
+ * text is stored instead — so every match has a preview.
+ *
+ * preview-v0.8 writes four parts into the existing columns: overview_th, home_th / away_th, score_th
+ * and the uncertainty in key_factor_th; attack_th, defence_th, h2h_th and summary_th stay null.
  */
 import {
   isPersistentApiError,
@@ -19,7 +23,9 @@ import {
 import {
   assessDataSupport,
   buildTemplateText,
+  compareViews,
   DIXON_COLES_VERSION,
+  ELO_VERSION,
   formAverages,
   formSummary,
   goalBands,
@@ -159,11 +165,11 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
           home_th: text.home_th,
           away_th: text.away_th,
           score_th: text.score_th,
-          attack_th: text.attack_th,
-          defence_th: text.defence_th,
-          h2h_th: text.h2h_th,
-          key_factor_th: text.key_factor_th,
-          summary_th: text.summary_th,
+          key_factor_th: text.uncertainty_th,
+          attack_th: null,
+          defence_th: null,
+          h2h_th: null,
+          summary_th: null,
           facts: input,
         });
         written++;
@@ -233,12 +239,17 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
     const ensemble = probs.filter((p) => p.modelVersionId === ENSEMBLE_VERSION && p.market === 'MATCH_WINNER');
     const oneXTwo = ensemble.length === 3 ? ensemble : dc.filter((p) => p.market === 'MATCH_WINNER');
     const p = (sel: string) => oneXTwo.find((x) => x.selection === sel)?.probability ?? 0;
-    const matrix = previewScoreMatrix({
-      lambda: Number(inputs.lambda),
-      mu: Number(inputs.mu),
-      rho: Number(inputs.rho),
-      crossLeague: inputs.crossLeague ? { lambda: Number(inputs.crossLeague.lambda), mu: Number(inputs.crossLeague.mu), weightCupOnly: Number(inputs.crossLeague.weightCupOnly) } : null,
-    });
+    // goals come from the totals matrix of the same run, the one behind the outlook's over 2.5: from the
+    // sides matrix the bands said 3+ = 75% beside the outlook's over 2.5 = 64% (Liverpool–Villarreal, 2026-10-20).
+    // Runs before the scoreline snapshots keep the sides matrix.
+    const matrix =
+      (await ctx.repo.totalsMatrixAt(f.id, DIXON_COLES_VERSION, dc[0]!.computedAt)) ??
+      previewScoreMatrix({
+        lambda: Number(inputs.lambda),
+        mu: Number(inputs.mu),
+        rho: Number(inputs.rho),
+        crossLeague: inputs.crossLeague ? { lambda: Number(inputs.crossLeague.lambda), mu: Number(inputs.crossLeague.mu), weightCupOnly: Number(inputs.crossLeague.weightCupOnly) } : null,
+      });
     const eg = matrixExpectedGoals(matrix);
     bands = goalBands(matrix);
     model = {
@@ -344,5 +355,9 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
       : null,
     h2h,
   };
+  const elo = probs.filter((p) => p.modelVersionId === ELO_VERSION && p.market === 'MATCH_WINNER');
+  const eloP = (sel: string) => elo.find((x) => x.selection === sel)?.probability;
+  const otherModel = eloP('HOME') != null && eloP('AWAY') != null ? { home: eloP('HOME')!, away: eloP('AWAY')! } : null;
+  facts.views = compareViews(facts, otherModel);
   return { facts, bands };
 }
