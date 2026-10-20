@@ -264,4 +264,10 @@ describe('restDays', () => {
     expect(restDays(ko, new Date('2026-05-25T10:00:00Z'))).toBeNull();
     expect(restDays(ko, null)).toBeNull();
   });
+
+  it('counts elapsed time, so a kickoff across Thai midnight is no extra day (Al Diriyah: 17 Oct 18:00 UTC = 18 Oct 01:00 TH, then 20 Oct 15:00 UTC)', () => {
+    expect(restDays(new Date('2026-10-20T15:00:00Z'), new Date('2026-10-17T18:00:00Z'))).toBe(2);
+    // the same two kickoffs written with a +07:00 offset give the same answer
+    expect(restDays(new Date('2026-10-20T22:00:00+07:00'), new Date('2026-10-18T01:00:00+07:00'))).toBe(2);
+  });
 });

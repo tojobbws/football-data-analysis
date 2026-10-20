@@ -4,7 +4,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { isPersistentOpenAIError } from './openai.js';
-import { AI_MODEL, OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
+import { AI_MODEL, AI_TIMEOUT_MS, OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
 import { PICK_NOTE_OUTPUT_SCHEMA, PICK_NOTE_SYSTEM_PROMPT } from './pick-note.js';
 
@@ -36,7 +36,7 @@ export interface StructuredCallOptions {
 
 /** A JSON-schema-constrained Claude call; refusals and unparseable text come back as data, never throw. */
 export function createStructuredCall(opts: StructuredCallOptions): (input: Record<string, unknown>) => Promise<RankerResult> {
-  const client = new Anthropic({ apiKey: opts.apiKey });
+  const client = new Anthropic({ apiKey: opts.apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1 });
   const model = opts.model ?? AI_MODEL;
   return async (input) => {
     // Claude Haiku 5.5 has no server-side refusal fallback: a refusal comes back as data (below)

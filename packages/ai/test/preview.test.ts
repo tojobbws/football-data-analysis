@@ -95,7 +95,7 @@ describe('validatePreviewOutput: no confirmed lineup', () => {
     expect(validatePreviewOutput({ ...ok, home_th: 'Arsenal ส่งตัวจริงชุดใหญ่ ฟอร์มนัดล่าสุดชนะ 2-0' }, input).violations).toEqual(['home_th: lineup claim before the lineups are out']);
     expect(validatePreviewOutput({ ...ok, away_th: 'Chelsea มาแบบเต็มทีม อยู่อันดับ 9 ของตาราง' }, input).violations).toEqual(['banned word "เต็มทีม"']);
     // saying they are not out yet is fine, however it is phrased
-    for (const said of ['ยังไม่ประกาศรายชื่อตัวจริง', 'ก่อนประกาศตัวจริง', 'ตัวจริงยังไม่ออก']) {
+    for (const said of ['ยังไม่ประกาศรายชื่อตัวจริง', 'ก่อนประกาศตัวจริง', 'ตัวจริงยังไม่ออก', 'รายชื่อตัวจริงของทั้งสองทีมยังไม่ประกาศ']) {
       expect(validatePreviewOutput({ ...ok, uncertainty_th: `ข้อมูลมีข้อจำกัด และ${said}` }, input).ok).toBe(true);
     }
     // at LINEUP the starters are facts
@@ -155,7 +155,8 @@ describe('validatePickNote', () => {
   it('rejects a note that restates the pick, stiff wording, a claim that the market is wrong, or one too long', () => {
     expect(validatePickNote({ pick_th: 'มุมมองคือ Arsenal -0.5: ชนะถือว่าถูก แพ้หรือเสมอถือว่าผิด' }, pickInput).violations).toEqual(['restates the pick at the start']);
     expect(validatePickNote({ pick_th: 'Arsenal -0.5 คือมุมมองของโมเดลในเกมนี้ที่ต่างจากตลาด' }, pickInput).violations).toEqual(['restates the pick at the start']);
-    expect(validatePickNote({ pick_th: 'โมเดลสูงกว่าตลาด 8 จุดเปอร์เซ็นต์; ฟอร์มดี' }, pickInput).violations).toEqual(['banned word "จุดเปอร์เซ็นต์"', 'banned word ";"']);
+    expect(validatePickNote({ pick_th: 'โมเดลสูงกว่าตลาด 8 จุดเปอร์เซ็นต์; ฟอร์มดี' }, pickInput).violations).toEqual(['banned word "จุดเปอร์เซ็นต์"']);
+    expect(validatePickNote({ pick_th: 'ต้องให้ Arsenal ชนะ โมเดลให้ 60%; ตลาดให้ 52%' }, pickInput).text).toBe('ต้องให้ Arsenal ชนะ โมเดลให้ 60% ตลาดให้ 52%');
     expect(validatePickNote({ pick_th: 'ตลาดประเมินพลาด Arsenal ชนะแน่นอน' }, pickInput).violations).toEqual(['banned word "ประเมินพลาด"', 'banned word "แน่นอน"']);
     expect(validatePickNote({ pick_th: 'ก'.repeat(381) }, pickInput).violations[0]).toMatch(/^schema:/);
   });
@@ -169,6 +170,10 @@ describe('validatePickNote', () => {
     expect(validatePickNote({ pick_th: 'ต้องให้ Arsenal ชนะ โมเดลให้ 60% ตลาดให้ 52% ส่วน -1.5 ก็พอไหว' }, pickInput).violations).toEqual(expect.arrayContaining(["line not the pick's: -1.5"]));
     // the pick's own line, from either side, is fine
     expect(validatePickNote({ pick_th: 'Chelsea +0.5 คือมุมกลับ ต้องให้ Arsenal ชนะ โมเดลให้ 60% ตลาดให้ 52%' }, pickInput).ok).toBe(true);
+  });
+
+  it('a push is เสมอตัว, not the betting word คืนทุน (Al Riyadh 0, 2026-10-20)', () => {
+    expect(validatePickNote({ pick_th: 'ต้องให้ Arsenal ชนะจึงถูก ส่วนเสมอคืนทุน โมเดลให้ 60% ตลาด 52%' }, pickInput).violations).toEqual(['banned word "คืนทุน"']);
   });
 
   it('ชนะขาด is no win condition; ความไม่แน่นอน is honest wording, not a promise', () => {

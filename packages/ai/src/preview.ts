@@ -27,7 +27,7 @@ Write five fields (all Thai, no headings, no bullet characters, no markdown):
 2. home_th, 2-3 sentences on the home team: one strength and one worry, each backed by this team's own facts. Pick only what explains this match: recent form, xG and chances created, attack or defence, a missing key player, the confirmed XI (LINEUP only), the home or away record or rest days when they show something. Name the team.
 3. away_th: the same for the away team.
 4. score_th, 2-3 sentences on the model's numbers: start with the expected goals (how open or tight the match looks), then the most likely scoreline as one of many possible scores with its chance, and how it fits the overview. Keep the three kinds of number apart: a 1X2 chance is the chance of a result, expected goals are goals, a scoreline's chance is the chance of that exact score. Never present one as another, and never turn expected goals into a chance of a goal count.
-5. uncertainty_th, 0-2 sentences: what in the facts could change the picture for this match (a missing key player, a limit named in data_support, a disagreement from views, a gap in rest days). An empty string when the facts name nothing specific. No stock lines such as "the first goal will matter".
+5. uncertainty_th, 0-2 sentences: what in the facts could change the picture for this match (a missing key player, a disagreement from views, a gap in rest days). The page lists the data_support reasons right under this field, so do not repeat them here. An empty string when the facts name nothing else specific. No stock lines such as "the first goal will matter".
 
 Style: short spoken sentences, no officialese, no research-paper tone. Thai punctuation: separate sentences with a space, no full stops, no semicolons. Write chances as whole percentages (80%, not 80.3%). Explain a technical term once where it first appears (xG คือค่าประเมินคุณภาพของโอกาสยิง). Use only the few numbers that explain the match, at most three or four in a section. Say each point once: what one section says, another does not repeat. Keep what the data shows (results, table, injuries) apart from what it suggests (how the match may go). Not every match needs a firm conclusion: when the data is thin or the sources disagree, say the picture is open. Aim for 900-1,400 Thai characters in all, fewer when the data is limited; never pad to reach a length.
 
@@ -59,7 +59,7 @@ const STRONG_CLAIMS = ['ได้เปรียบชัด', 'เหนือ�
  * At EARLY the lineup may only be mentioned as not out yet: "ยังไม่ประกาศรายชื่อตัวจริง",
  * "ก่อนประกาศตัวจริง", "ตัวจริงยังไม่ออก" are fine, "ส่งตัวจริงชุดใหญ่" is a claim.
  */
-const LINEUP_NOT_OUT = /(?:ยังไม่|ก่อน)\S{0,25}?(?:ตัวจริง|ไลน์อัพ|ไลน์อัป)|(?:ตัวจริง|ไลน์อัพ|ไลน์อัป)\S{0,10}?ยังไม่/g;
+const LINEUP_NOT_OUT = /(?:ยังไม่|ก่อน)\S{0,25}?(?:ตัวจริง|ไลน์อัพ|ไลน์อัป)|(?:ตัวจริง|ไลน์อัพ|ไลน์อัป)\S{0,25}?ยังไม่/g;
 const LINEUP_WORDS = /ตัวจริง|ไลน์อัพ|ไลน์อัป/;
 /** Thai separates sentences with a space; a stray semicolon is fixed here, not worth a retry */
 const tidy = (s: string | null) => (s == null ? s : s.replace(/\s*;\s*/g, ' '));

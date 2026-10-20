@@ -8,6 +8,7 @@ import type { PreviewWriter, RankerResult, ShadowRanker } from './claude.js';
 import { OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
 import { PICK_NOTE_OUTPUT_SCHEMA, PICK_NOTE_SYSTEM_PROMPT } from './pick-note.js';
+import { AI_TIMEOUT_MS } from './prompt.js';
 
 export interface OpenAICallOptions {
   apiKey: string;
@@ -21,7 +22,7 @@ export interface OpenAICallOptions {
 }
 
 export function createOpenAIStructuredCall(opts: OpenAICallOptions): (input: Record<string, unknown>) => Promise<RankerResult> {
-  const client = new OpenAI({ apiKey: opts.apiKey, ...(opts.fetch ? { fetch: opts.fetch, maxRetries: 0 } : {}) });
+  const client = new OpenAI({ apiKey: opts.apiKey, timeout: AI_TIMEOUT_MS, maxRetries: 1, ...(opts.fetch ? { fetch: opts.fetch, maxRetries: 0 } : {}) });
   return async (input) => {
     const response = await client.responses.create({
       model: opts.model,

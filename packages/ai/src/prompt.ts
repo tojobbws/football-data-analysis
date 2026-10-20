@@ -6,6 +6,11 @@ export const PROMPT_VERSION = 'ai-shadow-v0.2';
 // Sonnet: the preview and shadow ranking are short structured writing over given facts, guarded after;
 // half Opus's price. Rows record the model that answered, so the switch stays traceable.
 export const AI_MODEL = 'claude-haiku-5-5';
+/**
+ * Per request, for every AI client. A preview takes ~75 s; the SDK default (10 min, 2 retries) let one
+ * hung call hold a run for half an hour, past its time budget (refresh run, 2026-10-20).
+ */
+export const AI_TIMEOUT_MS = 180_000;
 
 /** Kept byte-stable (no dates, no per-request values) so it caches across fixtures. */
 export const SYSTEM_PROMPT = `You are the analyst layer of a Thai football data & analysis brand. You receive one upcoming match as JSON and rank the candidate selections by how well the data supports them.

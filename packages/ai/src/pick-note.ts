@@ -22,7 +22,7 @@ The page shows the label in large type and a table of the win conditions right n
 - Then one or two facts from the input that bear on this view. If the recent facts point the other way (views.disagreements, a poor run, a missing key player), say so honestly and say the difference comes from the model's numbers over a longer stretch, not from recent form. Never present a fact against the view as if it supported it, and never pick out a single result (one big win) as if it were the pattern.
 - End with the main risk or limit for this view in a few words (data_support, a disagreement, the margin it needs).
 
-Write pick_th: 2-3 short, plain Thai sentences, at most about 300 characters in all. Separate sentences with a space: no full stops, no semicolons. No technical terms such as จุดเปอร์เซ็นต์ or edge.
+Write pick_th: 2-3 short, plain Thai sentences, at most about 300 characters in all. Separate sentences with a space: no full stops, no semicolons. No technical terms such as จุดเปอร์เซ็นต์ or edge. Outcomes are ถูก, ถูกครึ่ง, เสมอตัว, ผิดครึ่ง, ผิด: never betting words such as คืนทุน, ได้เงิน or เสียเงิน.
 
 Hard rules:
 - The view is where the model differs from the market, not the most likely result. Never say the market is wrong (no ตลาดประเมินพลาด, no ตลาดผิด), never say the result will happen, never use ฟันธง or "แน่นอน".
@@ -49,7 +49,7 @@ export const pickNoteOutputSchema = z.object({ pick_th: z.string().trim().min(20
  * Semicolons and จุดเปอร์เซ็นต์ marked the stiff v0.1 notes. ชนะขาด stood in for "wins by 3 or
  * more" on Liverpool -2.5 (v0.2): the note names the real condition instead.
  */
-const PICK_NOTE_BANNED = [...PREVIEW_BANNED_WORDS, 'ประเมินพลาด', 'ตลาดผิด', 'แน่นอน', 'จุดเปอร์เซ็นต์', ';', 'ชนะขาด'] as const;
+const PICK_NOTE_BANNED = [...PREVIEW_BANNED_WORDS, 'ประเมินพลาด', 'ตลาดผิด', 'แน่นอน', 'จุดเปอร์เซ็นต์', 'ชนะขาด', 'คืนทุน', 'ได้เงิน', 'เสียเงิน'] as const;
 /** "ความไม่แน่นอน" (uncertainty) is the honest word, not the banned "แน่นอน" */
 const UNCERTAIN = /ไม่แน่นอน/g;
 
@@ -67,7 +67,8 @@ export function validatePickNote(raw: unknown, input: Record<string, unknown>): 
   if (!parsed.success) {
     return { ok: false, violations: [`schema: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`], text: null };
   }
-  const t = parsed.data.pick_th;
+  // a stray semicolon (the stiff v0.1 mark) is turned into a space, as in the preview, not worth a retry
+  const t = parsed.data.pick_th.replace(/\s*;\s*/g, ' ');
   const violations: string[] = [];
   const unhedged = t.replace(UNCERTAIN, '');
   for (const w of PICK_NOTE_BANNED) if (unhedged.includes(w)) violations.push(`banned word "${w}"`);
