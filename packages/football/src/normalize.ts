@@ -266,10 +266,17 @@ export function toInjuryRow(item: InjuryItem): Row {
 }
 
 // ---------- standings ----------
+/** Standing rows whose team has no id (API-Football sent UCL 2026 "Sabah FC" with id null): they can't be stored. */
+export function standingTeamsWithoutId(item: StandingsItem): string[] {
+  return (item.league.standings ?? []).flat().filter((r) => validId(r.team?.id) == null).map((r) => r.team?.name ?? `rank ${r.rank}`);
+}
+
+/** Skips the rows of standingTeamsWithoutId: the team's previous row stays until the API sends its id again. */
 export function toStandingRows(item: StandingsItem): Row[] {
   const rows: Row[] = [];
   for (const group of item.league.standings ?? []) {
     for (const r of group) {
+      if (validId(r.team?.id) == null) continue;
       rows.push({
         league_id: item.league.id,
         season: item.league.season,

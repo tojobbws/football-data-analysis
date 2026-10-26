@@ -5,6 +5,7 @@ import {
   toInjuryRow,
   toLeagueRow,
   toLeagueSeasonRows,
+  standingTeamsWithoutId,
   toPlayerRows,
   toStandingRows,
   toTeamRow,
@@ -206,7 +207,11 @@ export function syncStandings(ctx: JobContext) {
     let n = 0;
     for (const { league, season } of await trackedLeagueSeasons(ctx)) {
       const { data } = await ctx.api.standings({ league, season });
-      for (const item of data) n += await ctx.repo.upsertStandings(toStandingRows(item));
+      for (const item of data) {
+        const skipped = standingTeamsWithoutId(item);
+        if (skipped.length) ctx.log.warn('standings rows without a team id skipped', { league, season, teams: skipped });
+        n += await ctx.repo.upsertStandings(toStandingRows(item));
+      }
     }
     return n;
   });

@@ -8,11 +8,14 @@ import {
   toEventRows,
   toFixturePlayerStatRows,
   toFixtureRow,
+  standingTeamsWithoutId,
   toLineupRows,
+  toStandingRows,
   toStatisticRows,
   toVenueStubFromFixture,
   validId,
   type FixtureItem,
+  type StandingsItem,
 } from '../src/index.js';
 import detail from './fixtures/fixture-detail.json' with { type: 'json' };
 
@@ -115,5 +118,17 @@ describe('fixture mappers', () => {
       7,
     );
     expect(row).toMatchObject({ percent_home: 50, percent_draw: 30, percent_away: 20, winner_team_id: 40, raw_response_id: 7 });
+  });
+});
+
+describe('standings', () => {
+  const row = (rank: number, id: number | null, name: string) => ({ rank, team: { id, name }, points: 3, goalsDiff: 0, group: 'UEFA Champions League', form: null, all: { played: 3 } });
+  const item = {
+    league: { id: 2, season: 2026, name: 'UEFA Champions League', standings: [[row(24, 209, 'Feyenoord'), row(25, null, 'Sabah FC'), row(26, 327, 'Bodo/Glimt')]] },
+  } as unknown as StandingsItem;
+
+  it('skips a team the API sent without an id (team_id is not null in the table)', () => {
+    expect(toStandingRows(item).map((r) => r.team_id)).toEqual([209, 327]);
+    expect(standingTeamsWithoutId(item)).toEqual(['Sabah FC']);
   });
 });
