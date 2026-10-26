@@ -43,29 +43,13 @@ export function generateCandidatesJob(
       if (!configs.has(f.leagueId)) configs.set(f.leagueId, await ctx.repo.latestModelConfigs(f.leagueId));
       const cfg = configs.get(f.leagueId)!;
 
-      const probs = await ctx.repo.latestProbabilities(f.id, DIXON_COLES_VERSION);
-      if (!probs.length) {
+      const c = await candidateContext(ctx.repo, f, cfg, now);
+      if (!c) {
         report.push({ fixture: f.id, outcome: 'SKIP', note: 'no probabilities yet (run model:probabilities)' });
         continue;
       }
-      const quotes = await ctx.repo.latestQuotes(f.id);
-      const computedAt = probs[0]!.computedAt.toISOString();
-
-      // Player Impact layer: use it only if trusted for this league AND built on the same DC run
-      const impactRows = await ctx.repo.latestProbabilities(f.id, IMPACT_VERSION);
-      const impactHead = impactRows.find((r) => r.inputs && 'impact' in r.inputs);
-      const impact = impactHead?.inputs?.impact as
-        | { key: { basedOn: string }; home: { attackLoss: number; defenceLoss: number }; away: { attackLoss: number; defenceLoss: number } }
-        | undefined;
-      const impactFresh = Boolean(impact && impact.key.basedOn === computedAt);
-      const useImpact = Boolean(cfg.IMPACT?.enabled) && impactFresh;
-      const maxLoss = impact && impactFresh ? Math.max(impact.home.attackLoss, impact.home.defenceLoss, impact.away.attackLoss, impact.away.defenceLoss) : 0;
+      const { quotes, computedAt, impact, impactFresh, impactHead, useImpact, input, modelSource } = c;
       const lastOdds = quotes.length ? new Date(Math.max(...quotes.map((q) => q.updatedAt.getTime()))).toISOString() : null;
-      const gates = {
-        MATCH_WINNER: gateOf(cfg.ENSEMBLE ?? cfg.SIDES),
-        ASIAN_HANDICAP: gateOf(cfg.SIDES),
-        OVER_UNDER: gateOf(cfg.TOTALS),
-      };
       const inputsKey = {
         probabilitiesComputedAt: computedAt,
         lastOddsUpdate: lastOdds,
@@ -86,42 +70,6 @@ export function generateCandidatesJob(
         if (sameStable && (sameOdds || recent)) continue;
       }
 
-      // Model prices: ensemble for 1X2 when the league uses it, Dixon-Coles for the rest
-      const dc = probs.filter((p) => p.modelVersionId === DIXON_COLES_VERSION);
-      const ens = probs.filter((p) => p.modelVersionId === ENSEMBLE_VERSION);
-      const elo = probs.filter((p) => p.modelVersionId === ELO_VERSION);
-      const toPrice = (p: (typeof probs)[number]): ModelPrice => ({
-        market: p.market as MarketCode,
-        selection: p.selection,
-        line: p.line,
-        probability: p.probability,
-        distribution: (p.inputs?.distribution as OutcomeDistribution | undefined) ?? null,
-      });
-      let model: ModelPrice[];
-      if (useImpact) {
-        model = impactRows.map(toPrice); // impact job already blends 1X2 with Elo when the league uses the ensemble
-      } else {
-        model = dc.filter((p) => p.market !== 'MATCH_WINNER' || !ens.length).map(toPrice);
-        for (const p of ens) model.push({ market: 'MATCH_WINNER', selection: p.selection, line: null, probability: p.probability });
-      }
-      const modelSource = useImpact ? 'DC+IMPACT' : ens.length ? 'DC/ENSEMBLE' : 'DC';
-
-      const first = dc.find((p) => p.inputs && 'lambda' in p.inputs)?.inputs as
-        | { home?: { weightedMatches?: number }; away?: { weightedMatches?: number } }
-        | undefined;
-      const eloP = (s: string) => elo.find((p) => p.selection === s)?.probability;
-      const input: CandidateInput = {
-        fixtureId: f.id,
-        kickoffAt: f.kickoffAt,
-        now,
-        model,
-        elo1x2: elo.length === 3 ? { home: eloP('HOME')!, draw: eloP('DRAW')!, away: eloP('AWAY')! } : null,
-        quotes,
-        gates,
-        teamData: { homeWeightedMatches: Number(first?.home?.weightedMatches ?? 0), awayWeightedMatches: Number(first?.away?.weightedMatches ?? 0) },
-        // absences we know about but did not price in -> big ones block the signal
-        unmodelledLoss: useImpact ? 0 : maxLoss,
-      };
       const d = generateCandidates(input, rules);
 
       let rank = 0;
@@ -236,6 +184,76 @@ export function generateCandidatesJob(
     if (report.length) console.table(report);
     return written;
   });
+}
+
+/**
+ * Everything the decision rules read for one fixture: the latest model prices (Player Impact when the
+ * league trusts it and it is built on the same Dixon-Coles run, else Dixon-Coles with the ensemble's
+ * 1X2), Elo, the latest quotes and the market gates. Null before the Probability Engine has priced it.
+ */
+export async function candidateContext(
+  repo: JobContext['repo'],
+  f: { id: number; kickoffAt: Date },
+  cfg: Partial<Record<string, ModelConfig>>,
+  now: Date,
+) {
+  const probs = await repo.latestProbabilities(f.id, DIXON_COLES_VERSION);
+  if (!probs.length) return null;
+  const quotes = await repo.latestQuotes(f.id);
+  const computedAt = probs[0]!.computedAt.toISOString();
+
+  // Player Impact layer: use it only if trusted for this league AND built on the same DC run
+  const impactRows = await repo.latestProbabilities(f.id, IMPACT_VERSION);
+  const impactHead = impactRows.find((r) => r.inputs && 'impact' in r.inputs);
+  const impact = impactHead?.inputs?.impact as
+    | { key: { basedOn: string }; home: { attackLoss: number; defenceLoss: number }; away: { attackLoss: number; defenceLoss: number } }
+    | undefined;
+  const impactFresh = Boolean(impact && impact.key.basedOn === computedAt);
+  const useImpact = Boolean(cfg.IMPACT?.enabled) && impactFresh;
+  const maxLoss = impact && impactFresh ? Math.max(impact.home.attackLoss, impact.home.defenceLoss, impact.away.attackLoss, impact.away.defenceLoss) : 0;
+  const gates = {
+    MATCH_WINNER: gateOf(cfg.ENSEMBLE ?? cfg.SIDES),
+    ASIAN_HANDICAP: gateOf(cfg.SIDES),
+    OVER_UNDER: gateOf(cfg.TOTALS),
+  };
+
+  // Model prices: ensemble for 1X2 when the league uses it, Dixon-Coles for the rest
+  const dc = probs.filter((p) => p.modelVersionId === DIXON_COLES_VERSION);
+  const ens = probs.filter((p) => p.modelVersionId === ENSEMBLE_VERSION);
+  const elo = probs.filter((p) => p.modelVersionId === ELO_VERSION);
+  const toPrice = (p: (typeof probs)[number]): ModelPrice => ({
+    market: p.market as MarketCode,
+    selection: p.selection,
+    line: p.line,
+    probability: p.probability,
+    distribution: (p.inputs?.distribution as OutcomeDistribution | undefined) ?? null,
+  });
+  let model: ModelPrice[];
+  if (useImpact) {
+    model = impactRows.map(toPrice); // impact job already blends 1X2 with Elo when the league uses the ensemble
+  } else {
+    model = dc.filter((p) => p.market !== 'MATCH_WINNER' || !ens.length).map(toPrice);
+    for (const p of ens) model.push({ market: 'MATCH_WINNER', selection: p.selection, line: null, probability: p.probability });
+  }
+  const modelSource = useImpact ? 'DC+IMPACT' : ens.length ? 'DC/ENSEMBLE' : 'DC';
+
+  const first = dc.find((p) => p.inputs && 'lambda' in p.inputs)?.inputs as
+    | { home?: { weightedMatches?: number }; away?: { weightedMatches?: number } }
+    | undefined;
+  const eloP = (s: string) => elo.find((p) => p.selection === s)?.probability;
+  const input: CandidateInput = {
+    fixtureId: f.id,
+    kickoffAt: f.kickoffAt,
+    now,
+    model,
+    elo1x2: elo.length === 3 ? { home: eloP('HOME')!, draw: eloP('DRAW')!, away: eloP('AWAY')! } : null,
+    quotes,
+    gates,
+    teamData: { homeWeightedMatches: Number(first?.home?.weightedMatches ?? 0), awayWeightedMatches: Number(first?.away?.weightedMatches ?? 0) },
+    // absences we know about but did not price in -> big ones block the signal
+    unmodelledLoss: useImpact ? 0 : maxLoss,
+  };
+  return { quotes, computedAt, impact, impactFresh, impactHead, useImpact, input, modelSource };
 }
 
 function gateOf(c: ModelConfig | undefined) {

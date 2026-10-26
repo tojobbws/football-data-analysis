@@ -22,6 +22,8 @@ export interface FinishedMatchRow {
   eventsKnown: boolean;
 }
 
+export type TeamMatchRow = Omit<FinishedMatchRow, 'fixtureId' | 'redCardMinute' | 'eventsKnown'> & { season: number };
+
 export interface PlayerStatRow {
   fixtureId: number;
   kickoffAt: Date;
@@ -378,6 +380,40 @@ export class Repository {
       redCardMinute: r.red_minute == null ? null : Number(r.red_minute),
       eventsKnown: Boolean(r.events_known),
     }));
+  }
+
+  /**
+   * Every finished match in every competition we hold, per team, oldest first: score, xG when known,
+   * and the season. The market-anchored model reads a team's recent finishing and its season so far
+   * from all of its matches, not only those of the competition it plays in today.
+   */
+  async teamMatchLog(): Promise<Map<number, TeamMatchRow[]>> {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.kickoff_at, f.season, f.home_team_id, f.away_team_id,
+              coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga,
+              xh.value_num as xg_home, xa.value_num as xg_away
+         from fixtures f
+         left join fixture_statistics xh on xh.fixture_id = f.id and xh.team_id = f.home_team_id and xh.type = 'expected_goals'
+         left join fixture_statistics xa on xa.fixture_id = f.id and xa.team_id = f.away_team_id and xa.type = 'expected_goals'
+        where f.status_short in ('FT','AET','PEN')
+          and coalesce(f.ft_home, f.goals_home) is not null and coalesce(f.ft_away, f.goals_away) is not null
+        order by f.kickoff_at`,
+    );
+    const out = new Map<number, TeamMatchRow[]>();
+    for (const r of res.rows) {
+      const m = {
+        kickoffAt: new Date(r.kickoff_at as string),
+        season: Number(r.season),
+        homeTeamId: Number(r.home_team_id),
+        awayTeamId: Number(r.away_team_id),
+        homeGoals: Number(r.gh),
+        awayGoals: Number(r.ga),
+        homeXg: r.xg_home == null ? null : Number(r.xg_home),
+        awayXg: r.xg_away == null ? null : Number(r.xg_away),
+      };
+      for (const id of [m.homeTeamId, m.awayTeamId]) (out.get(id) ?? out.set(id, []).get(id)!).push(m);
+    }
+    return out;
   }
 
   async upcomingFixturesWithTeams(leagueId: number, fromIso: string, toIso: string) {
