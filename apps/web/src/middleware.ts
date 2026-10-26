@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+// Stays "middleware" (edge), not Next 16's "proxy": OpenNext runs proxy on Node, experimental on Cloudflare.
 /** Keeps the Supabase session cookie fresh on /admin (Server Components cannot write cookies). */
 export async function middleware(request: NextRequest) {
   const url = process.env.SUPABASE_URL;
