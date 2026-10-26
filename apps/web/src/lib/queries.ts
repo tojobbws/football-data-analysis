@@ -1,9 +1,9 @@
 import 'server-only';
 import { cache } from 'react';
 import { DEFAULT_RULES, readMainLines, summarizeBenchmarkDays, type BenchmarkDay, type OutcomeDistribution } from '@fp/analysis';
-import { buildRegistry, type PopularityRegistry } from '@fp/shared/popularity';
+import { buildRegistry, type LeagueImportanceRow, type PopularityRegistry, type RivalryRow, type TeamPopularityRow } from '@fp/shared/popularity';
 import { webEnv } from './env';
-import { db } from './supabase';
+import { allRows, db } from './supabase';
 import { FINISHED, LIVE, type Status } from './labels';
 import { liveSince, type LiveSnapshot, type LiveState } from './live';
 import { addDaysStr, footballDate, footballDayRange, thaiDate, thaiDayRange } from './time';
@@ -207,7 +207,11 @@ async function matchesBetween(from: string, to: string): Promise<MatchRow[]> {
 export async function matchDayCounts(fromDate: string, days: number): Promise<Map<string, number>> {
   const { from } = footballDayRange(fromDate);
   const to = new Date(new Date(from).getTime() + days * 86_400_000).toISOString();
-  const { data, error } = await db().from('fixtures').select('kickoff_at').in('league_id', webEnv().leagues).gte('kickoff_at', from).lt('kickoff_at', to);
+  const sb = db();
+  // ten busy days of every tracked league can pass the server's 1000-row cap
+  const { data, error } = await allRows<{ kickoff_at: string }>((a, b) =>
+    sb.from('fixtures').select('kickoff_at').in('league_id', webEnv().leagues).gte('kickoff_at', from).lt('kickoff_at', to).order('id').range(a, b),
+  );
   if (error) fail('fixtures', error);
   const out = new Map<string, number>();
   for (const r of data ?? []) {
@@ -457,20 +461,16 @@ export type BenchmarkMetric = '1X2' | 'AH_MAIN' | 'OU_MAIN' | 'PICK';
  */
 export async function benchmark(mainModel: string) {
   const sb = db();
-  // PostgREST returns at most 1000 rows per request and the view grows by a few rows per football day: read pages
-  const pages = async (build: () => ReturnType<ReturnType<typeof sb.from>['select']>) => {
-    const out: Array<Record<string, unknown>> = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await build().order('metric').order('day').range(from, from + 999);
-      if (error) fail('benchmark', error);
-      out.push(...((data ?? []) as Array<Record<string, unknown>>));
-      if ((data ?? []).length < 1000) return out;
-    }
+  // the view grows by a few rows per football day: read it in pages (one metric and day per row = a total order)
+  const pages = async (filter: (q: ReturnType<ReturnType<typeof sb.from>['select']>) => ReturnType<ReturnType<typeof sb.from>['select']>) => {
+    const { data, error } = await allRows<Record<string, unknown>>((from, to) => filter(sb.from('web_benchmark_days').select('*')).order('metric').order('day').range(from, to));
+    if (error) fail('benchmark', error);
+    return data;
   };
-  const scored = await pages(() => sb.from('web_benchmark_days').select('*').or(`metric.in.(AH_MAIN,OU_MAIN,PICK),and(metric.eq.1X2,model_version_id.eq.${mainModel})`));
+  const scored = await pages((q) => q.or(`metric.in.(AH_MAIN,OU_MAIN,PICK),and(metric.eq.1X2,model_version_id.eq.${mainModel})`));
   const first = scored.map((r) => String(r.day)).sort()[0];
   // finished matches only on the days that have scored rows (coverage), not every day since the first season
-  const finishedRows = first ? await pages(() => sb.from('web_benchmark_days').select('*').eq('metric', 'FINISHED').gte('day', first)) : [];
+  const finishedRows = first ? await pages((q) => q.eq('metric', 'FINISHED').gte('day', first)) : [];
   const rows = [...scored, ...finishedRows];
   const num = (v: unknown) => (v == null ? null : Number(v));
   const days = (metric: string): BenchmarkDay[] =>
@@ -508,10 +508,11 @@ export async function benchmark(mainModel: string) {
  */
 export const popularityRegistry = cache(async (): Promise<PopularityRegistry> => {
   const sb = db();
+  // admin-edited tables with no cap of their own: read in pages so the 1000-row server cap never cuts them
   const [teams, leagues, rivalries] = await Promise.all([
-    sb.from('team_popularity').select('team_id, season, popularity'),
-    sb.from('league_importance').select('league_id, season, importance, is_thai'),
-    sb.from('rivalries').select('team_a_id, team_b_id, name, weight'),
+    allRows<TeamPopularityRow>((a, b) => sb.from('team_popularity').select('team_id, season, popularity').order('team_id').order('season').range(a, b)),
+    allRows<LeagueImportanceRow>((a, b) => sb.from('league_importance').select('league_id, season, importance, is_thai').order('league_id').order('season').range(a, b)),
+    allRows<RivalryRow>((a, b) => sb.from('rivalries').select('team_a_id, team_b_id, name, weight').order('team_a_id').order('team_b_id').range(a, b)),
   ]);
   const failed = teams.error ?? leagues.error ?? rivalries.error;
   if (failed) {
@@ -732,12 +733,18 @@ export interface WeekPerf {
 export async function weeklyPerformance(weeks = 8): Promise<WeekPerf[]> {
   const thisMonday = mondayOf(thaiDate());
   const firstMonday = addDaysStr(thisMonday, -7 * (weeks - 1));
-  const { data, error } = await db()
-    .from('published_analysis')
-    .select('kickoff_at, status')
-    .eq('kind', 'SIGNAL')
-    .neq('status', 'PENDING')
-    .gte('kickoff_at', thaiDayRange(firstMonday).from);
+  const sb = db();
+  const { data, error } = await allRows<{ kickoff_at: string; status: string }>((a, b) =>
+    sb
+      .from('published_analysis')
+      .select('kickoff_at, status')
+      .eq('kind', 'SIGNAL')
+      .neq('status', 'PENDING')
+      .gte('kickoff_at', thaiDayRange(firstMonday).from)
+      .order('kickoff_at')
+      .order('public_id')
+      .range(a, b),
+  );
   if (error) fail('published_analysis', error);
   const out = Array.from({ length: weeks }, (_, i) => ({ week: addDaysStr(firstMonday, 7 * i), w: 0, l: 0, settled: 0 }));
   const weight: Partial<Record<Status, [number, number]>> = { WIN: [1, 0], LOSS: [0, 1], HALF_WIN: [0.5, 0], HALF_LOSS: [0, 0.5] };
@@ -840,7 +847,19 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
   // PostgREST returns at most 1000 rows per request: the scorer rows of all leagues together run to thousands,
   // so each league asks for its own top rows (spare rows so a player who moved clubs can still be summed below)
   const [st, ...ps] = await Promise.all([
-    sb.from('standings').select('league_id, season, group_name, team_id, rank, played, goals_diff, points').in('league_id', ids).in('season', years),
+    // one row per team of every tracked league (660 on 2026-10-26): read in pages, the server stops at 1000
+    allRows<{ league_id: number; season: number; group_name: string; team_id: number; rank: number | null; played: number | null; goals_diff: number | null; points: number | null }>((a, b) =>
+      sb
+        .from('standings')
+        .select('league_id, season, group_name, team_id, rank, played, goals_diff, points')
+        .in('league_id', ids)
+        .in('season', years)
+        .order('league_id')
+        .order('season')
+        .order('group_name')
+        .order('team_id')
+        .range(a, b),
+    ),
     ...[...season].map(([league, year]) =>
       sb
         .from('player_season_stats')

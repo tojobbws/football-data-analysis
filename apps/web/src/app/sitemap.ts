@@ -1,11 +1,13 @@
 import type { MetadataRoute } from 'next';
 import { webEnv } from '@/lib/env';
 import { siteUrl } from '@/lib/site';
-import { db } from '@/lib/supabase';
+import { allRows, db } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 const DAY = 86_400_000;
+/** One sitemap file holds at most 50,000 URLs (sitemaps.org); far above what the windows below return. */
+const MAX_URLS = 45_000;
 
 /**
  * Public pages for search engines: sections, match pages from 90 days back to 30 days ahead
@@ -15,18 +17,29 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const origin = await siteUrl();
   const now = Date.now();
   const sb = db();
+  // .limit(5000) alone was capped at 1000 rows by the server: 3600 matches in the window, 2600 left out (2026-10-26)
   const [fixtures, articles] = await Promise.all([
-    sb
-      .from('fixtures')
-      .select('slug, kickoff_at, synced_at')
-      .in('league_id', webEnv().leagues)
-      .not('slug', 'is', null)
-      .gte('kickoff_at', new Date(now - 90 * DAY).toISOString())
-      .lt('kickoff_at', new Date(now + 30 * DAY).toISOString())
-      .order('kickoff_at', { ascending: false })
-      .limit(5000),
-    sb.from('articles').select('slug, published_at, updated_at').eq('status', 'PUBLISHED').order('published_at', { ascending: false }).limit(5000),
+    allRows<{ slug: string; kickoff_at: string; synced_at: string | null }>(
+      (from, to) =>
+        sb
+          .from('fixtures')
+          .select('slug, kickoff_at, synced_at')
+          .in('league_id', webEnv().leagues)
+          .not('slug', 'is', null)
+          .gte('kickoff_at', new Date(now - 90 * DAY).toISOString())
+          .lt('kickoff_at', new Date(now + 30 * DAY).toISOString())
+          .order('kickoff_at', { ascending: false })
+          .order('id')
+          .range(from, to),
+      MAX_URLS,
+    ),
+    allRows<{ slug: string; published_at: string | null; updated_at: string | null }>(
+      (from, to) => sb.from('articles').select('slug, published_at, updated_at').eq('status', 'PUBLISHED').order('published_at', { ascending: false }).order('id').range(from, to),
+      MAX_URLS,
+    ),
   ]);
+  if (fixtures.error) console.error('sitemap fixtures:', fixtures.error.message);
+  if (articles.error) console.error('sitemap articles:', articles.error.message);
 
   const today = new Date(now);
   const pages: MetadataRoute.Sitemap = [
