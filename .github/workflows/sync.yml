@@ -62,6 +62,7 @@ jobs:
           step npm run sync:results
           step npm run model:settle
           step npm run model:closing
+          step npm run model:refresh-web
           step npm run sync:details
           step npm run model:probabilities -- --days 2
           npm run model:qualification || echo "::warning::qualification job failed (optional step, the run goes on)"
@@ -89,6 +90,7 @@ jobs:
           step npm run sync:support
           step npm run model:probabilities -- --days 7
           step npm run model:closing
+          step npm run model:refresh-web
           step npm run db:prune
           if [ ${#failed[@]} -gt 0 ]; then printf 'failed step: %s\n' "${failed[@]}"; exit 1; fi
 

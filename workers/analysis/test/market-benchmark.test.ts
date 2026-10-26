@@ -114,6 +114,8 @@ describe('web_benchmark_days and analysis_performance_by_match', () => {
         (22, 'MATCH_WINNER', 'AWAY', null, 5, 4.2, 0.22, null, '2026-10-20T22:30:00Z'),
         (22, 'ASIAN_HANDICAP', 'HOME', 0, 5, 1.8, 0.55, 0.60, '2026-10-20T22:30:00Z'),
         (22, 'OVER_UNDER', 'OVER', 2.25, 5, 2.1, 0.45, 0.50, '2026-10-20T22:30:00Z');
+      -- the 1X2 rows come from the materialized model results (0044), as after the hourly refresh
+      select fp_refresh_web_results();
     `);
   });
 

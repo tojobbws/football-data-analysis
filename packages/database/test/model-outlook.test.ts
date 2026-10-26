@@ -38,6 +38,8 @@ beforeAll(async () => {
   await probs(1, 'ensemble-v0.1', '2026-10-01T20:00:00Z', 0.99, 0.005, 0.005); // after kickoff -> ignored
   await probs(2, 'dixon-coles-v0.2', '2026-10-02T06:00:00Z', 0.45, 0.3, 0.25, 0.6);
   await probs(3, 'dixon-coles-v0.2', new Date().toISOString(), 0.3, 0.3, 0.4, 0.4);
+  // web_model_outlook_performance is materialized (0044): refresh as the hourly job does
+  await q('select fp_refresh_web_results()');
 }, 60_000);
 
 afterAll(async () => {

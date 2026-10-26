@@ -33,6 +33,8 @@ beforeAll(async () => {
   // fixture 2 ends 1-1 (draw, total 2)
   await probs(2, 'dixon-coles-v0.2', '2026-10-02T06:00:00Z', 0.3, 0.4, 0.3, 0.5);
   await probs(3, 'dixon-coles-v0.2', new Date().toISOString(), 0.3, 0.3, 0.4, 0.4); // not finished
+  // the site reads the materialized rows (0044): what the hourly `refresh-web` job does
+  await q('select fp_refresh_web_results()');
 }, 60_000);
 
 afterAll(async () => {
@@ -74,8 +76,23 @@ describe('web_model_results', () => {
       await expect(q(`select 1 from web_model_result_rows limit 1`)).rejects.toThrow();
       await expect(q(`select 1 from probability_predictions limit 1`)).rejects.toThrow();
       await expect(q(`select 1 from scoreline_snapshots limit 1`)).rejects.toThrow();
+      // the materialized rows behind the views (0044) are not readable either
+      await expect(q(`select 1 from web_model_result_rows_mv limit 1`)).rejects.toThrow();
+      await expect(q(`select 1 from web_model_outlook_performance_mv limit 1`)).rejects.toThrow();
+      await expect(q(`select fp_refresh_web_results()`)).rejects.toThrow();
     } finally {
       await db.exec('reset role');
     }
+  });
+
+  // last in this file: it adds a finished match
+  it('a newly finished match counts once the results are refreshed (0044, audit A-18)', async () => {
+    const all = async () => (await q<{ matches: number }>(`select matches from web_model_results where league_id is null and model_version_id = 'dixon-coles-v0.2'`))[0]!.matches;
+    await db.exec(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short, goals_home, goals_away, ft_home, ft_away, slug)
+                   values (4, 39, 2026, '2026-10-03T19:00:00Z', 40, 42, 'FT', 0, 1, 0, 1, 'm4')`);
+    await probs(4, 'dixon-coles-v0.2', '2026-10-03T10:00:00Z', 0.4, 0.3, 0.3, 0.5);
+    expect(await all()).toBe(2); // as of the last refresh
+    await q('select fp_refresh_web_results()');
+    expect(await all()).toBe(3);
   });
 });

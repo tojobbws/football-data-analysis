@@ -17,6 +17,7 @@ import { pickNoteJob } from './pick-note-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
 import { qualificationJob } from './qualification-job.js';
 import { healthJob } from './health-job.js';
+import { refreshWebJob } from './refresh-web-job.js';
 
 const USAGE = `usage: npm run job -w @fp/analysis-worker -- <job> [options]
 
@@ -37,7 +38,8 @@ jobs:
   featured-report             daily featured list vs all LINEUP picks, days by selections, verdict (ADR 0004)
   shadow-report               shadow pick rules vs the real ones on kicked-off matches: sides picked and results
   backtest [--warmup N]        walk-forward backtest on finished matches in the DB
-  health                       pipeline health: stale jobs, odds feed, unpublished matches; exits 1 on a problem`;
+  health                       pipeline health: stale jobs, odds feed, unpublished matches; exits 1 on a problem
+  refresh-web                  refresh the materialized model results /performance reads (run after settle and closing)`;
 
 async function main() {
   loadDotEnvFile();
@@ -46,7 +48,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, 'frozen-from': { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health'].includes(job ?? '')) {
+  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health', 'refresh-web'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -106,6 +108,7 @@ async function main() {
       console.log(`\nsaved: ${r.path}`);
     }
     else if (job === 'health') await healthJob(ctx);
+    else if (job === 'refresh-web') await refreshWebJob(ctx);
     else if (job === 'impact') await playerImpactJob(ctx, { hours: values.hours ? Number(values.hours) : undefined });
     else if (job === 'candidates') await generateCandidatesJob(ctx, { hours: values.hours ? Number(values.hours) : undefined });
     else await backtest(ctx, { warmupMatches: values.warmup ? Number(values.warmup) : undefined });

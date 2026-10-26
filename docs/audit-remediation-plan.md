@@ -60,7 +60,6 @@ AH เส้นหลักและ O/U 2.5 (football-data PIN), walk-forward �
 | A-14 neutral venue | เปลี่ยนความน่าจะเป็นใน production ต้องมี backtest ก่อน: ยังไม่มีคอลัมน์สนามกลางใน `fixtures` (มีเฉพาะ `competition_rules` ของถ้วย) |
 | A-16 horizon / scoreline log loss / O/U calibration บนเว็บ | ทำได้หลัง 0043 ใช้งาน: view สกอร์จาก `scoreline_snapshots` และ snapshot ตาม T-24h/T-6h/T-1h |
 | A-17 streak จาก 200 แถว | ย้ายไปคำนวณใน SQL ต่อแมตช์ |
-| A-18 `/performance` timeout ตอน cache เย็น | materialized view + refresh รายชั่วโมง (view ใหม่ใช้ ~0.4 วิ ตอน cache อุ่นบน prod) |
 | A-19 α ของ Impact แยกตามแหล่งข้อมูล | เปลี่ยนโมเดล ต้อง backtest |
 | A-20 odds = 1.000 | consensus กรองอยู่แล้ว; ถ้าจะกรองตอน parse ต้องตัดสินว่าเก็บข้อมูลดิบหรือไม่ |
 | A-12 | ไม่มีโค้ดให้แก้: เป็นกติกาการทำงาน ทุกการเปลี่ยน `DEFAULT_RULES` ควรผ่าน shadow trial (ADR 0003) |
@@ -88,7 +87,8 @@ AH เส้นหลักและ O/U 2.5 (football-data PIN), walk-forward �
 | 7 | A-11, A-23 | workflow: ขั้นรายชั่วโมง/รายวันทำต่อเมื่อขั้นก่อนล้มแล้วรายงานท้าย run; tune แยก job 120 นาที; `model:health` รายวัน (ล้ม = อีเมลจาก GitHub); ปิด run ค้าง RUNNING > 120 นาที | เสร็จ |
 | 8 | A-13, A-15 | `inputs.trainingHash` (sha256 ของข้อมูลที่ fit เห็น), `inputs.totalsRho` | เสร็จ |
 | 9 | — | `scripts/calibration-experiment.ts`: blend / calibration แบบ walk-forward + final holdout | เสร็จ (ผลด้านล่าง) |
-| 10 | A-14, A-16, A-17, A-18, A-19, A-20 | ดู "ยังไม่ได้ทำ" | ค้าง |
+| 10 | A-18 | migration 0044: materialize `web_model_result_rows` (ฐานของผลโมเดล, calibration, benchmark) และ `web_model_outlook_performance`; job `model:refresh-web` รายชั่วโมง/รายวันหลัง closing; health เฝ้า job นี้ · วัดบน prod ก่อนแก้: `web_model_results` 4.7 วิ ตอน cache เย็น (anon timeout 3 วิ) | เสร็จ (รอ migrate) |
+| 11 | A-14, A-16, A-17, A-19, A-20 | ดู "ยังไม่ได้ทำ" | ค้าง |
 
 ## การตัดสินใจที่ต้องให้เจ้าของอนุมัติ (ยังไม่ทำ)
 
@@ -110,8 +110,7 @@ Phase 2
 - Replay ณ เวลา T อ่าน quote ที่ `collected_at > T` ไม่ได้ (test)
 - Final holdout แยกจากการปรับ และบันทึกช่วงเวลา/เวอร์ชัน
 
-## Migration ที่สร้างแต่ยังไม่ได้รัน
+## Migration
 
-- `supabase/migrations/20261026000043_market_benchmark.sql` — เพิ่มฟังก์ชัน/view และแทนที่ `fp_admin_review()` (ไม่แตะข้อมูล) · rollback: `supabase/rollbacks/0043_rollback.sql`
-- ลำดับ: migrate ก่อน แล้วค่อย deploy เว็บ (หน้า `/performance` อ่าน view ใหม่ ถ้า deploy ก่อนหน้าจะ error)
-- ตรวจหลัง migrate: `/performance` ส่วน "เทียบกับตลาด" ต้องได้ค่าใกล้ baseline ด้านบน (1X2 0.586 / 0.563, AH 0.264 / 0.249, O/U 0.264 / 0.250, เข็มทิศเกม 0.244 / 0.234 ณ 2026-10-26 ตัวเลขจะขยับตามนัดใหม่)
+- `supabase/migrations/20261026000043_market_benchmark.sql` — รันแล้ว 2026-10-26 · ตรวจบน prod: ทุกค่าตรง baseline · rollback: `supabase/rollbacks/0043_rollback.sql`
+- `supabase/migrations/20261026000044_model_results_materialized.sql` — ยังไม่รัน · ใช้ได้กับโค้ดเว็บที่ deploy อยู่แล้ว (ชื่อและคอลัมน์ของ view เหมือนเดิม) แต่ข้อมูลจะค้าง ณ ตอน migrate จนกว่าขั้น `model:refresh-web` ใน workflow จะขึ้น main · rollback: `supabase/rollbacks/0044_rollback.sql` (ทดสอบบน PGlite แล้ว)
