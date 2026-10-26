@@ -61,6 +61,12 @@ export interface TuneOptions {
   xgShare?: number;
   /** Share of matches whose events (cards) are known; below 15% the red-card step is skipped. */
   eventsShare?: number;
+  /**
+   * Final holdout (audit A-05): matches kicking off at or after this moment are left out of the tune AND the
+   * holdout split, so no setting or gate is ever chosen on them; they are only counted (`frozenN`) until the
+   * review that scores them once. Off by default: switching it on changes which markets pass the gate.
+   */
+  frozenFrom?: Date;
 }
 
 type DcParams = Required<Pick<DixonColesOptions, 'priorStrength' | 'halfLifeDays' | 'xgWeight' | 'redCardDiscount'>>;
@@ -78,6 +84,8 @@ export interface TuneResult {
   matchesEvaluated: number;
   tuneN: number;
   holdoutN: number;
+  /** matches in the frozen final holdout (0 without `frozenFrom`) */
+  frozenN: number;
   combosTried: number;
   sides: {
     params: DcParams;
@@ -122,9 +130,12 @@ export function tuneLeague(matches: readonly MatchRecord[], opts: TuneOptions = 
   const zReq = opts.zRequired ?? Z_90;
 
   const ctxs = matchContexts(matches, warmup);
-  const split = Math.floor(ctxs.length * (1 - (opts.holdoutShare ?? 0.3)));
+  // contexts are in kickoff order: the frozen final holdout is a tail that no split below reaches
+  const frozenAt = opts.frozenFrom ? ctxs.findIndex((c) => c.kickoffAt.getTime() >= opts.frozenFrom!.getTime()) : -1;
+  const usable = frozenAt === -1 ? ctxs.length : frozenAt;
+  const split = Math.floor(usable * (1 - (opts.holdoutShare ?? 0.3)));
   const tuneIdx = range(0, split);
-  const holdIdx = range(split, ctxs.length);
+  const holdIdx = range(split, usable);
   const enoughHoldout = holdIdx.length >= (opts.minHoldout ?? 100);
 
   let combos = 0;
@@ -254,6 +265,7 @@ export function tuneLeague(matches: readonly MatchRecord[], opts: TuneOptions = 
     matchesEvaluated: ctxs.length,
     tuneN: tuneIdx.length,
     holdoutN: holdIdx.length,
+    frozenN: ctxs.length - usable,
     combosTried: combos,
     sides: {
       params: sides.p,

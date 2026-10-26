@@ -140,10 +140,32 @@ describe('tuneLeague', () => {
     const noEvents = tuneLeague(withReds, { warmupMatches: 150, grid: g, eventsShare: 0.1 });
     expect(noEvents.redCard.sides.tuneTest).toBeNull();
     expect(noEvents.sides.params.redCardDiscount).toBe(0);
-  });
+  }, 60_000); // ~21 s on its own, close to the 30 s default once the suite runs files in parallel
 
   it('backtest report still works with ensemble', () => {
     const rep = walkForwardBacktest(matches, { warmupMatches: 150, ensembleWeight: 0.5 });
     expect(rep.oneXTwo.ensemble.n).toBe(rep.matchesEvaluated);
+  });
+});
+
+describe('tuneLeague frozen final holdout (audit A-05)', () => {
+  const small = { priorStrength: [8], halfLifeDays: [365], xgWeight: [0], totalsShrink: [0, 0.5], eloK: [20], eloHomeAdvantage: [60], ensembleWeight: [1, 0.5], redCardDiscount: [] };
+
+  // one season is enough here and keeps this file inside the test timeout next to the red-card test
+  const ms = league(7).slice(0, 380);
+  const frozenFrom = ms[Math.floor(ms.length * 0.8)]!.kickoffAt;
+  const scrambled = ms.map((m) => (m.kickoffAt >= frozenFrom ? { ...m, homeGoals: 7, awayGoals: 0 } : m));
+
+  it('matches from frozenFrom on choose nothing and gate nothing: changing their results changes no output', () => {
+    const a = tuneLeague(ms, { warmupMatches: 100, grid: small, frozenFrom });
+    const b = tuneLeague(scrambled, { warmupMatches: 100, grid: small, frozenFrom });
+    expect(a.frozenN).toBe(ms.length - Math.floor(ms.length * 0.8));
+    expect(b).toEqual(a);
+  });
+
+  it('without frozenFrom nothing is frozen, and the same scramble does move the holdout', () => {
+    const plain = tuneLeague(scrambled, { warmupMatches: 100, grid: small });
+    expect(plain.frozenN).toBe(0);
+    expect(plain.sides.holdout).not.toEqual(tuneLeague(ms, { warmupMatches: 100, grid: small }).sides.holdout);
   });
 });

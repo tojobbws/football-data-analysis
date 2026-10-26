@@ -51,6 +51,13 @@ The model's chance of each outcome of a pick before kickoff (ถูก / ถู�
 A single "chance of being right" for a pick with pushes left out, half outcomes counted as half; the only figure directly comparable with the market.
 _Avoid_: presenting it as the chance the win condition happens
 
+**Fair target**:
+What a settled selection is scored against: a win counts 1 and a loss 0 at full weight, a half win 1 and a half loss 0 at half weight, a push or void not at all. Its weighted average is the fair hit rate, so a fair probability, the model's or the market's, is scored on it directly (Brier, log loss).
+
+**Market benchmark (เทียบกับตลาด)**:
+The model and the market scored on the same matches and the same target: 1X2 against 1X2, Asian handicap and over/under on the same line and side. Reported with an interval clustered by football day and a verdict that says "not enough evidence" below 100 matches over 20 football days. It is a measurement, not an input: it never feeds the model.
+_Avoid_: comparing the model with a 1/3 guess as if that were the bar to clear
+
 **Settlement**:
 The act of deciding a pick's outcome from the match result; it is separate from the match finishing and may lag behind full time.
 

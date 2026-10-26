@@ -45,7 +45,8 @@
     "model:featured": "npm run job -w @fp/analysis-worker -- featured",
     "model:featured-report": "npm run job -w @fp/analysis-worker -- featured-report",
     "model:shadow-report": "npm run job -w @fp/analysis-worker -- shadow-report",
-    "model:report": "npm run job -w @fp/analysis-worker -- report"
+    "model:report": "npm run job -w @fp/analysis-worker -- report",
+    "model:health": "npm run job -w @fp/analysis-worker -- health"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

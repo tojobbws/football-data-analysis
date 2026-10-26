@@ -2,9 +2,10 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Empty, Section, StatusBadge } from '@/components/ui';
 import { MARKET, ROUND, ROUND_SHORT, odds, pct, selectionLabel, type Status } from '@/lib/labels';
-import { modelOutlookPerformance, modelResults, performance, type ModelOutlookScore, type PerfBucket } from '@/lib/queries';
+import { benchmark, modelOutlookPerformance, modelResults, performance, type BenchmarkMetric, type ModelOutlookScore, type PerfBucket } from '@/lib/queries';
 import { dateTimeTH, shortDayTH } from '@/lib/time';
 import type { ModelResultRow } from '@/lib/queries';
+import type { BenchmarkVerdict, ClusteredMean } from '@fp/analysis';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -15,9 +16,10 @@ export const metadata: Metadata = {
 const MONTH = new Intl.DateTimeFormat('th-TH', { month: 'long', year: 'numeric', timeZone: 'Asia/Bangkok' });
 
 export default async function PerformancePage() {
-  const [{ buckets, recent, leagueNames }, outlook, modelRes] = await Promise.all([performance(), modelOutlookPerformance(), modelResults()]);
+  const [{ buckets, recent, leagueNames }, outlook, modelRes, bench] = await Promise.all([performance(), modelOutlookPerformance(), modelResults(), benchmark(MAIN_MODEL)]);
   const all = buckets.find((b) => b.dimension === 'all');
-  const by = (dim: string) => buckets.filter((b) => b.dimension === dim).sort((a, b) => b.total_signals - a.total_signals);
+  const by = (dim: string) => buckets.filter((b) => b.dimension === dim && b.total_signals > 0).sort((a, b) => b.total_signals - a.total_signals);
+  const pick = bench.PICK.summary;
   const signals = recent.filter((r) => r.kind === 'SIGNAL');
   const streak = streaks(signals);
 
@@ -33,11 +35,20 @@ export default async function PerformancePage() {
       {all && all.total_signals + all.no_signal > 0 ? (
         <>
           <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Kpi k="สัญญาณ 🧭 ทั้งหมด" v={String(all.total_signals)} sub={`🌫️ หมอกข้อมูล ${all.no_signal} รายการ`} />
-            <Kpi k="Win rate" v={pct(all.win_rate, 1)} sub="HALF นับครึ่ง · ไม่นับ PUSH/VOID" />
-            <Kpi k="ชนะราคาปิดตลาด" v={pct(all.beat_closing_rate, 0)} sub={`CLV เฉลี่ย ${all.avg_clv == null ? '–' : `${(all.avg_clv * 100).toFixed(1)}%`}`} />
+            <Kpi k="สัญญาณ 🧭 ทั้งหมด" v={String(all.total_signals)} sub={`นับแมตช์ละ 1 รายการ · 🌫️ หมอกข้อมูล ${all.no_signal} รายการ`} />
+            <Kpi k="Win rate" v={pct(all.win_rate, 1)} sub={`HALF นับครึ่ง · ไม่นับ PUSH/VOID${pick.hit.lo == null ? '' : ` · ช่วง 95% ${pctRange(pick.hit)}`}`} />
+            <Kpi
+              k="ชนะราคาปิดตลาด"
+              v={pct(all.beat_closing_rate, 0)}
+              sub={`CLV เฉลี่ย ${all.avg_clv == null ? '–' : signedPct(all.avg_clv, 1)}${pick.clv.lo == null ? '' : ` (ช่วง 95% ${signedPct(pick.clv.lo, 1)} ถึง ${signedPct(pick.clv.hi!, 1)})`}`}
+            />
             <Kpi k="Streak ปัจจุบัน" v={streak.current} sub={`ดีที่สุด ${streak.best} ติด`} />
           </section>
+          {all.matches_with_repeat_signal > 0 ? (
+            <p className="text-xs leading-relaxed text-slate-500">
+              {all.matches_with_repeat_signal} แมตช์มีเข็มทิศเกมมากกว่าหนึ่งรอบ ตัวเลขด้านบนนับเฉพาะรอบล่าสุดของแมตช์นั้น ส่วนตาราง "แยกตามรอบเผยแพร่" นับตามรอบที่ถูกนับ
+            </p>
+          ) : null}
           <Section title="สรุปผลทั้งหมด">
             <ResultBar b={all} />
           </Section>
@@ -54,6 +65,8 @@ export default async function PerformancePage() {
         <Breakdown title="รายเดือน" rows={by('month').sort((a, b) => b.bucket.localeCompare(a.bucket))} name={(b) => MONTH.format(new Date(`${b.bucket}-15T00:00:00Z`))} />
         <Breakdown title="แยกตามรอบเผยแพร่" rows={by('round')} name={(b) => ROUND[b.bucket] ?? b.bucket} />
       </div>
+
+      <MarketBenchmarkSection data={bench} />
 
       <Section title="ประวัติทุกรายการ" aside={`ล่าสุด ${recent.length} รายการ`}>
         {recent.length ? (
@@ -361,6 +374,122 @@ function ModelResultsSection({ data }: { data: Awaited<ReturnType<typeof modelRe
         </>
       ) : (
         <Empty>ยังไม่มีนัดที่จบพร้อมโอกาสของโมเดลก่อนเตะ</Empty>
+      )}
+    </Section>
+  );
+}
+
+const signedPct = (x: number, digits = 1) => `${x > 0 ? '+' : ''}${(x * 100).toFixed(digits)}%`;
+const pctRange = (m: ClusteredMean) => (m.lo == null || m.hi == null ? '–' : `${(m.lo * 100).toFixed(1)}–${(m.hi * 100).toFixed(1)}%`);
+const signed3 = (x: number | null) => (x == null ? '–' : `${x > 0 ? '+' : ''}${x.toFixed(3)}`);
+
+const BENCH_ROWS: Array<{ metric: BenchmarkMetric; label: string; note: string }> = [
+  { metric: '1X2', label: 'ผลแพ้ชนะ', note: 'โอกาส เจ้าบ้านชนะ / เสมอ / ทีมเยือนชนะ' },
+  { metric: 'AH_MAIN', label: 'แฮนดิแคปเส้นหลัก', note: 'เส้นหลักของตลาดตอนเริ่มเกม' },
+  { metric: 'OU_MAIN', label: 'สูง/ต่ำเส้นหลัก', note: 'เส้นหลักของตลาดตอนเริ่มเกม' },
+  { metric: 'PICK', label: 'เข็มทิศเกม', note: 'ฝั่งที่เลือก เทียบ ณ เวลาที่เผยแพร่' },
+];
+
+const VERDICT: Record<BenchmarkVerdict, { text: string; tone: string }> = {
+  MARKET_BETTER: { text: 'ตลาดแม่นกว่า', tone: 'text-rose-600' },
+  MODEL_BETTER: { text: 'โมเดลแม่นกว่า', tone: 'text-emerald-700' },
+  NO_CLEAR_DIFFERENCE: { text: 'ยังแยกไม่ออก', tone: 'text-slate-600' },
+  INSUFFICIENT_EVIDENCE: { text: 'ข้อมูลยังไม่พอสรุป', tone: 'text-slate-500' },
+};
+
+/**
+ * Model against the market on the same matches and the same target (audit A-03). Brier is the primary score;
+ * intervals are 95% and clustered by football day, so matches of one day are not treated as independent.
+ */
+function MarketBenchmarkSection({ data }: { data: Awaited<ReturnType<typeof benchmark>> }) {
+  const any = BENCH_ROWS.some((r) => data[r.metric].summary.n > 0);
+  const first = BENCH_ROWS.map((r) => data[r.metric].summary.from).filter((x): x is string => x !== null).sort()[0];
+  const last = BENCH_ROWS.map((r) => data[r.metric].summary.to).filter((x): x is string => x !== null).sort().at(-1);
+  return (
+    <Section title="เทียบกับตลาด" aside={first && last ? `${shortDayTH(`${first}T12:00:00+07:00`)} – ${shortDayTH(`${last}T12:00:00+07:00`)}` : undefined}>
+      <p className="mb-3 text-sm leading-relaxed text-slate-600">
+        ตลาด คือภาพรวมที่ตลาดฟุตบอลให้โอกาสแต่ละผล เราให้คะแนนโมเดลกับตลาด<b>บนนัดเดียวกันและเป้าหมายเดียวกัน</b> ผลแพ้ชนะเทียบผลแพ้ชนะ ส่วนแฮนดิแคปและสูง/ต่ำเทียบบนเส้นเดียวกัน (ผลครึ่งนับครึ่ง เสมอตัวไม่นับ)
+        ค่า <b>Brier</b> ยิ่งต่ำยิ่งแม่น · <b>ส่วนต่าง = โมเดล − ตลาด</b> ติดลบแปลว่าโมเดลแม่นกว่า บวกแปลว่าตลาดแม่นกว่า · ช่วงในวงเล็บคือช่วงความเชื่อมั่น 95% ที่นับนัดในวันฟุตบอลเดียวกันเป็นกลุ่มเดียว
+      </p>
+      {any ? (
+        <>
+          <div className="-mx-4 overflow-x-auto sm:mx-0">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500">
+                  <th className="px-4 pb-2 font-normal sm:px-0">เทียบ</th>
+                  <th className="pb-2 text-right font-normal">นัด · วัน</th>
+                  <th className="pb-2 text-right font-normal">Brier โมเดล</th>
+                  <th className="pb-2 text-right font-normal">Brier ตลาด</th>
+                  <th className="pb-2 text-right font-normal">ส่วนต่าง (ช่วง 95%)</th>
+                  <th className="pb-2 pr-4 text-right font-normal sm:pr-0">สรุป</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {BENCH_ROWS.map(({ metric, label, note }) => {
+                  const { summary: s, finishedOnDays } = data[metric];
+                  const d = s.brier.diff;
+                  const v = VERDICT[s.verdict];
+                  return (
+                    <tr key={metric} className="align-top">
+                      <td className="px-4 py-2 sm:px-0">
+                        {label}
+                        <p className="text-xs text-slate-500">{note}</p>
+                      </td>
+                      <td className="py-2 text-right tabular-nums">
+                        {s.n} · {s.days}
+                        {metric !== 'PICK' && finishedOnDays > 0 ? <p className="text-xs text-slate-500">{pct(s.n / finishedOnDays, 0)} ของนัดที่จบ</p> : null}
+                      </td>
+                      <td className="py-2 text-right tabular-nums">{f3(s.brier.model.mean)}</td>
+                      <td className="py-2 text-right tabular-nums">{f3(s.brier.market.mean)}</td>
+                      <td className="py-2 text-right tabular-nums">
+                        {signed3(d.mean)}
+                        {d.lo != null && d.hi != null ? <p className="text-xs text-slate-500">({signed3(d.lo)} ถึง {signed3(d.hi)})</p> : null}
+                      </td>
+                      <td className={`py-2 pr-4 text-right sm:pr-0 ${v.tone}`}>{v.text}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="mb-2 mt-5 text-sm font-semibold">โอกาสที่ให้ กับสิ่งที่เกิดขึ้นจริง</h3>
+          <div className="-mx-4 overflow-x-auto sm:mx-0">
+            <table className="w-full min-w-[520px] text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500">
+                  <th className="px-4 pb-2 font-normal sm:px-0">เทียบ</th>
+                  <th className="pb-2 text-right font-normal">โมเดลให้โอกาสเฉลี่ย</th>
+                  <th className="pb-2 text-right font-normal">ตลาดให้โอกาสเฉลี่ย</th>
+                  <th className="pb-2 pr-4 text-right font-normal sm:pr-0">เกิดขึ้นจริง (ช่วง 95%)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {BENCH_ROWS.filter((r) => r.metric !== '1X2').map(({ metric, label }) => {
+                  const s = data[metric].summary;
+                  return (
+                    <tr key={metric}>
+                      <td className="px-4 py-2 sm:px-0">{label}</td>
+                      <td className="py-2 text-right tabular-nums">{pct(s.pModel.mean, 1)}</td>
+                      <td className="py-2 text-right tabular-nums">{pct(s.pMarket.mean, 1)}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums sm:pr-0">
+                        {pct(s.hit.mean, 1)} <span className="text-xs text-slate-500">({pctRange(s.hit)})</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            แฮนดิแคปวัดฝั่งเจ้าบ้าน สูง/ต่ำวัดฝั่งสูง และเข็มทิศเกมวัดฝั่งที่เลือก ถ้าโมเดลให้โอกาสเฉลี่ยสูงกว่าที่เกิดจริงมาก แปลว่าโมเดลมั่นใจเกินไป
+            · ผลแพ้ชนะ แฮนดิแคป และสูง/ต่ำ ใช้ค่าสุดท้ายของโมเดลก่อนเตะเทียบกับตลาด ณ เวลาเตะ ตลาดจึงเห็นข่าวล่าสุดมากกว่าเล็กน้อย ส่วนเข็มทิศเกมเทียบกับตลาด ณ เวลาเดียวกับที่เผยแพร่
+            · สรุปผลได้เมื่อมีอย่างน้อย 100 นัดใน 20 วันฟุตบอล
+          </p>
+        </>
+      ) : (
+        <Empty>ยังไม่มีนัดที่จบพร้อมทั้งโอกาสของโมเดลและของตลาด</Empty>
       )}
     </Section>
   );

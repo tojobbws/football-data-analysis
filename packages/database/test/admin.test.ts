@@ -163,4 +163,31 @@ describe('admin RLS', () => {
     expect(b.total.brier_diff).toBeCloseTo(-0.27, 6);
     expect(b.leagues).toMatchObject([{ league_name: 'Premier League', n: 1 }]);
   });
+
+  it('review fair hit counts half results as half a stake, like analysis_performance (audit A-06)', async () => {
+    // WIN, HALF_WIN, HALF_LOSS, PUSH under one rules version: (1 + ½) / (1 + ½ + ½) = 0.75 (the old formula gave 1.5 / 3 = 0.5)
+    await db.exec(`
+      insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short)
+        values (31, 39, 2026, now() + interval '1 day', 1, 2, 'NS'), (32, 39, 2026, now() + interval '1 day', 2, 1, 'NS'),
+               (33, 39, 2026, now() + interval '1 day', 1, 2, 'NS'), (34, 39, 2026, now() + interval '1 day', 2, 1, 'NS');
+      insert into analysis_predictions (fixture_id, publish_round, kind, market, selection, line, model_probability, market_probability, decision_rule_version)
+        select id, 'EARLY', 'SIGNAL', 'ASIAN_HANDICAP', 'HOME', -0.25, 0.56, 0.5, 'rules-half-test' from fixtures where id between 31 and 34;
+      update fixtures set kickoff_at = now() - interval '1 day', status_short = 'FT', ft_home = 1, ft_away = 0 where id between 31 and 34;
+      update analysis_predictions set status = 'WIN' where fixture_id = 31;
+      update analysis_predictions set status = 'HALF_WIN' where fixture_id = 32;
+      update analysis_predictions set status = 'HALF_LOSS' where fixture_id = 33;
+      update analysis_predictions set status = 'PUSH' where fixture_id = 34;
+    `);
+    const [r] = await as('authenticated', ADMIN, (q) => q('select fp_admin_review() as r'));
+    const v = r!.r as { by_rules: Array<{ rules: string; picks: number; settled: number; fair_hit: number }> };
+    const half = v.by_rules.find((x) => x.rules === 'rules-half-test');
+    expect(half).toMatchObject({ picks: 4, settled: 3 });
+    expect(Number(half!.fair_hit)).toBeCloseTo(0.75, 9);
+    const [perf] = await as('authenticated', ADMIN, (q) =>
+      q(`select round((count(*) filter (where status = 'WIN') + 0.5 * count(*) filter (where status = 'HALF_WIN'))::numeric
+               / (count(*) filter (where status in ('WIN','LOSS')) + 0.5 * count(*) filter (where status in ('HALF_WIN','HALF_LOSS'))), 4) as w
+           from analysis_predictions where decision_rule_version = 'rules-half-test'`),
+    );
+    expect(Number(perf!.w)).toBeCloseTo(Number(half!.fair_hit), 4);
+  });
 });

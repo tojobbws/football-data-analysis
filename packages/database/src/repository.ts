@@ -6,6 +6,8 @@ import { insertReturning, insertRows, toParam, writeRows, type Row } from './ups
 
 /** An unchanged odds quote is stored again only this often (see insertOddsHistory). */
 export const ODDS_HEARTBEAT_HOURS = 6;
+/** No job runs this long (the longest, tune, took 38 minutes): a RUNNING row older than this was killed. */
+export const STALE_RUN_MINUTES = 120;
 
 export interface FinishedMatchRow {
   fixtureId: number;
@@ -121,7 +123,23 @@ export class Repository {
   }
 
   async startSyncRun(job: string, params: Record<string, unknown>): Promise<number> {
+    await this.abandonStaleRuns(job);
     return Number(await insertReturning<string | number>(this.db, 'sync_runs', { job, params }));
+  }
+
+  /**
+   * A run still RUNNING long after it started was killed (a job timeout) and will never finish itself:
+   * close it as FAILED so monitoring does not read it as in progress (audit A-11). Returns how many.
+   */
+  async abandonStaleRuns(job: string, olderThanMinutes = STALE_RUN_MINUTES): Promise<number> {
+    const { rows } = await this.db.query<{ id: string | number }>(
+      `update sync_runs set status = 'FAILED', finished_at = now(),
+              error = 'abandoned: no finish recorded within ' || $2::int || ' minutes (process stopped, e.g. a job timeout)'
+        where job = $1 and status = 'RUNNING' and started_at < now() - make_interval(mins => $2::int)
+        returning id`,
+      [job, olderThanMinutes],
+    );
+    return rows.length;
   }
 
   async finishSyncRun(
@@ -545,11 +563,15 @@ export class Repository {
     return n;
   }
 
-  /** Active (latest) config per purpose for a league. */
-  async latestModelConfigs(leagueId: number): Promise<Partial<Record<ModelConfigInput['purpose'], ModelConfig>>> {
+  /** Active (latest) config per purpose for a league; `asOf` (a replay): the configs that were active then. */
+  async latestModelConfigs(leagueId: number, asOf?: Date): Promise<Partial<Record<ModelConfigInput['purpose'], ModelConfig>>> {
     const res = await this.db.query<Record<string, unknown>>(
-      'select id, purpose, model_version_id, params, metrics, enabled, matches_evaluated, tuned_at from model_configs_latest where league_id = $1',
-      [leagueId],
+      asOf
+        ? `select distinct on (purpose) id, purpose, model_version_id, params, metrics, enabled, matches_evaluated, tuned_at
+             from model_configs where league_id = $1 and tuned_at <= $2
+            order by purpose, tuned_at desc, id desc`
+        : 'select id, purpose, model_version_id, params, metrics, enabled, matches_evaluated, tuned_at from model_configs_latest where league_id = $1',
+      asOf ? [leagueId, asOf.toISOString()] : [leagueId],
     );
     const out: Partial<Record<ModelConfigInput['purpose'], ModelConfig>> = {};
     for (const r of res.rows) {
@@ -1239,16 +1261,20 @@ export class Repository {
     }));
   }
 
-  /** All rows of the latest Probability Engine run for a fixture (per model version). */
-  async latestProbabilities(fixtureId: number, primaryVersion: string) {
+  /**
+   * All rows of the latest Probability Engine run for a fixture (per model version).
+   * `asOf` (a replay): the latest run computed at or before that moment.
+   */
+  async latestProbabilities(fixtureId: number, primaryVersion: string, asOf?: Date) {
     const res = await this.db.query<Record<string, unknown>>(
       `with last as (
-         select max(computed_at) as t from probability_predictions where fixture_id = $1 and model_version_id = $2
+         select max(computed_at) as t from probability_predictions
+          where fixture_id = $1 and model_version_id = $2 and ($3::timestamptz is null or computed_at <= $3)
        )
        select p.model_version_id, p.market, p.selection, p.line, p.probability, p.inputs, p.computed_at
          from probability_predictions p, last
         where p.fixture_id = $1 and p.computed_at = last.t`,
-      [fixtureId, primaryVersion],
+      [fixtureId, primaryVersion, asOf?.toISOString() ?? null],
     );
     return res.rows.map((r) => ({
       modelVersionId: String(r.model_version_id),
@@ -1261,15 +1287,21 @@ export class Repository {
     }));
   }
 
-  /** Latest quote per (bookmaker, bet, value) for a fixture. */
-  async latestQuotes(fixtureId: number) {
+  /**
+   * Latest quote per (bookmaker, bet, value) for a fixture.
+   * `asOf` (a replay, audit A-08): only quotes this system had stored by then (collected_at) and whose source
+   * time is not later, so a price fetched after the decision never leaks into it, even when the bookmaker
+   * set it earlier. Without `asOf` nothing is filtered (the live decision runs at the real now).
+   */
+  async latestQuotes(fixtureId: number, asOf?: Date) {
     const res = await this.db.query<Record<string, unknown>>(
       `select distinct on (bookmaker_id, api_bet_id, raw_value)
-              bookmaker_id, market, selection, line, home_line, odds, source_updated_at
+              bookmaker_id, market, selection, line, home_line, odds, source_updated_at, collected_at
          from odds_history
         where fixture_id = $1 and market in ('MATCH_WINNER','ASIAN_HANDICAP','OVER_UNDER')
-        order by bookmaker_id, api_bet_id, raw_value, source_updated_at desc`,
-      [fixtureId],
+          and ($2::timestamptz is null or (collected_at <= $2 and source_updated_at <= $2))
+        order by bookmaker_id, api_bet_id, raw_value, source_updated_at desc, collected_at desc`,
+      [fixtureId, asOf?.toISOString() ?? null],
     );
     return res.rows.map((r) => ({
       bookmakerId: Number(r.bookmaker_id),
@@ -1279,6 +1311,8 @@ export class Repository {
       homeLine: r.home_line == null ? null : Number(r.home_line),
       odds: Number(r.odds),
       updatedAt: new Date(r.source_updated_at as string),
+      // only a replay carries it: live, the DB clock (collected_at) and the worker clock (now) may differ by a little
+      ...(asOf ? { collectedAt: new Date(r.collected_at as string) } : {}),
     }));
   }
 

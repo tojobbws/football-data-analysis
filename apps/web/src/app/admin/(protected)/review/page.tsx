@@ -14,6 +14,8 @@ interface Side {
   picks: number;
   settled: number;
   fair_hit: number | null;
+  /** settled picks with half results counting ½ (0043); absent before that migration */
+  fair_n?: number | null;
   clv_n: number;
   clv_mean: number | null;
   beat_close: number | null;
@@ -39,7 +41,8 @@ function criteria(s: Side | undefined, all: Side | undefined) {
   const hit = num(s?.fair_hit);
   const enough = n >= NEED_SETTLED;
   const judge = (ok: boolean | null): Verdict => (ok === null || !enough ? 'ยังไม่พอข้อมูล' : ok ? 'ผ่าน' : 'ไม่ผ่าน');
-  const lower = hit == null || n === 0 ? null : hit - Z90 * Math.sqrt((hit * (1 - hit)) / n);
+  const fairN = num(s?.fair_n) ?? n;
+  const lower = hit == null || fairN === 0 ? null : hit - Z90 * Math.sqrt((hit * (1 - hit)) / fairN);
   const fairP = num(s?.avg_fair_probability);
   const clv = num(s?.clv_mean);
   const allClv = num(all?.clv_mean);

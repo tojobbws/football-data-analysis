@@ -31,6 +31,12 @@ export interface OddsQuote {
   homeLine: number | null;
   odds: number;
   updatedAt: Date;
+  /**
+   * When this system stored the quote (odds_history.collected_at). Set it in a replay: a quote stored after
+   * the decision time was not known then, even when its source time is earlier. Leave it out for the
+   * closing market, whose last pre-kickoff price is often stored a little after kickoff.
+   */
+  collectedAt?: Date;
 }
 
 export interface MarketGate {
@@ -271,6 +277,8 @@ export function consensus(quotes: readonly OddsQuote[], now: Date, maxAgeHours: 
   const byBook = new Map<string, Map<number, Map<string, OddsQuote>>>();
   for (const q of quotes) {
     if (now.getTime() - q.updatedAt.getTime() > maxAgeMs) continue;
+    // point in time: nothing from after `now` (audit A-08)
+    if (q.updatedAt.getTime() > now.getTime() || (q.collectedAt && q.collectedAt.getTime() > now.getTime())) continue;
     const b = bookOf(q);
     if (!b) continue;
     books.set(b.key, b.book);

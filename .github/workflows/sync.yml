@@ -49,46 +49,82 @@ jobs:
             *)    npm run job -w @fp/football-sync -- "${{ inputs.job }}" ;;
           esac
 
+      # A failed step no longer stops the steps after it (audit A-11): one failed odds fetch used to leave the
+      # hour without settlement and publishing. Each later step guards itself (stale odds and old model runs are
+      # rejected by the pick rules), and the run still fails at the end, listing every failed step.
       - name: Hourly
         if: inputs.job == 'hourly'
         run: |
-          npm run sync:lineups -- --minutes 75
-          npm run sync:odds
-          npm run sync:results
-          npm run model:settle
-          npm run model:closing
-          npm run sync:details
-          npm run model:probabilities -- --days 2
+          failed=()
+          step() { echo "::group::$*"; if ! "$@"; then failed+=("$*"); echo "::error::step failed: $*"; fi; echo "::endgroup::"; }
+          step npm run sync:lineups -- --minutes 75
+          step npm run sync:odds
+          step npm run sync:results
+          step npm run model:settle
+          step npm run model:closing
+          step npm run sync:details
+          step npm run model:probabilities -- --days 2
           npm run model:qualification || echo "::warning::qualification job failed (optional step, the run goes on)"
-          npm run model:impact -- --hours 36
-          npm run model:candidates -- --hours 36
-          npm run model:publish
-          npm run model:featured
-          npm run model:pick-notes
-          npm run model:ai-shadow
+          step npm run model:impact -- --hours 36
+          step npm run model:candidates -- --hours 36
+          step npm run model:publish
+          step npm run model:featured
+          step npm run model:pick-notes
+          step npm run model:ai-shadow
+          if [ ${#failed[@]} -gt 0 ]; then printf 'failed step: %s\n' "${failed[@]}"; exit 1; fi
 
       - name: Daily
         if: github.event.schedule == '30 22 * * *'
         run: |
-          npm run sync:leagues
-          npm run sync:fixtures -- --from "$(date -u +%F)" --to "$(date -u -d '+10 days' +%F)"
-          npm run sync:results
-          npm run model:settle
-          npm run sync:injuries -- --days 3
-          npm run sync:details -- --limit 400
-          npm run sync:predictions -- --hours 48
-          npm run sync:standings
-          npm run sync:support
-          npm run model:probabilities -- --days 7
-          npm run model:closing
-          npm run db:prune
+          failed=()
+          step() { echo "::group::$*"; if ! "$@"; then failed+=("$*"); echo "::error::step failed: $*"; fi; echo "::endgroup::"; }
+          step npm run sync:leagues
+          step npm run sync:fixtures -- --from "$(date -u +%F)" --to "$(date -u -d '+10 days' +%F)"
+          step npm run sync:results
+          step npm run model:settle
+          step npm run sync:injuries -- --days 3
+          step npm run sync:details -- --limit 400
+          step npm run sync:predictions -- --hours 48
+          step npm run sync:standings
+          step npm run sync:support
+          step npm run model:probabilities -- --days 7
+          step npm run model:closing
+          step npm run db:prune
+          if [ ${#failed[@]} -gt 0 ]; then printf 'failed step: %s\n' "${failed[@]}"; exit 1; fi
+
+      # Once a day, on GitHub's own schedule (not the Worker's hourly dispatch), so it also notices when the hourly
+      # pipeline stops running altogether. A PROBLEM fails the run, and GitHub e-mails the failure (audit A-11).
+      - name: Health
+        if: always() && github.event.schedule == '30 22 * * *'
+        run: npm run model:health
 
       - name: Weekly
         if: github.event.schedule == '0 20 * * 1'
         run: |
           npm run sync:players
-          npm run model:tune
           npm run db:prune -- --vacuum
+
+  # Tuning every league takes longer than the 30 minutes of the sync job: the weekly run of 2026-10-19 was cut off
+  # part way (only some leagues re-tuned, its sync_runs row left RUNNING). Own job, after the weekly sync (the
+  # vacuum locks tables), with room to finish.
+  tune:
+    needs: sync
+    if: always() && github.event.schedule == '0 20 * * 1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
+      SEASON: ${{ vars.SEASON || '2026' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run model:tune
 
   # The written previews take one AI call (~75 s) per match; at the end of the sync job they overran its 30 minutes.
   # Own job: nearest kickoffs first, and it stops starting new previews after 24 minutes so it ends by itself.

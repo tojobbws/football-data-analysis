@@ -21,7 +21,10 @@ import {
   eloOneXTwo,
   expectedGoals,
   fitDixonColes,
+  holmAdjust,
+  normalCdf,
   priceMarkets,
+  Z_90,
   scoreMatrix,
   tuneLeague,
   walkForwardBacktest,
@@ -30,7 +33,8 @@ import {
   type MatchRecord,
   type TuneResult,
 } from '@fp/analysis';
-import { runJob, type JobContext, type ModelConfig, type Row } from '@fp/database';
+import { createHash } from 'node:crypto';
+import { runJob, type FinishedMatchRow, type JobContext, type ModelConfig, type Row } from '@fp/database';
 import { addDays, CROSS_LEAGUE_CUPS } from '@fp/shared';
 
 export const ENSEMBLE_VERSION = 'ensemble-v0.1';
@@ -75,12 +79,14 @@ function eventsShareOf(history: ReadonlyArray<{ eventsKnown: boolean }>) {
  * Per-league grid search with a time split. Writes the chosen settings and
  * holdout metrics to model_configs (append-only). `enabled` gates each market.
  */
-export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
+export function tune(ctx: JobContext, opts: { leagues?: number[]; frozenFrom?: Date } = {}) {
   const leagues = opts.leagues ?? ctx.env.TRACKED_LEAGUES;
-  return runJob(ctx, 'tune', { leagues }, async () => {
+  return runJob(ctx, 'tune', { leagues, frozenFrom: opts.frozenFrom?.toISOString() ?? null }, async () => {
     const results: Record<number, TuneResult | { skipped: string }> = {};
     const impacts: Record<number, ImpactCalibration | string> = {};
     const crossGates: Record<number, ReturnType<typeof crossLeagueGate>> = {};
+    // the gate tests of this run (SIDES and TOTALS of every league), for the multiple-testing report at the end
+    const gated: Parameters<JobContext['repo']['insertModelConfigs']>[0] = [];
     let written = 0;
     for (const league of leagues) {
       const log = ctx.log.child({ league });
@@ -91,7 +97,12 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
         continue;
       }
       const started = Date.now();
-      const r = tuneLeague(history, { warmupMatches: Math.min(150, Math.floor(history.length * 0.25)), xgShare: xgShareOf(history), eventsShare: eventsShareOf(history) });
+      const r = tuneLeague(history, {
+        warmupMatches: Math.min(150, Math.floor(history.length * 0.25)),
+        xgShare: xgShareOf(history),
+        eventsShare: eventsShareOf(history),
+        frozenFrom: opts.frozenFrom,
+      });
       log.info('tuned', { ms: Date.now() - started, combos: r.combosTried });
       results[league] = r;
 
@@ -112,8 +123,8 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
       }
 
       const common = { matchesEvaluated: r.matchesEvaluated, leagueId: league };
-      const split = { tuneN: r.tuneN, holdoutN: r.holdoutN };
-      written += await ctx.repo.insertModelConfigs([
+      const split = { tuneN: r.tuneN, holdoutN: r.holdoutN, ...(opts.frozenFrom ? { frozenFrom: opts.frozenFrom.toISOString(), frozenN: r.frozenN } : {}) };
+      const configs: Parameters<JobContext['repo']['insertModelConfigs']>[0] = [
         {
           ...common,
           purpose: 'SIDES',
@@ -165,7 +176,10 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
           },
           enabled: r.ensemble.enabled,
         },
-      ]);
+      ];
+      // written per league at once: a run cut short by a job timeout keeps every league it finished
+      written += await ctx.repo.insertModelConfigs(configs);
+      gated.push(...configs.filter((c) => c.purpose === 'SIDES' || c.purpose === 'TOTALS'));
 
       // Player Impact calibration (needs historical lineups + player stats: run sync:details)
       const lineups = await ctx.repo.lineupsForLeague(league);
@@ -196,8 +210,41 @@ export function tune(ctx: JobContext, opts: { leagues?: number[] } = {}) {
       }
     }
     printTune(results, impacts, crossGates);
+    printMultipleTesting(gated);
     return written;
   });
+}
+
+/**
+ * Multiple testing (audit A-05): every league's SIDES and TOTALS gate in one run is one test of one family.
+ * Holm over that family is shown beside each per-test result; `enabled` keeps the per-test rule until the
+ * owner decides otherwise (docs/audit-remediation-plan.md, D2). For the configs in force at any time,
+ * scripts/audit-gates.ts recomputes the same from model_configs_latest.
+ */
+export function multipleTesting(gated: ReadonlyArray<{ leagueId: number; purpose: string; enabled: boolean; metrics: Record<string, unknown> }>) {
+  const pOneSided = gated.map((c) => {
+    const z = Number((c.metrics.test as { z?: number } | undefined)?.z);
+    return Number.isFinite(z) ? 1 - normalCdf(z) : null;
+  });
+  const pHolm = holmAdjust(pOneSided);
+  const alpha = 1 - normalCdf(Z_90);
+  return gated.map((c, i) => ({
+    league: c.leagueId,
+    purpose: c.purpose,
+    enabled: c.enabled,
+    pOneSided: pOneSided[i] === null ? null : round(pOneSided[i]!, 6),
+    pHolm: pHolm[i] === null ? null : round(pHolm[i]!, 6),
+    enabledUnderHolm: c.enabled && pHolm[i] !== null && pHolm[i]! <= alpha,
+  }));
+}
+
+function printMultipleTesting(gated: Parameters<typeof multipleTesting>[0]) {
+  if (!gated.length) return;
+  const rows = multipleTesting(gated);
+  console.table(rows);
+  console.log(
+    `${rows.length} gate tests in this run: ${rows.filter((r) => r.enabled).length} pass one by one (z >= 1.28), ${rows.filter((r) => r.enabledUnderHolm).length} would pass with Holm over the family (reported only, \`enabled\` unchanged).`,
+  );
 }
 
 function printTune(
@@ -274,6 +321,8 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
       }
       const upcoming = await ctx.repo.upcomingFixturesWithTeams(league, now.toISOString(), addDays(now, days).toISOString());
       if (!upcoming.length) continue;
+      // what the fit saw, so a later re-fit can prove it used the same data (xG is overwritten when the provider revises it, audit A-13)
+      const trainingHash = trainingSetHash(history, now);
 
       const cfg = await ctx.repo.latestModelConfigs(league);
       const sidesP = dcParams(cfg.SIDES) ?? DEFAULT_DC;
@@ -337,6 +386,8 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
           totalsLambda: round(gt.lambda, 4),
           totalsMu: round(gt.mu, 4),
           rho: sides.rho,
+          // the O/U matrix uses the totals fit's own rho (audit A-15)
+          totalsRho: totals.rho,
           homeAdv: round(sides.homeAdv, 4),
           leagueMeanTotal: round(totals.leagueMeanTotal, 3),
           home: { attack: round(sides.attack.get(f.homeTeamId) ?? 1, 4), defence: round(sides.defence.get(f.homeTeamId) ?? 1, 4), weightedMatches: round(weighted(f.homeTeamId), 2) },
@@ -347,6 +398,7 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
           matchesUsed: sides.matchesUsed,
           xgShare: round(xgShareOf(history), 3),
           trainedUntil: now.toISOString(),
+          trainingHash,
           linesFromMarket: offered.ou.length + offered.ahHome.length > 0,
           ...(gx && cross
             ? {
@@ -422,6 +474,19 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
     }
     return written;
   });
+}
+
+/**
+ * sha256 (first 16 hex) of the matches a fit before `asOf` reads: id, kickoff, 90-minute score, xG and red-card
+ * minute, in kickoff order. Same data -> same hash; a revised xG or score changes it.
+ */
+export function trainingSetHash(history: readonly FinishedMatchRow[], asOf: Date): string {
+  const h = createHash('sha256');
+  for (const m of history) {
+    if (m.kickoffAt.getTime() >= asOf.getTime()) continue;
+    h.update(`${m.fixtureId}|${m.kickoffAt.toISOString()}|${m.homeGoals}|${m.awayGoals}|${m.homeXg ?? ''}|${m.awayXg ?? ''}|${m.redCardMinute ?? ''}\n`);
+  }
+  return h.digest('hex').slice(0, 16);
 }
 
 function dcParams(c: ModelConfig | undefined) {

@@ -16,11 +16,12 @@ import { matchPreviewJob } from './preview-job.js';
 import { pickNoteJob } from './pick-note-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
 import { qualificationJob } from './qualification-job.js';
+import { healthJob } from './health-job.js';
 
 const USAGE = `usage: npm run job -w @fp/analysis-worker -- <job> [options]
 
 jobs:
-  tune [--league ID]           grid-search settings per league (time split) -> model_configs
+  tune [--league ID] [--frozen-from ISO]  grid-search settings per league (time split) -> model_configs; --frozen-from keeps matches from then on out of tuning and gating (final holdout)
   probabilities [--days N] [--min-gap-hours H]   model probabilities for fixtures in the next N days (default 7)
   qualification [--days N]     chance each side goes through a two-legged cup tie (needs the live scoreline matrices); skips ties it cannot price
   impact [--hours N]           Player Impact layer: re-price with missing players (lineups / injuries)
@@ -35,22 +36,23 @@ jobs:
   featured                    daily featured list (shadow, ADR 0004): reserve slots, lock matches at their LINEUP round
   featured-report             daily featured list vs all LINEUP picks, days by selections, verdict (ADR 0004)
   shadow-report               shadow pick rules vs the real ones on kicked-off matches: sides picked and results
-  backtest [--warmup N]        walk-forward backtest on finished matches in the DB`;
+  backtest [--warmup N]        walk-forward backtest on finished matches in the DB
+  health                       pipeline health: stale jobs, odds feed, unpublished matches; exits 1 on a problem`;
 
 async function main() {
   loadDotEnvFile();
   const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
+    options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, 'frozen-from': { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report'].includes(job ?? '')) {
+  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
   const ctx = createJobContext();
   try {
-    if (job === 'tune') await tune(ctx, { leagues: values.league ? [Number(values.league)] : undefined });
+    if (job === 'tune') await tune(ctx, { leagues: values.league ? [Number(values.league)] : undefined, frozenFrom: values['frozen-from'] ? new Date(values['frozen-from']) : undefined });
     else if (job === 'probabilities')
       await computeProbabilities(ctx, {
         days: values.days ? Number(values.days) : undefined,
@@ -103,6 +105,7 @@ async function main() {
       console.log(r.markdown);
       console.log(`\nsaved: ${r.path}`);
     }
+    else if (job === 'health') await healthJob(ctx);
     else if (job === 'impact') await playerImpactJob(ctx, { hours: values.hours ? Number(values.hours) : undefined });
     else if (job === 'candidates') await generateCandidatesJob(ctx, { hours: values.hours ? Number(values.hours) : undefined });
     else await backtest(ctx, { warmupMatches: values.warmup ? Number(values.warmup) : undefined });

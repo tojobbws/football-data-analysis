@@ -92,6 +92,19 @@ describe('noVig / consensus', () => {
     const qs = [q(1, 'OVER_UNDER', 'OVER', 2.5, null, 1.9, stale), q(1, 'OVER_UNDER', 'UNDER', 2.5, null, 2.0, stale), q(2, 'OVER_UNDER', 'OVER', 2.5, null, 1.9)];
     expect(consensus(qs, NOW, 12)).toHaveLength(0);
   });
+
+  it('point in time: quotes from after `now`, or stored after it, are not known yet (audit A-08)', () => {
+    const later = new Date(NOW.getTime() + 60_000);
+    const known = consensus(quotes(), NOW, 12);
+    // a later quote of bookmaker 1 at a very different price, by source time and by storage time
+    const bySource = [...quotes(), ...quotes(later).filter((x) => x.bookmakerId === 1).map((x) => ({ ...x, odds: x.odds * 1.5 }))];
+    const byStorage = [...quotes(), ...quotes().filter((x) => x.bookmakerId === 1).map((x) => ({ ...x, odds: x.odds * 1.5, updatedAt: new Date(NOW.getTime() - 60_000), collectedAt: later }))];
+    expect(consensus(bySource, NOW, 12)).toEqual(known);
+    expect(consensus(byStorage, NOW, 12)).toEqual(known);
+    // the same decision a minute later sees them
+    expect(consensus(bySource, later, 12)).not.toEqual(consensus(quotes(), later, 12));
+    expect(generateCandidates(input({ quotes: bySource }))).toEqual(generateCandidates(input()));
+  });
 });
 
 describe('generateCandidates', () => {

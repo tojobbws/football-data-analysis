@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { DEFAULT_RULES, readMainLines, type OutcomeDistribution } from '@fp/analysis';
+import { DEFAULT_RULES, readMainLines, summarizeBenchmarkDays, type BenchmarkDay, type OutcomeDistribution } from '@fp/analysis';
 import { buildRegistry, type PopularityRegistry } from '@fp/shared/popularity';
 import { webEnv } from './env';
 import { db } from './supabase';
@@ -449,6 +449,46 @@ export async function modelResults() {
   };
 }
 
+export type BenchmarkMetric = '1X2' | 'AH_MAIN' | 'OU_MAIN' | 'PICK';
+
+/**
+ * Model against the market on the same matches and the same target (web_benchmark_days, migration 0043),
+ * summed per football day so the intervals are clustered by day. 1X2 is the main model only.
+ */
+export async function benchmark(mainModel: string) {
+  const { data, error } = await db().from('web_benchmark_days').select('*');
+  if (error) fail('benchmark', error);
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  const days = (metric: string): BenchmarkDay[] =>
+    rows
+      .filter((r) => r.metric === metric && (metric !== '1X2' || r.model_version_id === mainModel))
+      .map((r) => ({
+        day: String(r.day),
+        n: Number(r.n ?? 0),
+        w: Number(r.w ?? 0),
+        wScored: Number(r.w_scored ?? 0),
+        brierModel: num(r.brier_model),
+        brierMarket: num(r.brier_market),
+        logLossModel: num(r.log_loss_model),
+        logLossMarket: num(r.log_loss_market),
+        hit: num(r.hit),
+        pModel: num(r.p_model),
+        pMarket: num(r.p_market),
+        clvN: Number(r.clv_n ?? 0),
+        clvSum: num(r.clv_sum),
+      }));
+  const finished = new Map(days('FINISHED').map((d) => [d.day, d.n]));
+  const metrics = (['1X2', 'AH_MAIN', 'OU_MAIN', 'PICK'] as const).map((metric) => {
+    const ds = days(metric);
+    const summary = summarizeBenchmarkDays(ds);
+    // coverage: matches scored against finished matches of the modelled leagues on the same football days
+    const finishedOnDays = ds.reduce((a, d) => a + (finished.get(d.day) ?? 0), 0);
+    return { metric, summary, finishedOnDays };
+  });
+  return Object.fromEntries(metrics.map((m) => [m.metric, m])) as Record<BenchmarkMetric, (typeof metrics)[number]>;
+}
+
 /**
  * The popularity registry (teams, leagues, rivalries) that orders big matches and finds the Thai section.
  * An optional extra: if it cannot be read the site simply shows no big-match or Thai section.
@@ -525,12 +565,15 @@ export interface PerfBucket {
   win_rate: number | null;
   avg_clv: number | null;
   beat_closing_rate: number | null;
+  /** matches published as a pick in more than one round (each counted once here) */
+  matches_with_repeat_signal: number;
 }
 
+/** Track record with one record per match (migration 0043): a match published in two rounds counts once. */
 export async function performance() {
   const sb = db();
   const [perf, recent, leagues] = await Promise.all([
-    sb.from('analysis_performance').select('*'),
+    sb.from('analysis_performance_by_match').select('*'),
     sb
       .from('published_analysis')
       .select('public_id, fixture_slug, kickoff_at, published_at, publish_round, league_name, home_team, away_team, kind, market, selection, line, odds_at_publish, model_probability, signal_strength, status, result_score, settled_at, record_hash')
@@ -543,7 +586,7 @@ export async function performance() {
   return {
     buckets: (perf.data ?? []).map((r) => {
       const x: Record<string, unknown> = { ...r };
-      for (const k of ['total_signals', 'no_signal', 'pending', 'win', 'half_win', 'loss', 'half_loss', 'push', 'void']) x[k] = Number(r[k] ?? 0);
+      for (const k of ['total_signals', 'no_signal', 'pending', 'win', 'half_win', 'loss', 'half_loss', 'push', 'void', 'matches_with_repeat_signal']) x[k] = Number(r[k] ?? 0);
       for (const k of ['win_rate', 'avg_clv', 'beat_closing_rate']) x[k] = r[k] == null ? null : Number(r[k]);
       return x as unknown as PerfBucket;
     }),

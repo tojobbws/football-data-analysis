@@ -10,8 +10,9 @@
  *  - anchor   the same rules on market-anchored prices (data/market-anchor-v0.1.json): main AH and O/U line
  *             from Pinnacle's de-margined price (consensus when Pinnacle has no fresh quote on that line),
  *             moved by the fitted layer; gates from the anchor's walk-forward test; thresholds from the flags.
- * A match that already started is judged as of 20 minutes before kickoff, with quotes from before kickoff,
- * and settled when it has finished.
+ * A match that already started is judged as of 20 minutes before kickoff, with only the configs, model runs and
+ * quotes stored by then (a quote fetched later is left out even when its source time is earlier), and settled
+ * when it has finished.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -165,14 +166,15 @@ const tally = { v06: 0, anchor: 0, changed: 0, total: 0, settled: { v06: [] as s
 for (const f of fixtures) {
   const finished = ['FT', 'AET', 'PEN'].includes(f.status);
   const evalAt = new Date(Math.min(now.getTime(), f.kickoffAt.getTime() - 20 * 60_000));
-  const cfg = await repo.latestModelConfigs(f.leagueId);
-  const c = await candidateContext(repo, f, cfg, evalAt);
+  // point in time (audit A-08): configs, model runs and quotes as they stood at evalAt, nothing stored later
+  const cfg = await repo.latestModelConfigs(f.leagueId, evalAt);
+  const c = await candidateContext(repo, f, cfg, evalAt, { pointInTime: true });
   tally.total++;
   if (!c) {
     rows.push({ kickoff: thai(f.kickoffAt), match: f.name, note: 'ยังไม่มีราคาโมเดล' });
     continue;
   }
-  const quotes = c.quotes.filter((q) => q.updatedAt < f.kickoffAt);
+  const quotes = c.quotes;
   const base = { ...c.input, quotes, now: evalAt };
   const old = generateCandidates(base, DEFAULT_RULES);
 

@@ -196,14 +196,17 @@ export async function candidateContext(
   f: { id: number; kickoffAt: Date },
   cfg: Partial<Record<string, ModelConfig>>,
   now: Date,
+  opts: { pointInTime?: boolean } = {},
 ) {
-  const probs = await repo.latestProbabilities(f.id, DIXON_COLES_VERSION);
+  // a replay (pointInTime) reads only what existed at `now`: model runs computed and quotes stored by then (audit A-08)
+  const asOf = opts.pointInTime ? now : undefined;
+  const probs = await repo.latestProbabilities(f.id, DIXON_COLES_VERSION, asOf);
   if (!probs.length) return null;
-  const quotes = await repo.latestQuotes(f.id);
+  const quotes = await repo.latestQuotes(f.id, asOf);
   const computedAt = probs[0]!.computedAt.toISOString();
 
   // Player Impact layer: use it only if trusted for this league AND built on the same DC run
-  const impactRows = await repo.latestProbabilities(f.id, IMPACT_VERSION);
+  const impactRows = await repo.latestProbabilities(f.id, IMPACT_VERSION, asOf);
   const impactHead = impactRows.find((r) => r.inputs && 'impact' in r.inputs);
   const impact = impactHead?.inputs?.impact as
     | { key: { basedOn: string }; home: { attackLoss: number; defenceLoss: number }; away: { attackLoss: number; defenceLoss: number } }
