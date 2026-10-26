@@ -781,20 +781,27 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
   const years = [...new Set(season.values())];
   const current = (r: { league_id: unknown; season: unknown }) => season.get(Number(r.league_id)) === Number(r.season);
 
-  const [st, ps] = await Promise.all([
+  // PostgREST returns at most 1000 rows per request: the scorer rows of all leagues together run to thousands,
+  // so each league asks for its own top rows (spare rows so a player who moved clubs can still be summed below)
+  const [st, ...ps] = await Promise.all([
     sb.from('standings').select('league_id, season, group_name, team_id, rank, played, goals_diff, points').in('league_id', ids).in('season', years),
-    sb
-      .from('player_season_stats')
-      .select('player_id, team_id, league_id, season, goals, assists, player:players(name, photo_url)')
-      .in('league_id', ids)
-      .in('season', years)
-      .gt('goals', 0),
+    ...[...season].map(([league, year]) =>
+      sb
+        .from('player_season_stats')
+        .select('player_id, team_id, league_id, season, goals, assists, player:players(name, photo_url)')
+        .eq('league_id', league)
+        .eq('season', year)
+        .gt('goals', 0)
+        .order('goals', { ascending: false })
+        .limit(scorers * 8),
+    ),
   ]);
-  for (const [name, r] of Object.entries({ st, ps })) if (r.error) fail(name, r.error);
+  if (st.error) fail('standings', st.error);
+  for (const r of ps) if (r.error) fail('scorers', r.error);
   const stRows = (st.data ?? []).filter(current);
-  const psRows = (
-    (ps.data ?? []) as unknown as Array<{ player_id: number; team_id: number; league_id: number; season: number; goals: number; assists: number | null; player: { name: string; photo_url: string | null } | null }>
-  ).filter(current);
+  const psRows = ps.flatMap(
+    (r) => (r.data ?? []) as unknown as Array<{ player_id: number; team_id: number; league_id: number; season: number; goals: number; assists: number | null; player: { name: string; photo_url: string | null } | null }>,
+  );
 
   const teamIds = [...new Set([...stRows.map((r) => Number(r.team_id)), ...psRows.map((r) => Number(r.team_id))])];
   const teams = new Map<number, Team>();
