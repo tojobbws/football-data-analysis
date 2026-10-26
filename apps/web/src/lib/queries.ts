@@ -456,9 +456,22 @@ export type BenchmarkMetric = '1X2' | 'AH_MAIN' | 'OU_MAIN' | 'PICK';
  * summed per football day so the intervals are clustered by day. 1X2 is the main model only.
  */
 export async function benchmark(mainModel: string) {
-  const { data, error } = await db().from('web_benchmark_days').select('*');
-  if (error) fail('benchmark', error);
-  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const sb = db();
+  // PostgREST returns at most 1000 rows per request and the view grows by a few rows per football day: read pages
+  const pages = async (build: () => ReturnType<ReturnType<typeof sb.from>['select']>) => {
+    const out: Array<Record<string, unknown>> = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await build().order('metric').order('day').range(from, from + 999);
+      if (error) fail('benchmark', error);
+      out.push(...((data ?? []) as Array<Record<string, unknown>>));
+      if ((data ?? []).length < 1000) return out;
+    }
+  };
+  const scored = await pages(() => sb.from('web_benchmark_days').select('*').or(`metric.in.(AH_MAIN,OU_MAIN,PICK),and(metric.eq.1X2,model_version_id.eq.${mainModel})`));
+  const first = scored.map((r) => String(r.day)).sort()[0];
+  // finished matches only on the days that have scored rows (coverage), not every day since the first season
+  const finishedRows = first ? await pages(() => sb.from('web_benchmark_days').select('*').eq('metric', 'FINISHED').gte('day', first)) : [];
+  const rows = [...scored, ...finishedRows];
   const num = (v: unknown) => (v == null ? null : Number(v));
   const days = (metric: string): BenchmarkDay[] =>
     rows
