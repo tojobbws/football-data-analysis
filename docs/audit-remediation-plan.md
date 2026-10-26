@@ -113,4 +113,6 @@ Phase 2
 ## Migration
 
 - `supabase/migrations/20261026000043_market_benchmark.sql` — รันแล้ว 2026-10-26 · ตรวจบน prod: ทุกค่าตรง baseline · rollback: `supabase/rollbacks/0043_rollback.sql`
-- `supabase/migrations/20261026000044_model_results_materialized.sql` — ยังไม่รัน · ใช้ได้กับโค้ดเว็บที่ deploy อยู่แล้ว (ชื่อและคอลัมน์ของ view เหมือนเดิม) แต่ข้อมูลจะค้าง ณ ตอน migrate จนกว่าขั้น `model:refresh-web` ใน workflow จะขึ้น main · rollback: `supabase/rollbacks/0044_rollback.sql` (ทดสอบบน PGlite แล้ว)
+- `supabase/migrations/20261026000044_model_results_materialized.sql` — รันแล้ว 2026-10-26 · หลังรัน: `web_model_results` 94 ms, `web_model_calibration` 18 ms, `web_model_outlook_performance` 1 ms (เดิม 4.7 วิตอน cache เย็น) · rollback: `supabase/rollbacks/0044_rollback.sql`
+- `supabase/migrations/20261026000045_benchmark_materialized.sql` — ยังไม่รัน · `web_benchmark_days` ยังใช้ 3.8 วิตอน cache เย็นหลัง 0044 (0.14 วิตอนอุ่น) จึง materialize ด้วย และกำหนด `search_path` ให้ฟังก์ชัน settlement ของ 0043 เพราะ Postgres 17 (prod 17.11) สร้าง/refresh materialized view ด้วย search_path แบบปลอดภัย · rollback: `supabase/rollbacks/0045_rollback.sql` (ทดสอบบน PGlite แล้ว)
+- ข้อมูลใน materialized view ค้าง ณ ตอน migrate จนกว่าขั้น `model:refresh-web` ใน workflow จะขึ้น main
