@@ -844,9 +844,10 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
   const years = [...new Set(season.values())];
   const current = (r: { league_id: unknown; season: unknown }) => season.get(Number(r.league_id)) === Number(r.season);
 
-  // PostgREST returns at most 1000 rows per request: the scorer rows of all leagues together run to thousands,
-  // so each league asks for its own top rows (spare rows so a player who moved clubs can still be summed below)
-  const [st, ...ps] = await Promise.all([
+  // Scorers: one paged read for every league instead of one request per league. A Worker invocation may make only
+  // so many subrequests, and with 31 leagues the per-league reads pushed the home page past the limit (2026-10-27).
+  // Each league keeps its top rows (spare rows so a player who moved clubs can still be summed below).
+  const [st, ps] = await Promise.all([
     // one row per team of every tracked league (660 on 2026-10-26): read in pages, the server stops at 1000
     allRows<{ league_id: number; season: number; group_name: string; team_id: number; rank: number | null; played: number | null; goals_diff: number | null; points: number | null }>((a, b) =>
       sb
@@ -860,23 +861,31 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
         .order('team_id')
         .range(a, b),
     ),
-    ...[...season].map(([league, year]) =>
+    allRows<{ player_id: number; team_id: number; league_id: number; season: number; goals: number; assists: number | null; player: { name: string; photo_url: string | null } | null }>((a, b) =>
       sb
         .from('player_season_stats')
         .select('player_id, team_id, league_id, season, goals, assists, player:players(name, photo_url)')
-        .eq('league_id', league)
-        .eq('season', year)
+        .in('league_id', [...season.keys()])
+        .in('season', years)
         .gt('goals', 0)
+        .order('league_id')
+        .order('season')
         .order('goals', { ascending: false })
-        .limit(scorers * 8),
+        .order('player_id')
+        .order('team_id')
+        .range(a, b),
     ),
   ]);
   if (st.error) fail('standings', st.error);
-  for (const r of ps) if (r.error) fail('scorers', r.error);
+  if (ps.error) fail('scorers', ps.error);
   const stRows = (st.data ?? []).filter(current);
-  const psRows = ps.flatMap(
-    (r) => (r.data ?? []) as unknown as Array<{ player_id: number; team_id: number; league_id: number; season: number; goals: number; assists: number | null; player: { name: string; photo_url: string | null } | null }>,
-  );
+  const kept = new Map<number, number>();
+  const psRows = ps.data.filter((r) => {
+    if (!current(r)) return false;
+    const n = kept.get(Number(r.league_id)) ?? 0;
+    kept.set(Number(r.league_id), n + 1);
+    return n < scorers * 8;
+  });
 
   const teamIds = [...new Set([...stRows.map((r) => Number(r.team_id)), ...psRows.map((r) => Number(r.team_id))])];
   const teams = new Map<number, Team>();
