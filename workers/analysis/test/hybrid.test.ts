@@ -9,7 +9,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { HybridDecider, RankerResult } from '@fp/ai';
+import { HYBRID_PROMPT_VERSION, type HybridDecider, type RankerResult } from '@fp/ai';
 import { Repository, type JobContext } from '@fp/database';
 import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
@@ -180,7 +180,7 @@ describe('hybridJob', () => {
     );
     expect(rows.map((r) => Number(r.fixture_id))).toEqual([301, 302, 305]);
     const [good, noOdds, fog] = rows;
-    expect(good).toMatchObject({ kind: 'SIGNAL', market: 'ASIAN_HANDICAP', selection: 'AWAY', model_probability: null, signal_strength: 'MEDIUM', decision_rule_version: 'hybrid-ai-v1', prompt_version: 'hybrid-ai-v1', model_version_id: 'hybrid-ai-v1' });
+    expect(good).toMatchObject({ kind: 'SIGNAL', market: 'ASIAN_HANDICAP', selection: 'AWAY', model_probability: null, signal_strength: 'MEDIUM', decision_rule_version: 'hybrid-ai-v1', prompt_version: HYBRID_PROMPT_VERSION, model_version_id: 'hybrid-ai-v1' });
     expect(Number(good!.line)).toBe(0.75);
     expect(Number(good!.odds_at_publish)).toBe(1.93);
     expect(Number(good!.market_probability)).toBeGreaterThan(0.49);
@@ -192,7 +192,7 @@ describe('hybridJob', () => {
     const [snap] = await q<{ ai_reasoning: Record<string, unknown> }>(
       `select s.ai_reasoning from analysis_snapshots s join analysis_predictions p on p.id = s.analysis_prediction_id where p.fixture_id = 301`,
     );
-    expect(snap!.ai_reasoning).toMatchObject({ engineVersion: 'hybrid-ai-v1', promptVersion: 'hybrid-ai-v1' });
+    expect(snap!.ai_reasoning).toMatchObject({ engineVersion: 'hybrid-ai-v1', promptVersion: HYBRID_PROMPT_VERSION });
     expect(String(snap!.ai_reasoning.inputHash)).toMatch(/^[0-9a-f]{64}$/);
 
     // again: no duplicate publication, and the job has nothing left to decide for published rounds

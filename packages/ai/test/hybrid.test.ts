@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hybridMarket, hybridOptions, type OddsQuote } from '@fp/analysis';
-import { buildHybridInput, validateHybridOutput, type HybridSource, type TeamMatch } from '../src/index.js';
+import { allowedNumbers, buildHybridInput, validateHybridOutput, type HybridSource, type TeamMatch } from '../src/index.js';
 
 const NOW = new Date('2026-10-24T08:00:00Z');
 const quotes: OddsQuote[] = [1, 2, 3].flatMap((b) => [
@@ -77,6 +77,23 @@ describe('buildHybridInput', () => {
     expect(missing).toContain('no xG for 7 recent matches');
     expect(missing).toContain('lineups not confirmed yet');
   });
+  it('carries every number named in a key as a value too, so the AI may quote it', () => {
+    // the AI reads "matches_in_last_14_days" as "14 days": a number only in a key fails the number guard (2026-10-27)
+    const named: number[] = [];
+    const walk = (v: unknown): void => {
+      if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === 'object')
+        for (const [k, x] of Object.entries(v)) {
+          for (const m of k.matchAll(/\d+(?:_\d+)?/g)) named.push(Number(m[0].replace('_', '.')));
+          walk(x);
+        }
+    };
+    walk(input);
+    expect(named.length).toBeGreaterThan(0);
+    const allowed = allowedNumbers(input);
+    expect(named.filter((n) => !allowed.includes(n))).toEqual([]);
+  });
+
   it('gives the four options on the main lines with their prices and no-vig probability', () => {
     const ahView = (input.market as { asian_handicap: { favourite: string; options: Array<{ option: string; team_or_total: string; line: number; odds_median: number }> } }).asian_handicap;
     expect(ahView.favourite).toBe('Arsenal');

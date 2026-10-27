@@ -12,7 +12,8 @@ import type { HybridMarket, HybridOption, HybridSide } from '@fp/analysis';
 import { BANNED_WORDS, allowedNumbers, inventedNumbers } from './guards.js';
 
 export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1';
+// v1.1 (2026-10-27): the 14-day window is a value in the input (the AI quoted it and the number guard refused it)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.1';
 /** The pick decision matters more than prose: Sonnet by default, HYBRID_AI_MODEL overrides it. */
 export const HYBRID_AI_MODEL = 'claude-sonnet-5-5';
 /** Answers that fail validation are asked again this many times in total before the decision fails safely. */
@@ -110,7 +111,8 @@ function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', st
     last_5: summary(ms.slice(0, 5)),
     [venue === 'HOME' ? 'home_matches_in_last_10' : 'away_matches_in_last_10']: summary(ms.slice(0, 10).filter((m) => m.venue === venue)),
     rest_days_before_this_match: last ? r(days(last.kickoffAt), 1) : null,
-    matches_in_last_14_days: ms.filter((m) => days(m.kickoffAt) <= 14).length,
+    // the window is a value, not only part of a key: the AI may then quote it (number guard)
+    recent_congestion: { days: 14, matches: ms.filter((m) => days(m.kickoffAt) <= 14).length },
     league_table: standing,
   };
 }
