@@ -87,7 +87,7 @@ AH เส้นหลักและ O/U 2.5 (football-data PIN), walk-forward �
 | 7 | A-11, A-23 | workflow: ขั้นรายชั่วโมง/รายวันทำต่อเมื่อขั้นก่อนล้มแล้วรายงานท้าย run; tune แยก job 120 นาที; `model:health` รายวัน (ล้ม = อีเมลจาก GitHub); ปิด run ค้าง RUNNING > 120 นาที | เสร็จ |
 | 8 | A-13, A-15 | `inputs.trainingHash` (sha256 ของข้อมูลที่ fit เห็น), `inputs.totalsRho` | เสร็จ |
 | 9 | — | `scripts/calibration-experiment.ts`: blend / calibration แบบ walk-forward + final holdout | เสร็จ (ผลด้านล่าง) |
-| 10 | A-18 | migration 0044: materialize `web_model_result_rows` (ฐานของผลโมเดล, calibration, benchmark) และ `web_model_outlook_performance`; job `model:refresh-web` รายชั่วโมง/รายวันหลัง closing; health เฝ้า job นี้ · วัดบน prod ก่อนแก้: `web_model_results` 4.7 วิ ตอน cache เย็น (anon timeout 3 วิ) | เสร็จ (รอ migrate) |
+| 10 | A-18 | migration 0044: materialize `web_model_result_rows` (ฐานของผลโมเดล, calibration, benchmark) และ `web_model_outlook_performance`; job `model:refresh-web` รายชั่วโมง/รายวันหลัง closing; health เฝ้า job นี้ · วัดบน prod ก่อนแก้: `web_model_results` 4.7 วิ ตอน cache เย็น (anon timeout 3 วิ) | เสร็จ |
 | 11 | A-14, A-16, A-17, A-19, A-20 | ดู "ยังไม่ได้ทำ" | ค้าง |
 
 ## การตัดสินใจที่ต้องให้เจ้าของอนุมัติ (ยังไม่ทำ)
@@ -114,5 +114,12 @@ Phase 2
 
 - `supabase/migrations/20261026000043_market_benchmark.sql` — รันแล้ว 2026-10-26 · ตรวจบน prod: ทุกค่าตรง baseline · rollback: `supabase/rollbacks/0043_rollback.sql`
 - `supabase/migrations/20261026000044_model_results_materialized.sql` — รันแล้ว 2026-10-26 · หลังรัน: `web_model_results` 94 ms, `web_model_calibration` 18 ms, `web_model_outlook_performance` 1 ms (เดิม 4.7 วิตอน cache เย็น) · rollback: `supabase/rollbacks/0044_rollback.sql`
-- `supabase/migrations/20261026000045_benchmark_materialized.sql` — ยังไม่รัน · `web_benchmark_days` ยังใช้ 3.8 วิตอน cache เย็นหลัง 0044 (0.14 วิตอนอุ่น) จึง materialize ด้วย และกำหนด `search_path` ให้ฟังก์ชัน settlement ของ 0043 เพราะ Postgres 17 (prod 17.11) สร้าง/refresh materialized view ด้วย search_path แบบปลอดภัย · rollback: `supabase/rollbacks/0045_rollback.sql` (ทดสอบบน PGlite แล้ว)
-- ข้อมูลใน materialized view ค้าง ณ ตอน migrate จนกว่าขั้น `model:refresh-web` ใน workflow จะขึ้น main
+- `supabase/migrations/20261026000045_benchmark_materialized.sql` — รันแล้ว 2026-10-27 · `web_benchmark_days` ยังใช้ 3.8 วิตอน cache เย็นหลัง 0044 (0.14 วิตอนอุ่น) จึง materialize ด้วย และกำหนด `search_path` ให้ฟังก์ชัน settlement ของ 0043 เพราะ Postgres 17 (prod 17.11) สร้าง/refresh materialized view ด้วย search_path แบบปลอดภัย · หลังรัน: 34 ms, ค่าตรงเดิม (1X2 613 นัด Brier 0.5864/0.5632) · rollback: `supabase/rollbacks/0045_rollback.sql` (ทดสอบบน PGlite แล้ว)
+- `supabase/migrations/20261027000046_odds_movement_pushdown.sql` — ยังไม่รัน · ดู "Incident 2026-10-27" · rollback: `supabase/rollbacks/0046_rollback.sql` (ทดสอบบน PGlite แล้ว)
+
+## Incident 2026-10-27: job preview / odds ล้มทุกชั่วโมง
+
+- อาการ: ตั้งแต่ 2026-10-26 18:05 UTC job `preview` ใช้ 7–20 นาที (เดิม 6–8 วิ) แล้วตั้งแต่ 02:05 UTC ล้มด้วย statement timeout ที่ `Repository.selectionMovement` ทุกชั่วโมง; job `odds` ที่รันคู่กันช้าจนถูก job limit 30 นาทีตัด (03:05 ค้าง RUNNING จน `abandonStaleRuns` ปิด) ขั้นหลัง odds ในรอบรายชั่วโมงจึงไม่ได้รัน
+- สาเหตุ: view `odds_movement` (0002) จัดอันดับทุก quote ใน CTE ที่ join กับตัวเอง CTE ที่ใช้สองครั้งถูก materialize เงื่อนไข `fixture_id = $1` จึงเข้าไปไม่ถึง ทุกครั้งที่เรียก = Seq Scan + sort `odds_history` ทั้ง table (3.26 ล้านแถว, 439 MB; `work_mem` 2 MB → sort ลง disk; `temp_bytes` สะสม 1,366 GB) โตจนเกิน RAM ของ instance (`shared_buffers` 224 MB, DB 2.45 GB)
+- ไม่เกี่ยวกับ 0044/0045: 0044 รัน 11:43 UTC และ preview ยังเร็วถึง 17:05 UTC; 0045 รันหลังเริ่มล้ม
+- แก้: 0046 เขียน view ใหม่ (คอลัมน์และแถวเท่าเดิม) ให้ filter `fixture_id` ลงไปถึง index key ของ `odds_history` · ตรวจบน prod แบบ read-only (fixture 1494328): plan ใช้ `Index Cond: (fixture_id = …)` และผลทุกตลาดตรงกับ logic เดิม; test ใน PGlite ยืนยันว่า view เดิมไม่ผ่าน plan test นี้

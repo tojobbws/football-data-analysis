@@ -168,6 +168,20 @@ describe('odds_history', () => {
     expect(Number(mv!.current_odds)).toBe(1.8);
     expect(Number(mv!.n_snapshots)).toBe(2);
   });
+
+  // 0046: the preview job reads odds_movement one fixture at a time; the 0002 view sorted the whole table per call
+  it('odds_movement reads only the asked fixture from odds_history', async () => {
+    type Plan = { 'Relation Name'?: string; 'Index Cond'?: string; Filter?: string; Plans?: Plan[] };
+    const [row] = await q<{ 'QUERY PLAN': [{ Plan: Plan }] }>(`explain (format json) select * from odds_movement where fixture_id = 10`);
+    const scans: Plan[] = [];
+    const walk = (p: Plan) => { if (p['Relation Name'] === 'odds_history') scans.push(p); p.Plans?.forEach(walk); };
+    walk(row!['QUERY PLAN'][0].Plan);
+    expect(scans.length).toBeGreaterThan(0);
+    for (const s of scans) expect(JSON.stringify(s)).toMatch(/fixture_id/);
+    // still runs with the caller's rights (create or replace resets view options)
+    const [opts] = await q<{ reloptions: string[] }>(`select reloptions from pg_class where relname = 'odds_movement'`);
+    expect(opts!.reloptions).toContain('security_invoker=true');
+  });
 });
 
 describe('migration 0010 (AH away-line fix)', () => {
