@@ -35,6 +35,8 @@ export const KNOWN_LEAGUES = {
   188: { name: 'A-League', country: 'Australia' },
   // added 2026-10-16
   71: { name: 'Serie A', country: 'Brazil' },
+  // added 2026-10-27: Carabao Cup (EFL Cup)
+  48: { name: 'League Cup', country: 'England' },
 } as const satisfies Record<number, { name: string; country: string }>;
 
 /**
@@ -59,6 +61,8 @@ export const CROSS_LEAGUE_CUPS: Readonly<Record<number, readonly number[]>> = {
   2: UEFA_DOMESTIC,
   3: UEFA_DOMESTIC,
   848: UEFA_DOMESTIC,
+  // Carabao Cup (EFL Cup): the 92 clubs of the Premier League, Championship, League One and League Two
+  48: [39, 40, 41, 42],
 };
 
 /**
