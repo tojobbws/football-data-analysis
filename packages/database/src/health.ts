@@ -16,6 +16,8 @@ export const JOB_MAX_AGE_HOURS: Readonly<Record<string, number>> = {
   probabilities: 3,
   candidates: 3,
   publish: 3,
+  // runs every hour; does nothing while PICK_ENGINE=legacy
+  hybrid: 3,
   'refresh-web': 3,
   // daily
   fixtures: 30,

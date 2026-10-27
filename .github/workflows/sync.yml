@@ -28,6 +28,9 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+      # who makes the published pick: legacy (default) | shadow | hybrid (docs/adr/0010-hybrid-ai-picks.md)
+      PICK_ENGINE: ${{ vars.PICK_ENGINE }}
+      HYBRID_AI_MODEL: ${{ vars.HYBRID_AI_MODEL }}
       API_FOOTBALL_RPM: ${{ vars.API_FOOTBALL_RPM || '10' }}
       TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
       SEASON: ${{ vars.SEASON || '2026' }}
@@ -68,6 +71,7 @@ jobs:
           npm run model:qualification || echo "::warning::qualification job failed (optional step, the run goes on)"
           step npm run model:impact -- --hours 36
           step npm run model:candidates -- --hours 36
+          step npm run model:hybrid
           step npm run model:publish
           step npm run model:featured
           step npm run model:pick-notes

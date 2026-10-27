@@ -12,6 +12,7 @@ import { FEATURED_V2 } from '@fp/analysis';
 import { featuredJob } from './featured-job.js';
 import { featuredReport } from './featured-report-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
+import { hybridJob } from './hybrid-job.js';
 import { matchPreviewJob } from './preview-job.js';
 import { pickNoteJob } from './pick-note-job.js';
 import { backtest, computeProbabilities, tune } from './jobs.js';
@@ -29,6 +30,7 @@ jobs:
   candidates [--hours N]       evaluate all selections vs odds, store decision (default next 36h)
   report [--hours N]           🔎 Markdown report of upcoming matches (default next 18h) -> reports/
   publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
+  hybrid [--budget-minutes M]  Hybrid AI decides each due publish round (PICK_ENGINE=shadow|hybrid; stored, published only in hybrid mode)
   ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs ANTHROPIC_API_KEY
   preview [--hours N] [--refresh] [--budget-minutes M]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48); AI text with ANTHROPIC_API_KEY, template text without; --refresh rewrites previews from an older version
   pick-notes [--refresh]      Game Compass note (pick_th) for every published pick not yet explained; AI text with an AI key, template text without; --refresh rewrites notes from an older prompt
@@ -48,7 +50,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, 'frozen-from': { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health', 'refresh-web'].includes(job ?? '')) {
+  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'hybrid', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health', 'refresh-web'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -100,6 +102,7 @@ async function main() {
         ),
       );
     }
+    else if (job === 'hybrid') await hybridJob(ctx, { budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
     else if (job === 'ai-shadow') await aiShadowJob(ctx);
     else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, refresh: values.refresh, budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
     else if (job === 'report') {

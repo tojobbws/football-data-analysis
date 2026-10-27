@@ -808,6 +808,8 @@ export class Repository {
          join leagues l on l.id = f.league_id
         where p.kickoff_at > $1::timestamptz + make_interval(mins => $2)
           and not exists (select 1 from ai_shadow_rankings a where a.analysis_prediction_id = p.id)
+          -- the shadow ranking is a second opinion on the rules' pick, not on the Hybrid AI's own (ADR 0010)
+          and coalesce(p.decision_rule_version, '') not like 'hybrid-%'
         order by p.kickoff_at, p.id
         limit $3`,
       [now.toISOString(), marginMinutes, limit],
@@ -1014,6 +1016,102 @@ export class Repository {
     });
   }
 
+  /**
+   * The Hybrid AI's form data (ADR 0010): a team's last n finished matches before `before`, any competition,
+   * from its side: score, xG and shots, and the opponent's position in that competition's table (the table as
+   * synced now; null when the competition has none).
+   */
+  async teamRecentMatches(teamId: number, before: Date, n = 10) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.kickoff_at, f.home_team_id, l.name as competition, th.name as home_name, ta.name as away_name,
+              coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga,
+              max(s.value_num) filter (where s.type = 'expected_goals' and s.team_id = f.home_team_id) as xg_h,
+              max(s.value_num) filter (where s.type = 'expected_goals' and s.team_id = f.away_team_id) as xg_a,
+              max(s.value_num) filter (where s.type = 'shots_on_goal' and s.team_id = f.home_team_id) as sot_h,
+              max(s.value_num) filter (where s.type = 'shots_on_goal' and s.team_id = f.away_team_id) as sot_a,
+              max(s.value_num) filter (where s.type = 'total_shots' and s.team_id = f.home_team_id) as sh_h,
+              max(s.value_num) filter (where s.type = 'total_shots' and s.team_id = f.away_team_id) as sh_a,
+              (select st.rank from standings st where st.league_id = f.league_id and st.season = f.season
+                  and st.team_id = case when f.home_team_id = $1 then f.away_team_id else f.home_team_id end limit 1) as opp_rank,
+              (select count(*) from standings st where st.league_id = f.league_id and st.season = f.season
+                  and st.group_name = (select g.group_name from standings g where g.league_id = f.league_id and g.season = f.season
+                                         and g.team_id = case when f.home_team_id = $1 then f.away_team_id else f.home_team_id end limit 1)) as table_size
+         from fixtures f
+         join leagues l on l.id = f.league_id
+         join teams th on th.id = f.home_team_id
+         join teams ta on ta.id = f.away_team_id
+         left join fixture_statistics s on s.fixture_id = f.id and s.type in ('expected_goals', 'shots_on_goal', 'total_shots')
+        where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $2
+          and coalesce(f.ft_home, f.goals_home) is not null
+        group by f.id, l.name, th.name, ta.name
+        order by f.kickoff_at desc limit $3`,
+      [teamId, before.toISOString(), n],
+    );
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    return res.rows.map((r) => {
+      const home = Number(r.home_team_id) === teamId;
+      const rank = num(r.opp_rank);
+      return {
+        kickoffAt: new Date(r.kickoff_at as string).toISOString(),
+        competition: String(r.competition),
+        venue: (home ? 'HOME' : 'AWAY') as 'HOME' | 'AWAY',
+        opponent: String(home ? r.away_name : r.home_name),
+        opponentRank: rank,
+        opponentTableSize: rank === null ? null : num(r.table_size),
+        goalsFor: Number(home ? r.gh : r.ga),
+        goalsAgainst: Number(home ? r.ga : r.gh),
+        xgFor: num(home ? r.xg_h : r.xg_a),
+        xgAgainst: num(home ? r.xg_a : r.xg_h),
+        shotsOnTargetFor: num(home ? r.sot_h : r.sot_a),
+        shotsOnTargetAgainst: num(home ? r.sot_a : r.sot_h),
+        shotsFor: num(home ? r.sh_h : r.sh_a),
+        shotsAgainst: num(home ? r.sh_a : r.sh_h),
+      };
+    });
+  }
+
+  // ---------- Hybrid AI decisions (ADR 0010) ----------
+
+  /** Insert-only; the DB rejects a row at or after kickoff. */
+  async insertHybridDecision(row: Row): Promise<number> {
+    return Number(await insertReturning(this.db, 'hybrid_decisions', row));
+  }
+
+  /** The latest valid decision of a round under an engine version, or null. */
+  async latestHybridDecision(fixtureId: number, round: string, engineVersion: string) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select id, decided_at, engine_mode, engine_version, prompt_version, model, input, input_hash, output, side, market, selection, line, odds,
+              market_probability, confidence, summary_th, legacy
+         from hybrid_decisions
+        where fixture_id = $1 and publish_round = $2 and engine_version = $3 and status = 'OK'
+        order by decided_at desc, id desc limit 1`,
+      [fixtureId, round, engineVersion],
+    );
+    const r = res.rows[0];
+    if (!r) return null;
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    return {
+      id: Number(r.id),
+      decidedAt: new Date(r.decided_at as string),
+      mode: String(r.engine_mode),
+      engineVersion: String(r.engine_version),
+      promptVersion: String(r.prompt_version),
+      model: r.model == null ? null : String(r.model),
+      input: parseJson(r.input) as Record<string, unknown>,
+      inputHash: String(r.input_hash),
+      output: parseJson(r.output),
+      side: String(r.side),
+      market: r.market == null ? null : String(r.market),
+      selection: r.selection == null ? null : String(r.selection),
+      line: num(r.line),
+      odds: num(r.odds),
+      marketProbability: num(r.market_probability),
+      confidence: r.confidence == null ? null : String(r.confidence),
+      summaryTh: r.summary_th == null ? null : String(r.summary_th),
+      legacy: parseJson(r.legacy),
+    };
+  }
+
   async latestApiPrediction(fixtureId: number) {
     const res = await this.db.query<Record<string, unknown>>(
       `select collected_at, percent_home, percent_draw, percent_away, advice, under_over, winner_team_id
@@ -1218,6 +1316,8 @@ export class Repository {
          join fixtures f on f.id = p.fixture_id
          left join pick_explanations e on e.analysis_prediction_id = p.id and ($3::text is null or e.prompt_version = $3)
         where p.kind = 'SIGNAL' and f.kickoff_at > $1::timestamptz + make_interval(mins => $2)
+          -- a Hybrid AI pick carries the AI's own explanation (ADR 0010)
+          and coalesce(p.decision_rule_version, '') not like 'hybrid-%'
         group by p.id, f.id
         order by f.kickoff_at, p.id`,
       [now.toISOString(), minMinutes, promptVersion ?? null],

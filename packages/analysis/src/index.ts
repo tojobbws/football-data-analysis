@@ -19,3 +19,4 @@ export * from './rounds.js';
 export * from './cup.js';
 export * from './market-anchor.js';
 export * from './evaluation.js';
+export * from './hybrid-market.js';

@@ -13,9 +13,12 @@
  *              have since been replaced (docs/adr/0009-prematch-after-rules-change.md)
  * 🌫️ NO_CLEAR_SIGNAL is published too: coverage and honesty count as much as hits.
  */
-import { buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
+import { buildHybridReason, buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
+import { HYBRID_ENGINE_VERSION } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours } from '@fp/shared';
+
+export type PickEngine = 'legacy' | 'shadow' | 'hybrid';
 
 export interface PublishOptions {
   now?: Date;
@@ -24,43 +27,74 @@ export interface PublishOptions {
   shadowRulesVersion?: string | null;
   /** decision must be at most this old (minutes) */
   maxRunAgeMinutes?: Partial<Record<PublishRound, number>>;
+  /** who makes the published pick; default env PICK_ENGINE (docs/adr/0010-hybrid-ai-picks.md) */
+  engine?: PickEngine;
+}
+
+/** How old a decision may be when its round is published (minutes). */
+export const MAX_DECISION_AGE_MINUTES: Record<PublishRound, number> = { EARLY: 240, PREMATCH: 240, LINEUP: 75 };
+
+type Fx = { id: number; leagueId: number; kickoffAt: Date; homeTeamId: number; awayTeamId: number };
+
+/**
+ * The round this fixture is due to publish now, or null. `engineVersion` is the pick engine in force: an EARLY
+ * round published under another one earns a PREMATCH round (ADR 0009). The league re-tune cause (ADR 0005)
+ * applies to the rules only; the Hybrid AI does not use the league gates.
+ */
+export async function dueRound(ctx: JobContext, f: Fx, now: Date, opts: { engineVersion: string; gateRetune: boolean }) {
+  const lineups = await ctx.repo.lineupsForFixture(f.id);
+  const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
+  let round: PublishRound | null = publishRoundFor(f.kickoffAt, now, hasLineups);
+  let gateTunedAt: Date | null = null;
+  let cause: PrematchCause | null = null;
+  if (round !== 'LINEUP') {
+    // also inside the EARLY window: EARLY is already published there, so its round is used up
+    const early = await ctx.repo.publication(f.id, 'EARLY');
+    if (early) {
+      gateTunedAt = opts.gateRetune ? await ctx.repo.gateTunedAt(f.leagueId) : null;
+      cause = prematchCause({
+        kickoffAt: f.kickoffAt,
+        now,
+        early,
+        gateTunedAt,
+        lineupPublished: await ctx.repo.isPublished(f.id, 'LINEUP'),
+        prematchPublished: await ctx.repo.isPublished(f.id, 'PREMATCH'),
+        rulesVersion: opts.engineVersion,
+      });
+      if (cause) round = 'PREMATCH';
+    }
+  }
+  return round ? { round, cause, gateTunedAt } : null;
+}
+
+/** A decision taken at `at` is still good for its round: recent enough, and for LINEUP after the confirmed lineup. */
+export async function decisionFresh(ctx: JobContext, fixtureId: number, round: PublishRound, at: Date, now: Date, maxAge: Record<PublishRound, number> = MAX_DECISION_AGE_MINUTES) {
+  if (now.getTime() - at.getTime() > maxAge[round] * 60_000) return 'decision too old';
+  if (round === 'LINEUP') {
+    const lineupAt = await ctx.repo.lineupSyncedAt(fixtureId);
+    if (lineupAt && at < lineupAt) return 'decision older than the confirmed lineup';
+  }
+  return null;
 }
 
 export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;
+  const engine: PickEngine = opts.engine ?? ctx.env.PICK_ENGINE ?? 'legacy';
   const rulesVersion = opts.rulesVersion ?? DEFAULT_RULES.version;
-  const maxAge = { EARLY: 240, PREMATCH: 240, LINEUP: 75, ...opts.maxRunAgeMinutes };
+  const engineVersion = engine === 'hybrid' ? HYBRID_ENGINE_VERSION : rulesVersion;
+  const maxAge = { ...MAX_DECISION_AGE_MINUTES, ...opts.maxRunAgeMinutes };
   const shadowVersion = opts.shadowRulesVersion === undefined ? SHADOW_RULES.version : opts.shadowRulesVersion;
-  return runJob(ctx, 'publish', { leagues, rulesVersion }, async () => {
+  return runJob(ctx, 'publish', { leagues, rulesVersion, engine, engineVersion }, async () => {
     const now = opts.now ?? new Date();
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, 24).toISOString());
     const report: Array<Record<string, unknown>> = [];
     let published = 0;
+    if (engine === 'hybrid') await ctx.repo.ensureModelVersion(HYBRID_ENGINE_VERSION, 'Hybrid AI decision engine: verified pre-match data + market main lines (ADR 0010)', {});
 
     for (const f of fixtures) {
-      const lineups = await ctx.repo.lineupsForFixture(f.id);
-      const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
-      let round: PublishRound | null = publishRoundFor(f.kickoffAt, now, hasLineups);
-      let gateTunedAt: Date | null = null;
-      let cause: PrematchCause | null = null;
-      if (round !== 'LINEUP') {
-        // also inside the EARLY window: EARLY is already published there, so its round is used up
-        const early = await ctx.repo.publication(f.id, 'EARLY');
-        if (early) {
-          gateTunedAt = await ctx.repo.gateTunedAt(f.leagueId);
-          cause = prematchCause({
-            kickoffAt: f.kickoffAt,
-            now,
-            early,
-            gateTunedAt,
-            lineupPublished: await ctx.repo.isPublished(f.id, 'LINEUP'),
-            prematchPublished: await ctx.repo.isPublished(f.id, 'PREMATCH'),
-            rulesVersion,
-          });
-          if (cause) round = 'PREMATCH';
-        }
-      }
-      if (!round) continue;
+      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid' });
+      if (!due) continue;
+      const { round, cause, gateTunedAt } = due;
 
       // Shadow trial (ADR 0003): lock the shadow pick of this round under the same conditions as a real pick.
       if (shadowVersion && round !== 'PREMATCH' && !(await ctx.repo.isShadowLocked(f.id, shadowVersion, round))) {
@@ -71,9 +105,78 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
         }
       }
       if (await ctx.repo.isPublished(f.id, round)) continue;
+      const skip = (why: string) => report.push({ fixture: f.id, round, result: 'SKIP', note: why });
+
+      if (engine === 'hybrid') {
+        // the Hybrid AI's own decision or nothing: a rules pick is never published in its place
+        const d = await ctx.repo.latestHybridDecision(f.id, round, HYBRID_ENGINE_VERSION);
+        if (!d) {
+          skip('no valid Hybrid AI decision (run model:hybrid)');
+          continue;
+        }
+        const stale = await decisionFresh(ctx, f.id, round, d.decidedAt, now, maxAge);
+        if (stale) {
+          skip(`Hybrid AI ${stale} (run model:hybrid)`);
+          continue;
+        }
+        const header = (await ctx.repo.fixtureHeader(f.id))!;
+        const isPick = d.side !== 'NO_PICK' && d.market !== null && d.selection !== null && d.line !== null;
+        const label = isPick ? selectionLabel(d.market!, d.selection!, d.line, header.home, header.away) : null;
+        const out = (d.output ?? {}) as { supporting_evidence?: string[]; counter_evidence?: string[]; risk_factors?: string[]; missing_data?: string[] };
+        const input = d.input as { home_team?: unknown; away_team?: unknown; injuries?: unknown; confirmed_lineup?: unknown; market?: { asian_handicap?: { bookmakers?: number }; over_under?: { bookmakers?: number } } };
+        const nBookmakers = d.market === 'ASIAN_HANDICAP' ? input.market?.asian_handicap?.bookmakers : d.market === 'OVER_UNDER' ? input.market?.over_under?.bookmakers : undefined;
+        const reason = buildHybridReason({
+          kind: isPick ? 'SIGNAL' : 'NO_CLEAR_SIGNAL',
+          round,
+          engineChanged: cause === 'RULES_CHANGED',
+          label,
+          summaryTh: d.summaryTh ?? '',
+          supporting: out.supporting_evidence ?? [],
+          risks: [...(out.risk_factors ?? []), ...(out.counter_evidence ?? [])],
+          missing: out.missing_data ?? [],
+          confidence: d.confidence,
+          odds: d.odds,
+          nBookmakers: nBookmakers ?? null,
+        });
+        const prediction = {
+          fixture_id: f.id,
+          publish_round: round,
+          run_id: null,
+          candidate_id: null,
+          kind: isPick ? 'SIGNAL' : 'NO_CLEAR_SIGNAL',
+          market: isPick ? d.market : null,
+          selection: isPick ? d.selection : null,
+          line: isPick ? d.line : null,
+          odds_at_publish: isPick ? d.odds : null,
+          // the AI weighs evidence; it gives no calibrated probability (the check allows null for hybrid engines)
+          model_probability: null,
+          market_probability: isPick ? d.marketProbability : null,
+          signal_strength: isPick ? (d.confidence === 'HIGH' ? 'STRONG' : d.confidence === 'MEDIUM' ? 'MEDIUM' : 'LEAN') : null,
+          model_distribution: null,
+          reason,
+          model_version_id: HYBRID_ENGINE_VERSION,
+          decision_rule_version: d.engineVersion,
+          prompt_version: d.promptVersion,
+        };
+        const snapshot = {
+          form_snapshot: { home: input.home_team ?? null, away: input.away_team ?? null },
+          xg_snapshot: null,
+          injury_snapshot: input.injuries ?? null,
+          lineup_snapshot: input.confirmed_lineup ?? null,
+          odds_snapshot: isPick ? { reference: d.odds, nBookmakers: nBookmakers ?? null } : null,
+          market_snapshot: input.market ?? null,
+          api_prediction_snapshot: null,
+          model_snapshot: { engine: d.engineVersion, legacy: d.legacy },
+          candidates_snapshot: [],
+          ai_reasoning: { decisionId: d.id, engineVersion: d.engineVersion, promptVersion: d.promptVersion, model: d.model, inputHash: d.inputHash, decidedAt: d.decidedAt.toISOString(), output: d.output },
+        };
+        const res = await ctx.repo.publishPrediction(prediction, snapshot);
+        published++;
+        report.push({ fixture: f.id, match: `${header.home} vs ${header.away}`, round, result: isPick ? `🧭 ${label} (AI)` : '🌫️ หมอกข้อมูล (AI)', strength: prediction.signal_strength ?? '-', id: res.publicId, hash: res.recordHash.slice(0, 12) });
+        continue;
+      }
 
       const run = await ctx.repo.latestRun(f.id, rulesVersion);
-      const skip = (why: string) => report.push({ fixture: f.id, round, result: 'SKIP', note: why });
       if (!run) {
         skip('no decision yet (run model:candidates)');
         continue;

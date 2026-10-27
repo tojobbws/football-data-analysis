@@ -136,6 +136,49 @@ export function buildReason(r: ReasonInput): string {
   return lines.join('\n');
 }
 
+export interface HybridReasonInput {
+  kind: 'SIGNAL' | 'NO_CLEAR_SIGNAL';
+  round: PublishRound;
+  /** a PREMATCH round published because the EARLY one came from the rules engine */
+  engineChanged: boolean;
+  label: string | null;
+  /** the AI's text, already checked: no banned word, no number that is not in its input */
+  summaryTh: string;
+  supporting: readonly string[];
+  risks: readonly string[];
+  missing: readonly string[];
+  confidence: string | null;
+  odds: number | null;
+  nBookmakers: number | null;
+}
+
+const CONFIDENCE_TH: Record<string, string> = { HIGH: 'STRONG (หลักฐานหนักแน่น)', MEDIUM: 'MEDIUM', LOW: 'LEAN (หลักฐานยังบาง)' };
+
+/**
+ * Thai text of a Hybrid AI decision (ADR 0010). The analysis is the AI's, checked before it was stored; the
+ * frame (who decided, which line, the price) is built here from stored values, so a reader can tell it apart
+ * from the rules' picks.
+ */
+export function buildHybridReason(r: HybridReasonInput): string {
+  const when =
+    r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : r.round === 'PREMATCH' ? (r.engineChanged ? 'ก่อนเตะ หลังเปลี่ยนเป็นระบบวิเคราะห์ Hybrid AI' : 'ก่อนเตะ') : 'ล่วงหน้าก่อนเกม';
+  const lines: string[] = [];
+  if (r.kind === 'SIGNAL' && r.label) {
+    lines.push(`${BRAND.SIGNAL}: ${r.label} (${when})`);
+    if (r.summaryTh) lines.push(r.summaryTh);
+    for (const s of r.supporting.slice(0, 2)) lines.push(`✓ ${s}`);
+    for (const s of r.risks.slice(0, 2)) lines.push(`• ${s}`);
+    lines.push(`วิเคราะห์โดย Hybrid AI จากฟอร์มล่าสุดและราคาตลาด · เส้นหลักของตลาด${r.nBookmakers && r.odds ? ` · อ้างอิงราคาจาก ${r.nBookmakers} เจ้า (ราคากลาง ${r.odds.toFixed(2)})` : ''}`);
+    if (r.confidence) lines.push(`ระดับสัญญาณ: ${CONFIDENCE_TH[r.confidence] ?? r.confidence}`);
+  } else {
+    lines.push(`${BRAND.NO_SIGNAL} (${when})`);
+    lines.push(r.summaryTh || 'ไม่มีตลาดใดมีหลักฐานสนับสนุนเพียงพอ ณ เวลาที่วิเคราะห์');
+    if (r.missing.length) lines.push(`ข้อมูลที่ขาด: ${r.missing.slice(0, 2).join(' / ')}`);
+    lines.push('วิเคราะห์โดย Hybrid AI จากฟอร์มล่าสุดและราคาตลาด');
+  }
+  return lines.join('\n');
+}
+
 /**
  * Which round (if any) should be published now.
  * EARLY  : kickoff within (earlyMinHours, earlyHours]

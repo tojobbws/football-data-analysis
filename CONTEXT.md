@@ -7,7 +7,7 @@ A football analysis media site: the model publishes one analysed view per match,
 ### Picks and settlement
 
 **เข็มทิศเกม (Game Compass)**:
-The site's published analytical lean for a match — one pick, or fog when there is no clear signal. The pick is a side of the market's main line where the model's view differs clearly from the market's, within limits (ADR 0008); it is not the most likely outcome of the match, and never a far line chosen for its larger gap.
+The site's published analytical lean for a match — one pick, or fog when there is no clear signal. The pick is a side of the market's main line (ADR 0008): under the rules engine, where the model's view differs clearly from the market's, within limits; under the Hybrid AI engine (ADR 0010), the option the evidence supports best against the market. It is not the most likely outcome of the match, and never a far line chosen for its larger gap.
 _Avoid_: tip, bet, prediction (on fan pages); "the option the data supports most" (reads as the most likely outcome)
 
 **Main line (เส้นหลัก)**:
@@ -53,6 +53,14 @@ _Avoid_: presenting it as the chance the win condition happens
 
 **Fair target**:
 What a settled selection is scored against: a win counts 1 and a loss 0 at full weight, a half win 1 and a half loss 0 at half weight, a push or void not at all. Its weighted average is the fair hit rate, so a fair probability, the model's or the market's, is scored on it directly (Brier, log loss).
+
+**Pick engine**:
+What makes the published pick, set per run by PICK_ENGINE (ADR 0010): `legacy` = the rules over the model's edge, `hybrid` = the Hybrid AI, `shadow` = the rules publish while the Hybrid AI's decisions are only stored. Each pick records its engine in `decision_rule_version`; one round never mixes engines, and the rules keep running in every mode.
+_Avoid_: calling an AI pick "the model's pick"; showing a model probability for it
+
+**Hybrid AI decision**:
+The Hybrid AI's choice for one publish round — AH favourite, AH underdog, Over, Under on the market's main lines, or no pick — from verified pre-match data and the market at that moment, with the evidence for and against. Its confidence is the strength of the evidence, not a probability. Stored whatever its validity; published only when valid and the engine is `hybrid`.
+_Avoid_: treating its confidence as a chance of winning
 
 **Market benchmark (เทียบกับตลาด)**:
 The model and the market scored on the same matches and the same target: 1X2 against 1X2, Asian handicap and over/under on the same line and side. Reported with an interval clustered by football day and a verdict that says "not enough evidence" below 100 matches over 20 football days. It is a measurement, not an input: it never feeds the model.

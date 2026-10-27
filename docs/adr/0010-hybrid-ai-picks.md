@@ -1,0 +1,29 @@
+# The Game Compass pick can come from a Hybrid AI engine, switched by PICK_ENGINE
+
+The owner decided on 2026-10-27 that the published pick should come from an AI that reads current, verified football data and the market, rather than from the rules over the Dixon-Coles edge. This replaces the earlier split "the rules pick, the AI ranks as a shadow" (ADR 0003, Phase 6b) for the published pick only. The research of the same week (docs/research/underdog-bias-*.md) found the rules' picks lean to the underdog because the model is flatter than the market, and no setting of the model fixed that.
+
+**How it decides.** For each fixture whose publish round (EARLY, PREMATCH, LINEUP) is due, the `hybrid` job builds the input from stored data only, as of the decision time: each team's last 10 matches with goals, xG, shots on target, venue and the opponent's table position, the last 5 and home/away summaries, rest days, the league table, injuries and confirmed lineups, and the market's main AH and O/U lines with both prices (`hybridMarket`: the same main-line rule as the rules engine, quotes known at that time only). The legacy model's probabilities are included as context with their known lean stated. The AI chooses AH favourite, AH underdog, Over, Under or NO_PICK and explains the evidence for and against (prompt `hybrid-ai-v1`).
+
+**What makes an answer usable.** `validateHybridOutput`: market and side agree, the side is an option in the snapshot, the line is that option's line, no banned word, and every number in the Thai text is in the input. An invalid answer is asked again once; then it is stored as INVALID and nothing is published for it. API errors are stored as ERROR. Every answer, valid or not, is stored in `hybrid_decisions` with the full input, its hash and the rules' decision of the same moment. The AI never produces a probability: a published Hybrid AI pick has no model probability, its signal strength is the AI's confidence in the evidence, and its price and market probability come from the snapshot.
+
+**PICK_ENGINE** (GitHub Actions variable, read each run):
+- `legacy` (default, also when unset): the rules publish; the `hybrid` job does nothing.
+- `shadow`: the rules publish; the AI decides every due round and its decisions are only stored.
+- `hybrid`: the publish job publishes the round's latest valid AI decision with `decision_rule_version` = `hybrid-ai-v1`. With no valid decision, nothing is published for that round: a rules pick is never published in its place.
+
+The rules engine (probabilities, candidates, shadow rules, closing, benchmark) runs unchanged in every mode.
+
+## Consequences
+
+- Published records are never changed. Switching the engine either way earns a PREMATCH round for fixtures whose EARLY round came from the other engine (ADR 0009), worded "หลังเปลี่ยนเป็นระบบวิเคราะห์ Hybrid AI" when the AI publishes it.
+- `/performance` scores AI picks on results and CLV like any pick; the model-vs-market Brier of the PICK row leaves them out (no model probability). The model benchmark (1X2, AH, O/U main lines) keeps measuring the legacy model on every match.
+- The daily featured list ranks picks by the model's distribution, which AI picks do not have, so it stays empty for them. Pick notes and the AI shadow ranking skip AI picks (the AI's own explanation is in the published reason).
+- Cost and time: one AI call per fixture per round (two at most). The job stops starting new fixtures after 12 minutes; the rest are decided in the next hourly run while their round is open.
+- Migration 0047 (`hybrid_decisions`, the relaxed SIGNAL check) is needed before `shadow` or `hybrid`. Its rollback keeps both once an AI pick is published.
+
+## Considered Options
+
+- **AI as a writer only (rules keep picking)**: what Phase 6b did. Rejected by the owner: the picks would still carry the rules' underdog lean.
+- **Fall back to the rules' pick when the AI fails**: rejected. A reader would see a pick from another engine with no notice; the record would mix engines in one round.
+- **A calibrated AI probability**: not attempted. Nothing validates an LLM's probability; confidence states the strength of evidence only.
+- **Switching on straight to `hybrid`**: possible, but the runbook (docs/hybrid-ai-rollout.md) starts with `shadow` so the AI's answers, validity rate and cost are seen on live fixtures before anything is published.

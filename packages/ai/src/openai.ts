@@ -4,7 +4,8 @@
  * Refusals and unparseable text come back as data, never throw.
  */
 import OpenAI from 'openai';
-import type { PreviewWriter, RankerResult, ShadowRanker } from './claude.js';
+import type { HybridDecider, PreviewWriter, RankerResult, ShadowRanker } from './claude.js';
+import { HYBRID_OUTPUT_SCHEMA, HYBRID_SYSTEM_PROMPT } from './hybrid.js';
 import { OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
 import { PICK_NOTE_OUTPUT_SCHEMA, PICK_NOTE_SYSTEM_PROMPT } from './pick-note.js';
@@ -63,4 +64,8 @@ export function createOpenAIPickNoteWriter(opts: { apiKey: string; model: string
 export function isPersistentOpenAIError(err: unknown): boolean {
   if (err instanceof OpenAI.BadRequestError || err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) return true;
   return err instanceof OpenAI.RateLimitError && err.code === 'insufficient_quota';
+}
+
+export function createOpenAIHybridDecider(opts: { apiKey: string; model: string }): HybridDecider {
+  return { decide: createOpenAIStructuredCall({ ...opts, system: HYBRID_SYSTEM_PROMPT, schemaName: 'hybrid_decision', schema: HYBRID_OUTPUT_SCHEMA as unknown as Record<string, unknown> }) };
 }

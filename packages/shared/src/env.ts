@@ -40,6 +40,21 @@ export const envSchema = z.object({
   /** Optional: with both set, the AI jobs (previews, shadow ranking) use OpenAI instead of Claude. */
   OPENAI_API_KEY: z.string().optional().transform((v) => v || undefined),
   OPENAI_MODEL: z.string().optional().transform((v) => v || undefined),
+  /**
+   * Who makes the published pick (docs/adr/0010-hybrid-ai-picks.md):
+   *  legacy - the rules (Dixon-Coles edge over the market); the Hybrid AI does not run
+   *  shadow - the rules publish; the Hybrid AI decides each round too and is only stored
+   *  hybrid - the Hybrid AI publishes; the rules keep running and are stored beside it
+   * Set per run (GitHub Actions variable PICK_ENGINE), so switching back needs no deploy.
+   */
+  // an unset GitHub variable arrives as ''; unset = legacy (readers default it)
+  PICK_ENGINE: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum(['legacy', 'shadow', 'hybrid']).optional()),
+  /** Optional: the Hybrid AI model (Claude); default HYBRID_AI_MODEL in @fp/ai. OpenAI uses OPENAI_MODEL. */
+  HYBRID_AI_MODEL: z.string().optional().transform((v) => v || undefined),
 });
 
 export type Env = z.infer<typeof envSchema>;

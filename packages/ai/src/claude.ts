@@ -7,6 +7,7 @@ import { isPersistentOpenAIError } from './openai.js';
 import { AI_MODEL, AI_TIMEOUT_MS, OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
 import { PICK_NOTE_OUTPUT_SCHEMA, PICK_NOTE_SYSTEM_PROMPT } from './pick-note.js';
+import { HYBRID_AI_MODEL, HYBRID_OUTPUT_SCHEMA, HYBRID_SYSTEM_PROMPT } from './hybrid.js';
 
 export interface RankerResult {
   /** parsed JSON answer, or null on refusal / unparseable text */
@@ -84,4 +85,12 @@ export function createClaudePreviewWriter(opts: { apiKey?: string; model?: strin
 
 export function createClaudePickNoteWriter(opts: { apiKey?: string; model?: string } = {}): PreviewWriter {
   return { write: createStructuredCall({ ...opts, system: PICK_NOTE_SYSTEM_PROMPT, schema: PICK_NOTE_OUTPUT_SCHEMA }) };
+}
+
+export interface HybridDecider {
+  decide(input: Record<string, unknown>): Promise<RankerResult>;
+}
+
+export function createClaudeHybridDecider(opts: { apiKey?: string; model?: string } = {}): HybridDecider {
+  return { decide: createStructuredCall({ ...opts, model: opts.model ?? HYBRID_AI_MODEL, system: HYBRID_SYSTEM_PROMPT, schema: HYBRID_OUTPUT_SCHEMA as unknown as Record<string, unknown> }) };
 }
