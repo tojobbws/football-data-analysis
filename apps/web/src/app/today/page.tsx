@@ -5,7 +5,7 @@ import { ArticleGrid, MoreLink } from '@/components/home';
 import { MatchList } from '@/components/match-list';
 import { Empty, Section } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
-import { thaiMatchesOf } from '@/lib/popularity';
+import { byKickoffThenLeague, thaiMatchesOf } from '@/lib/popularity';
 import { featuredRanks, latestArticles, matchDayCounts, matchesOnFootballDay, popularityRegistry } from '@/lib/queries';
 import { SITE_NAME, siteUrl } from '@/lib/site';
 import { addDaysStr, dayTH, footballDate } from '@/lib/time';
@@ -86,7 +86,7 @@ export default async function TodayPage() {
           </h2>
           <MoreLink href={`/matches?date=${day}`} label="ดูตามวัน" />
         </div>
-        {matches.length ? <MatchList matches={matches} watch={watch} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
+        {matches.length ? <MatchList matches={byKickoffThenLeague(matches, registry)} watch={watch} /> : <Empty>ยังไม่มีโปรแกรมแข่งในลีกที่ติดตาม</Empty>}
       </section>
 
       {/* each match's written preview is already in the list above; editorial articles show only when there are some */}

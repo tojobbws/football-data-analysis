@@ -8,7 +8,8 @@ import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from 
 import { Empty } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
 import { isLive as liveNow } from '@/lib/live';
-import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
+import { byKickoffThenLeague } from '@/lib/popularity';
+import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, popularityRegistry, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
@@ -23,7 +24,6 @@ const noon = (d: string) => `${d}T12:00:00+07:00`;
 const isLive = (m: MatchRow) => liveNow(m.status_short, m.kickoff_at);
 /** what's on now → what's next (by kickoff) → what's done */
 const phase = (m: MatchRow) => (isLive(m) ? 0 : FINISHED.includes(m.status_short) ? 2 : 1);
-const byPhase = (a: MatchRow, b: MatchRow) => phase(a) - phase(b) || Date.parse(a.kickoff_at) - Date.parse(b.kickoff_at);
 
 /**
  * Home = the scoreboard: pick a day (default today) → matches by league.
@@ -36,7 +36,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, live, signals, articles, leagues, upcomingPreviews, ranks] = await Promise.all([
+  const [shown, live, signals, articles, leagues, upcomingPreviews, ranks, registry] = await Promise.all([
     date ? matchesOnFootballDay(date) : liveMatches(),
     liveMatches(),
     upcomingSignals(5),
@@ -44,15 +44,16 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     leagueWidgets(5),
     previewCards('upcoming', 4),
     date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
+    popularityRegistry(),
   ]);
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
-  // on today: live first, then upcoming, then finished; other days keep kickoff order
   // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list when switched on and filled, otherwise the next signals;
   // finished ones keep the mark with their result
   const featured = featuredList(shown, ranks);
   const watch = new Set([...(featured.length ? featured.map((f) => f.slug) : signals.map((x) => x.fixture_slug)), ...finishedWatch(shown, ranks)]);
-  const ordered = onToday ? [...shown].sort(byPhase) : shown;
+  // on today: live first, then upcoming, then finished; then kickoff order, the more popular league first at the same kickoff
+  const ordered = byKickoffThenLeague(shown, registry, onToday ? phase : undefined);
 
   return (
     <main className="pb-8">

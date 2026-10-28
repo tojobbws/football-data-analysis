@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { ScrollTopOnEnter } from '@/components/scroll-top-on-enter';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { finishedWatch } from '@/components/featured-picks';
-import { featuredRanks, liveMatches, matchesOnFootballDay } from '@/lib/queries';
+import { byKickoffThenLeague } from '@/lib/popularity';
+import { featuredRanks, liveMatches, matchesOnFootballDay, popularityRegistry } from '@/lib/queries';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
@@ -18,11 +19,14 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
   const today = footballDate();
   const liveView = q.live === '1';
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
-  const [matches, live, ranks] = await Promise.all([
+  const [shown, live, ranks, registry] = await Promise.all([
     date ? matchesOnFootballDay(date) : liveMatches(),
     liveMatches(),
     date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
+    popularityRegistry(),
   ]);
+  // kickoff order, the more popular league first at the same kickoff
+  const matches = byKickoffThenLeague(shown, registry);
   // finished คู่น่าจับตา keep their gold frame and show ถูก/ผิด
   const watch = new Set(finishedWatch(matches, ranks));
   const title = liveView ? 'กำลังแข่งขัน' : date === today ? 'แมตช์วันนี้' : date! < today ? 'ผลการแข่งขัน' : 'โปรแกรมแข่ง';

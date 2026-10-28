@@ -69,6 +69,11 @@ function pick<T>(map: Map<string, T>, id: number, season: number | null | undefi
   return (season != null ? map.get(`${id}:${season}`) : undefined) ?? map.get(`${id}:0`);
 }
 
+/** A league's importance (season row, else every-season row, else DEFAULT_LEAGUE_IMPORTANCE). Orders lists only. */
+export function leagueImportance(reg: PopularityRegistry, leagueId: number, season?: number | null): number {
+  return pick(reg.leagues, leagueId, season)?.importance ?? DEFAULT_LEAGUE_IMPORTANCE;
+}
+
 export interface RankableMatch {
   id: number;
   season?: number | null;

@@ -1,4 +1,4 @@
-import { BIG_MATCH_MIN_SCORE, rankBigMatches, thaiMatches, type PopularityRegistry, type RankableMatch } from '@fp/shared/popularity';
+import { BIG_MATCH_MIN_SCORE, leagueImportance, rankBigMatches, thaiMatches, type PopularityRegistry, type RankableMatch } from '@fp/shared/popularity';
 import type { MatchRow } from './queries';
 
 interface Item extends RankableMatch {
@@ -16,6 +16,15 @@ export interface BigMatch {
 /** The day's big matches (most popular first). Order only: nothing here reads or changes a probability or a pick. */
 export function bigMatchesOf(matches: MatchRow[], reg: PopularityRegistry, limit = 6): BigMatch[] {
   return rankBigMatches(items(matches), reg, { min: BIG_MATCH_MIN_SCORE, limit }).map((r) => ({ match: r.match.row, derby: r.derby }));
+}
+
+/**
+ * The day's matches by kickoff; at the same kickoff the more important league first (league_importance),
+ * so its group comes first on the scoreboard. Order only, as everything here.
+ */
+export function byKickoffThenLeague(matches: MatchRow[], reg: PopularityRegistry, first: (m: MatchRow) => number = () => 0): MatchRow[] {
+  const importance = (m: MatchRow) => leagueImportance(reg, m.league.id, m.season);
+  return [...matches].sort((a, b) => first(a) - first(b) || Date.parse(a.kickoff_at) - Date.parse(b.kickoff_at) || importance(b) - importance(a) || a.id - b.id);
 }
 
 /** The day's matches in leagues the registry flags as Thai, in kickoff order as given. */

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { BIG_MATCH_MIN_SCORE, buildRegistry, popularityScore, rankBigMatches, scoreMatch, thaiMatches, type RankableMatch } from '../src/index.js';
+import { BIG_MATCH_MIN_SCORE, DEFAULT_LEAGUE_IMPORTANCE, buildRegistry, leagueImportance, popularityScore, rankBigMatches, scoreMatch, thaiMatches, type RankableMatch } from '../src/index.js';
 
 const reg = buildRegistry(
   [
@@ -71,6 +71,13 @@ describe('scoreMatch / rankBigMatches', () => {
   it('keeps input order on ties and honours the limit', () => {
     const matches = [m(10, 140, 541, 1), m(11, 140, 541, 1), m(12, 140, 541, 1)];
     expect(rankBigMatches(matches, reg, { min: 0, limit: 2 }).map((r) => r.match.id)).toEqual([10, 11]);
+  });
+});
+
+describe('leagueImportance', () => {
+  it('reads the registry and falls back to the default for an unlisted league', () => {
+    expect(leagueImportance(reg, 140, 2026)).toBe(90);
+    expect(leagueImportance(reg, 48, 2026)).toBe(DEFAULT_LEAGUE_IMPORTANCE);
   });
 });
 
