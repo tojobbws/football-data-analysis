@@ -14,6 +14,22 @@ export function StatusBadge({ status, admin = false }: { status: Status; admin?:
   );
 }
 
+/** ถูก/ผิด on a finished คู่น่าจับตา: a tick or a cross with the outcome word (รอผล until it is settled). */
+export function ResultMark({ status }: { status: Status }) {
+  const s = STATUS[status] ?? STATUS.PENDING;
+  const right = status === 'WIN' || status === 'HALF_WIN';
+  const wrong = status === 'LOSS' || status === 'HALF_LOSS';
+  const tone = right ? 'bg-emerald-600 text-white' : wrong ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-700';
+  return (
+    <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full py-0.5 pl-1 pr-2 text-xs font-bold ${tone}`}>
+      <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+        {right ? <path d="M5 12.5l4.5 4.5L19 7.5" /> : wrong ? <path d="M7 7l10 10M17 7L7 17" /> : <path d="M7 12h10" />}
+      </svg>
+      {s.label}
+    </span>
+  );
+}
+
 export function FormPills({ results }: { results: Array<'W' | 'D' | 'L'> }) {
   const tone = { W: 'bg-emerald-700', D: 'bg-slate-500', L: 'bg-rose-600' } as const;
   return (

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { BigMatches, ThaiMatches } from '@/components/big-matches';
+import { finishedWatch } from '@/components/featured-picks';
 import { ArticleGrid, MoreLink } from '@/components/home';
 import { MatchList } from '@/components/match-list';
 import { Empty, Section } from '@/components/ui';
@@ -41,8 +42,9 @@ export default async function TodayPage() {
   const big = bigMatchesOf(matches, registry);
   const thai = thaiMatchesOf(matches, registry);
   const picks = matches.filter((m) => m.compass?.kind === 'SIGNAL' && !FINISHED.includes(m.status_short));
-  // matches marked คู่น่าจับตา: the day's ranked list when switched on and filled, otherwise every pick of the day
-  const watch = new Set((ranks.size ? picks.filter((m) => ranks.has(m.id)) : picks).map((m) => m.slug));
+  // matches marked คู่น่าจับตา: the day's ranked list when switched on and filled, otherwise every pick of the day;
+  // finished ones keep the mark with their result
+  const watch = new Set([...(ranks.size ? picks.filter((m) => ranks.has(m.id)) : picks).map((m) => m.slug), ...finishedWatch(matches, ranks)]);
   const leagues = [...new Set(matches.map((m) => m.league.name))];
   const todaysArticles = articles.filter((a) => footballDate(new Date(a.published_at)) === today);
   const origin = await siteUrl();

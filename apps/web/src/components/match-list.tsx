@@ -5,7 +5,7 @@ import { timeTH } from '@/lib/time';
 import { isLive, toSeed } from '@/lib/live';
 import { CompassMark, CompassPicksTitle } from './icons';
 import { LiveGoal, LiveMinute, LiveWatch } from './live';
-import { StatusBadge, TeamLogo } from './ui';
+import { ResultMark, StatusBadge, TeamLogo } from './ui';
 
 // INT/SUSP reach this only once past the live window (see isLive)
 const OFF: Record<string, string> = { PST: 'เลื่อน', CANC: 'ยกเลิก', ABD: 'ยุติ', AWD: 'ปรับแพ้', WO: 'ชนะบาย', INT: 'หยุด', SUSP: 'หยุด' };
@@ -101,7 +101,12 @@ export function MatchItem({ m, compact, note, watched = false }: { m: MatchRow; 
         <div className="flex items-center justify-end">
           {c ? (
             pick ? (
-              c.status !== 'PENDING' ? (
+              watched && finished ? (
+                <span title={`🧭 ${pick}`}>
+                  <span className="sr-only">🧭 เข็มทิศเกม คู่น่าจับตา {pick}: </span>
+                  <ResultMark status={c.status} />
+                </span>
+              ) : c.status !== 'PENDING' ? (
                 <StatusBadge status={c.status} />
               ) : (
                 watched ? (

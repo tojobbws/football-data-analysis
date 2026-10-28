@@ -27,6 +27,14 @@ export function featuredList(matches: MatchRow[], ranks: Map<number, number>): S
     }));
 }
 
+/**
+ * Finished matches that were คู่น่าจับตา: the day's ranked picks when there is a list, otherwise every pick.
+ * They keep the gold frame after the whistle and show ถูก/ผิด.
+ */
+export function finishedWatch(matches: MatchRow[], ranks: Map<number, number>): string[] {
+  return matches.filter((m) => FINISHED.includes(m.status_short) && m.compass?.kind === 'SIGNAL' && (!ranks.size || ranks.has(m.id))).map((m) => m.slug);
+}
+
 /** The day's list (เข็มทิศเกมประจำวัน, ADR 0006): the matches holding a slot, best first. Renders nothing when the list is empty. */
 export function FeaturedPicks({ matches, ranks }: { matches: MatchRow[]; ranks: Map<number, number> }) {
   const listed = matches

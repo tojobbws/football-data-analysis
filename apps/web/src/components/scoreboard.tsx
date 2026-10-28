@@ -8,6 +8,7 @@ import { isLive, toSeed } from '@/lib/live';
 import { CompassMark, CompassPicksTitle } from './icons';
 import { LiveCountBadge, LiveGoal, LiveMinute, LiveWatch } from './live';
 import { TeamLogo } from './primitives';
+import { ResultMark } from './ui';
 
 // Dark, livescore-style scoreboard: date strip → league header → one card per match.
 // Shared by the home page and /matches. White surface, light-grey cards.
@@ -194,10 +195,15 @@ function MatchCard({ m, watched = false }: { m: MatchRow; watched?: boolean }) {
         ))}
       </div>
 
-      {/* 🧭 marker (one pick, or settled result) */}
-      <div className={`flex shrink-0 items-center justify-center ${watched && c && pick && c.status === 'PENDING' ? 'w-[4.5rem]' : 'w-9'}`}>
+      {/* 🧭 marker (one pick, or settled result; a finished คู่น่าจับตา shows ถูก/ผิด) */}
+      <div className={`flex shrink-0 items-center justify-center ${watched && c && pick && (finished || c.status === 'PENDING') ? 'min-w-[4.5rem] pl-1' : 'w-9'}`}>
         {c && pick ? (
-          c.status !== 'PENDING' ? (
+          watched && finished ? (
+            <span title={`🧭 ${pick} · ${STATUS[c.status].label}`}>
+              <span className="sr-only">🧭 เข็มทิศเกม คู่น่าจับตา {pick}: </span>
+              <ResultMark status={c.status} />
+            </span>
+          ) : c.status !== 'PENDING' ? (
             <span className="text-sm" title={`🧭 ${pick} · ${STATUS[c.status].label}`}>
               <span aria-hidden>{STATUS[c.status].icon}</span>
               <span className="sr-only">

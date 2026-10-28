@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BigMatches } from '@/components/big-matches';
 import { ArticleGrid, MoreLink, PreviewTable } from '@/components/home';
-import { featuredList } from '@/components/featured-picks';
+import { featuredList, finishedWatch } from '@/components/featured-picks';
 import { IconChevronRight } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
@@ -52,9 +52,10 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
   // on today: live first, then upcoming, then finished; other days keep kickoff order
-  // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list when switched on and filled, otherwise the next signals
+  // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list when switched on and filled, otherwise the next signals;
+  // finished ones keep the mark with their result
   const featured = featuredList(shown, ranks);
-  const watch = new Set(featured.length ? featured.map((f) => f.slug) : signals.map((x) => x.fixture_slug));
+  const watch = new Set([...(featured.length ? featured.map((f) => f.slug) : signals.map((x) => x.fixture_slug)), ...finishedWatch(shown, ranks)]);
   const ordered = onToday ? [...shown].sort(byPhase) : shown;
 
   return (
