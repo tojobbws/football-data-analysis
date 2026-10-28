@@ -13,12 +13,13 @@ const input = {
 };
 
 const ok = {
+  headline_th: 'Arsenal ฟอร์มดีรับมือ Chelsea',
   overview_th: 'โมเดลให้ Arsenal ชนะ 52% ขณะที่ Chelsea ได้ 24% ตลาดมองไปทางเดียวกันที่ 50%',
-  attack_th: 'Arsenal ฟอร์มดี นัดล่าสุดชนะ 2-0 ด้วย xG 1.8 อยู่อันดับ 3 และพักมา 4 วัน',
-  defence_th: 'Arsenal ไม่เสียประตูในนัดล่าสุด แต่ข้อมูลเกมรับยังมีแค่นัดเดียว จึงยังสรุปความแน่นของแนวรับไม่ได้',
-  opponent_th: 'Chelsea อยู่อันดับ 9 ไม่มีผลล่าสุดในระบบ จึงอ่านได้แค่จากตารางคะแนน',
-  score_th: 'โมเดลคาดประตู 1.7 ต่อ 1.0 สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0 (12%) รองลงมา 2-0',
-  key_factor_th: 'ตัวจริงยังไม่ประกาศ ภาพนี้อาจเปลี่ยนเมื่อรู้รายชื่อ',
+  home_th: 'Arsenal ฟอร์มดี นัดล่าสุดชนะ 2-0 ด้วย xG 1.8 อยู่อันดับ 3 และพักมา 4 วัน แต่ข้อมูลเกมรับยังมีแค่นัดเดียว',
+  away_th: 'Chelsea อยู่อันดับ 9 และพักมา 6 วัน ยังไม่มีผลล่าสุดในระบบ จึงอ่านได้แค่จากตารางคะแนนเท่านั้น',
+  team_news_th: 'ยังไม่ประกาศรายชื่อตัวจริงของทั้งสองทีม',
+  analysis_th: 'Arsenal ฟอร์มช่วงหลังดีกว่า โมเดลคาดประตู 1.7 ต่อ 1.0 สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0 (12%) รองลงมา 2-0',
+  facts_th: ['Arsenal อยู่อันดับ 3 มี 17 คะแนน', 'Chelsea อยู่อันดับ 9 มี 11 คะแนน', 'เจอกันครั้งล่าสุด Chelsea แพ้ Arsenal 1-2'],
 };
 
 describe('validatePreviewOutput: data fully there, numbers consistent', () => {
@@ -28,25 +29,20 @@ describe('validatePreviewOutput: data fully there, numbers consistent', () => {
     expect(v.text).toEqual(ok);
   });
 
-  it('a stray semicolon is turned into a space instead of costing a retry', () => {
-    const v = validatePreviewOutput({ ...ok, overview_th: 'โมเดลให้ Arsenal ชนะ 52%; ขณะที่ Chelsea ได้ 24% ตลาดมองไปทางเดียวกัน' }, input);
+  it('a stray semicolon is turned into a space instead of costing a retry, in a fact too', () => {
+    const v = validatePreviewOutput({ ...ok, overview_th: 'โมเดลให้ Arsenal ชนะ 52%; ขณะที่ Chelsea ได้ 24% ตลาดมองไปทางเดียวกัน', facts_th: [...ok.facts_th.slice(0, 2), 'Arsenal; อยู่อันดับ 3 ของตาราง'] }, input);
     expect(v.ok).toBe(true);
     expect(v.text!.overview_th).toBe('โมเดลให้ Arsenal ชนะ 52% ขณะที่ Chelsea ได้ 24% ตลาดมองไปทางเดียวกัน');
-  });
-
-  it('an empty uncertainty is stored as null', () => {
-    const v = validatePreviewOutput({ ...ok, key_factor_th: '' }, input);
-    expect(v.ok).toBe(true);
-    expect(v.text!.key_factor_th).toBeNull();
+    expect(v.text!.facts_th[2]).toBe('Arsenal อยู่อันดับ 3 ของตาราง');
   });
 });
 
 describe('validatePreviewOutput: numbers, lines and scorelines that are not in the facts', () => {
   it('rejects invented numbers, foreign scorelines and gambling words, keeping every reason', () => {
-    const v = validatePreviewOutput({ ...ok, overview_th: 'Arsenal น่าจะชนะ 65% แทงได้เลย Chelsea ลำบาก', score_th: 'สกอร์ที่โมเดลมองน่าจะออก 3-1 หรือ 2-0 ก็ได้' }, input);
+    const v = validatePreviewOutput({ ...ok, overview_th: 'Arsenal น่าจะชนะ 65% แทงได้เลย Chelsea ลำบาก', analysis_th: 'สกอร์ที่โมเดลมองน่าจะออก 3-1 หรือ 2-0 ก็ได้ ตามตัวเลขประตูคาดหวัง 1.7 ต่อ 1.0 ของโมเดล' }, input);
     expect(v.ok).toBe(false);
     expect(v.text).toBeNull();
-    expect(v.violations).toEqual(expect.arrayContaining(['overview_th: number not in input: 65%', 'banned word "แทง"', 'score_th: scoreline not from the model: 3-1']));
+    expect(v.violations).toEqual(expect.arrayContaining(['overview_th: number not in input: 65%', 'banned word "แทง"', 'analysis_th: scoreline not from the model: 3-1']));
     expect(v.violations).not.toContainEqual(expect.stringContaining('2-0'));
   });
 
@@ -57,80 +53,68 @@ describe('validatePreviewOutput: numbers, lines and scorelines that are not in t
   });
 
   it('no handicap, over/under or odds talk: that is the Game Compass note\'s job', () => {
-    const v = validatePreviewOutput({ ...ok, score_th: 'โมเดลคาดประตู 1.7 ต่อ 1.0 เหมาะกับ Over มากกว่า Under และแฮนดิแคปน่าสนใจ' }, input);
-    expect(v.violations).toEqual(expect.arrayContaining(['score_th: market word', 'banned word "แฮนดิแคป"']));
+    const v = validatePreviewOutput({ ...ok, analysis_th: `${ok.analysis_th} เหมาะกับ Over มากกว่า Under และแฮนดิแคปน่าสนใจ` }, input);
+    expect(v.violations).toEqual(expect.arrayContaining(['analysis_th: market word', 'banned word "แฮนดิแคป"']));
     // totals are not facts of the preview: an over 2.5 figure is invented
-    expect(validatePreviewOutput({ ...ok, attack_th: 'Arsenal โอกาสเกิน 2.5 ประตูอยู่ที่ 55%' }, input).ok).toBe(false);
+    expect(validatePreviewOutput({ ...ok, home_th: `${ok.home_th} โอกาสเกิน 2.5 ประตูอยู่ที่ 55%` }, input).ok).toBe(false);
   });
 
-  it('the score part may only quote the model\'s scorelines; the others may also quote past results', () => {
-    expect(validatePreviewOutput({ ...ok, score_th: 'โมเดลคาดประตู 1.7 ต่อ 1.0 ใกล้เคียงกับที่เคยชนะ 2-1' }, input).violations).toEqual(['score_th: scoreline not from the model: 2-1']);
-    expect(validatePreviewOutput({ ...ok, opponent_th: 'นัดล่าสุดที่เจอกัน Chelsea แพ้ 1-2 ที่บ้าน' }, input).ok).toBe(true);
-    expect(validatePreviewOutput({ ...ok, attack_th: 'Arsenal เพิ่งชนะ 3-0 และอยู่อันดับ 3' }, input).violations).toEqual(['scoreline not in input: 3-0']);
+  it('the analysis may only quote the model\'s scorelines, the headline and the facts only past results', () => {
+    expect(validatePreviewOutput({ ...ok, analysis_th: `${ok.analysis_th} ใกล้เคียงกับที่เคยชนะ 2-1` }, input).violations).toEqual(['analysis_th: scoreline not from the model: 2-1']);
+    expect(validatePreviewOutput({ ...ok, away_th: `${ok.away_th} นัดล่าสุดที่เจอกัน Chelsea แพ้ 1-2 ที่บ้าน` }, input).ok).toBe(true);
+    expect(validatePreviewOutput({ ...ok, home_th: `${ok.home_th} และเพิ่งชนะ 3-0` }, input).violations).toEqual(['home_th: scoreline not in input: 3-0']);
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'Arsenal มีสกอร์ 1-0 เป็นตัวเลือกแรกของโมเดล'] }, input).violations).toEqual(['facts_th: scoreline not in input: 1-0']);
   });
 
-  it('never presents a scoreline as the result or calls the winner', () => {
-    expect(validatePreviewOutput({ ...ok, score_th: 'สกอร์คาดการณ์ 1-0 ตามที่โมเดลให้ 12%' }, input).violations).toEqual(['banned word "สกอร์คาดการณ์"']);
-    expect(validatePreviewOutput({ ...ok, overview_th: 'ฟันธง Arsenal ชนะในบ้าน ส่วน Chelsea ยังไม่ดี' }, input).violations).toEqual(['banned word "ฟันธง"']);
+  it('the headline and the facts carry no chance and no model number', () => {
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'Arsenal มีโอกาสชนะ 52%'] }, input).violations).toEqual(expect.arrayContaining(['facts_th: no chance belongs here: 52%', 'facts_th: number not in input: 52%']));
+    expect(validatePreviewOutput({ ...ok, headline_th: 'Arsenal ลุ้นชนะ 52%' }, input).violations).toContain('headline_th: no chance belongs here: 52%');
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'Arsenal คาดยิง 1.7 ประตู'] }, input).violations).toEqual(['facts_th: number not in input: 1.7']);
   });
 
-  it("each section may only quote numbers from its own part of the input", () => {
+  it('each side may only quote its own numbers, the team news only the two sides\'', () => {
     // Chelsea's rank (9) and rest days (6) are facts, but not about Arsenal; the model's 52% belongs to the overview
-    expect(validatePreviewOutput({ ...ok, attack_th: 'Arsenal อยู่อันดับ 9 และพักมา 6 วัน' }, input).violations).toEqual(['attack_th: number not in input: 9', 'attack_th: number not in input: 6']);
-    expect(validatePreviewOutput({ ...ok, attack_th: 'Arsenal ได้โอกาสจากโมเดล 52% สูงสุด' }, input).violations).toEqual(['attack_th: number not in input: 52%']);
+    expect(validatePreviewOutput({ ...ok, home_th: 'Arsenal อยู่อันดับ 9 และพักมา 6 วัน ฟอร์มยังไม่ชัดนักจากข้อมูลที่มีในระบบตอนนี้' }, input).violations).toEqual(['home_th: number not in input: 9', 'home_th: number not in input: 6']);
+    expect(validatePreviewOutput({ ...ok, away_th: `${ok.away_th} โมเดลให้ 52%` }, input).violations).toEqual(['away_th: number not in input: 52%']);
+    expect(validatePreviewOutput({ ...ok, team_news_th: 'ยังไม่ประกาศรายชื่อตัวจริง Arsenal อันดับ 3 Chelsea อันดับ 9' }, input).ok).toBe(true);
+    expect(validatePreviewOutput({ ...ok, team_news_th: 'ยังไม่ประกาศรายชื่อตัวจริง โมเดลให้ 52%' }, input).violations).toEqual(['team_news_th: number not in input: 52%']);
   });
 });
 
 describe('validatePreviewOutput: teams named as the input names them', () => {
-  it('the overview names both teams, each team part its own team, in the input\'s script', () => {
+  it('the overview names both teams, each side its own team, the headline and every fact at least one', () => {
     expect(validatePreviewOutput({ ...ok, overview_th: 'อาร์เซนอลมีโอกาสชนะ 52% ส่วนเชลซีได้ 24% ตลาดมองตรงกัน' }, input).violations).toEqual([
       'overview_th: does not name Arsenal',
       'overview_th: does not name Chelsea',
     ]);
-    expect(validatePreviewOutput({ ...ok, attack_th: 'เจ้าบ้านฟอร์มดี นัดล่าสุดชนะ 2-0 และพักมา 4 วัน' }, input).violations).toEqual(['attack_th: does not name Arsenal']);
-  });
-});
-
-describe('validatePreviewOutput: the main side (preview-v1.0)', () => {
-  it('when the model leans to the away side, the attack and weak-spot parts are Chelsea\'s and the opponent part Arsenal\'s', () => {
-    const away = { ...input, focus: { mainSide: 'AWAY', main: 'Chelsea', opponent: 'Arsenal' } };
-    const swapped = {
-      ...ok,
-      attack_th: 'Chelsea อยู่อันดับ 9 และยังไม่มีผลล่าสุดในระบบ เกมรุกจึงอ่านได้จากตารางเท่านั้น',
-      defence_th: 'Chelsea พักมา 6 วัน จึงมีเวลาเตรียมตัวมากกว่า แต่ข้อมูลเกมรับยังมีน้อย',
-      opponent_th: 'Arsenal ฟอร์มดี นัดล่าสุดชนะ 2-0 ด้วย xG 1.8 และอยู่อันดับ 3',
-    };
-    expect(validatePreviewOutput(swapped, away).violations).toEqual([]);
-    // the home side's numbers in the main side's parts are someone else's numbers
-    expect(validatePreviewOutput({ ...swapped, attack_th: 'Chelsea ตามหลังทีมที่อยู่อันดับ 3 และพักมา 4 วัน' }, away).violations).toEqual([
-      'attack_th: number not in input: 4',
-    ]);
-    expect(validatePreviewOutput(ok, away).violations).toEqual(expect.arrayContaining(['attack_th: does not name Chelsea', 'opponent_th: does not name Arsenal']));
+    expect(validatePreviewOutput({ ...ok, home_th: ok.home_th.replace('Arsenal', 'เจ้าบ้าน') }, input).violations).toEqual(['home_th: does not name Arsenal']);
+    expect(validatePreviewOutput({ ...ok, headline_th: 'ศึกใหญ่กลางสัปดาห์' }, input).violations).toEqual(['headline_th: names neither team']);
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'เจ้าบ้านอยู่อันดับ 3 ของตาราง'] }, input).violations).toEqual(['facts_th: names neither team: เจ้าบ้านอยู่อันดับ 3 ของตาราง']);
   });
 });
 
 describe('validatePreviewOutput: no confirmed lineup', () => {
   it('at EARLY the lineup may only be called not out yet, and an empty injury list is no full squad', () => {
-    expect(validatePreviewOutput({ ...ok, attack_th: 'Arsenal ส่งตัวจริงชุดใหญ่ ฟอร์มนัดล่าสุดชนะ 2-0' }, input).violations).toEqual(['attack_th: lineup claim before the lineups are out']);
-    expect(validatePreviewOutput({ ...ok, opponent_th: 'Chelsea มาแบบเต็มทีม อยู่อันดับ 9 ของตาราง' }, input).violations).toEqual(['banned word "เต็มทีม"']);
+    expect(validatePreviewOutput({ ...ok, home_th: `${ok.home_th} ส่งตัวจริงชุดใหญ่` }, input).violations).toEqual(['home_th: lineup claim before the lineups are out']);
+    expect(validatePreviewOutput({ ...ok, team_news_th: 'Chelsea มาแบบเต็มทีม ยังไม่ประกาศรายชื่อตัวจริง' }, input).violations).toEqual(['banned word "เต็มทีม"']);
     // saying they are not out yet is fine, however it is phrased
     for (const said of ['ยังไม่ประกาศรายชื่อตัวจริง', 'ก่อนประกาศตัวจริง', 'ตัวจริงยังไม่ออก', 'รายชื่อตัวจริงของทั้งสองทีมยังไม่ประกาศ']) {
-      expect(validatePreviewOutput({ ...ok, key_factor_th: `ข้อมูลมีข้อจำกัด และ${said}` }, input).ok).toBe(true);
+      expect(validatePreviewOutput({ ...ok, team_news_th: `ไม่มีรายงานตัวเจ็บ และ${said}` }, input).ok).toBe(true);
     }
     // at LINEUP the starters are facts
     const lineup = { ...input, fixture: { ...input.fixture, stage: 'LINEUP' } };
-    expect(validatePreviewOutput({ ...ok, attack_th: 'Arsenal ส่งตัวจริงชุดใหญ่ ฟอร์มนัดล่าสุดชนะ 2-0' }, lineup).ok).toBe(true);
+    expect(validatePreviewOutput({ ...ok, home_th: `${ok.home_th} ส่งตัวจริงชุดใหญ่` }, lineup).ok).toBe(true);
   });
 });
 
 describe('validatePreviewOutput: sources that disagree', () => {
   const split = { ...input, views: { ...input.views, recentForm: 'Chelsea', disagreements: ['MARKET_GAP', 'FORM'] } };
 
-  it('a disagreement listed in views has to be stated', () => {
+  it('a disagreement listed in views has to be stated in the overview or the analysis', () => {
     const quiet = {
       ...ok,
       overview_th: 'โมเดลให้ Arsenal ชนะ 52% และ Chelsea ได้ 24% เกมนี้เอียงไปทางเจ้าบ้าน',
-      key_factor_th: '',
+      analysis_th: 'โมเดลคาดประตู 1.7 ต่อ 1.0 สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0 (12%) รองลงมา 2-0 เจ้าบ้านมีภาษีดีกว่า',
     };
     expect(validatePreviewOutput(quiet, split).violations).toEqual(['disagreement not stated: market', 'disagreement not stated: recent form']);
     const honest = { ...quiet, overview_th: 'โมเดลให้ Arsenal ชนะ 52% แต่ตลาดให้แค่ 50% และฟอร์มช่วงหลัง Chelsea ดีกว่า' };
@@ -148,20 +132,23 @@ describe('validatePreviewOutput: sources that disagree', () => {
 describe('validatePreviewOutput: no model', () => {
   it('text from the football facts only passes; model numbers do not exist to quote', () => {
     const none = { ...input, model: null, views: { ...input.views, model: null, disagreements: [] } };
-    const text = { ...ok, overview_th: 'Arsenal อันดับ 3 พบ Chelsea อันดับ 9 ตลาดเอนมาทางเจ้าบ้าน', score_th: 'โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงอ่านเกมจากฟอร์มเท่านั้น' };
+    const text = { ...ok, overview_th: 'Arsenal อันดับ 3 พบ Chelsea อันดับ 9 ตลาดเอนมาทางเจ้าบ้าน', analysis_th: 'โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงอ่านเกมจากฟอร์มของ Arsenal และ Chelsea เท่านั้น' };
     expect(validatePreviewOutput(text, none).ok).toBe(true);
-    expect(validatePreviewOutput(ok, none).violations).toEqual(expect.arrayContaining(['overview_th: number not in input: 52%', 'score_th: scoreline not from the model: 1-0']));
+    expect(validatePreviewOutput(ok, none).violations).toEqual(expect.arrayContaining(['overview_th: number not in input: 52%', 'analysis_th: scoreline not from the model: 1-0']));
   });
 });
 
 describe('validatePreviewOutput: shape and length', () => {
-  it('rejects empty or missing parts, malformed answers and a write-up that runs long', () => {
-    expect(validatePreviewOutput({ ...ok, score_th: '' }, input).violations[0]).toMatch(/^schema:/);
-    expect(validatePreviewOutput({ ...ok, key_factor_th: undefined }, input).violations[0]).toMatch(/^schema:/);
+  it('rejects empty or missing parts, too few or too many facts, malformed answers and a write-up that runs long', () => {
+    expect(validatePreviewOutput({ ...ok, analysis_th: '' }, input).violations[0]).toMatch(/^schema:/);
+    expect(validatePreviewOutput({ ...ok, headline_th: undefined }, input).violations[0]).toMatch(/^schema:/);
+    expect(validatePreviewOutput({ ...ok, facts_th: ok.facts_th.slice(0, 2) }, input).violations[0]).toMatch(/^schema:/);
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, ...ok.facts_th] }, input).violations[0]).toMatch(/^schema:/);
     expect(validatePreviewOutput(null, input).ok).toBe(false);
-    // every part within its own limit (640 of 700 characters), the whole past about 600 words
-    const pad = (s: string) => (s + ' ข้อมูลเพิ่มเติม'.repeat(50)).slice(0, 640);
-    expect(validatePreviewOutput({ ...ok, attack_th: pad(ok.attack_th), defence_th: pad(ok.defence_th), opponent_th: pad(ok.opponent_th), score_th: pad(ok.score_th).slice(0, 590), key_factor_th: pad(ok.key_factor_th).slice(0, 390) }, input).violations).toContainEqual(expect.stringMatching(/^too long: \d+ characters$/));
+    // every part within its own limit, the whole past about 800 words
+    const pad = (s: string, n: number) => (s + ' ข้อมูลเพิ่มเติม'.repeat(80)).slice(0, n);
+    const long = { ...ok, home_th: pad(ok.home_th, 880), away_th: pad(ok.away_th, 880), analysis_th: pad(ok.analysis_th, 1080), team_news_th: pad(ok.team_news_th, 590), overview_th: pad(ok.overview_th, 390) };
+    expect(validatePreviewOutput(long, input).violations).toEqual([expect.stringMatching(/^too long: \d+ characters$/)]);
   });
 });
 
@@ -206,9 +193,9 @@ describe('thousands separators', () => {
   it('a count written as 1,356 is the 1356 in the input, in the preview and in the pick note', () => {
     const big = { ...input, model: { ...input.model, matchesUsed: 1356 }, pick: { label: 'Arsenal -0.5' } };
     expect(withoutThousandsSeparators('โมเดลใช้ 1,356 นัด และ 1,234,567 กับ 1,5')).toBe('โมเดลใช้ 1356 นัด และ 1234567 กับ 1,5');
-    expect(validatePreviewOutput({ ...ok, score_th: 'โมเดลคำนวณจาก 1,356 นัด ประตูคาดหวัง 1.7 ต่อ 1.0' }, big).ok).toBe(true);
+    expect(validatePreviewOutput({ ...ok, analysis_th: `${ok.analysis_th} โมเดลคำนวณจาก 1,356 นัด` }, big).ok).toBe(true);
     expect(validatePickNote({ pick_th: 'โมเดลมองต่างจากตลาด จากข้อมูล 1,356 นัดในรายการนี้' }, big).ok).toBe(true);
     // a decimal comma is still checked as a decimal: 1,7 is xG 1.7, 1,9 is not in the input
-    expect(validatePreviewOutput({ ...ok, score_th: 'ประตูคาดหวัง 1,9 ต่อ 1.0 ตามโมเดล' }, big).violations).toEqual(['score_th: number not in input: 1,9']);
+    expect(validatePreviewOutput({ ...ok, analysis_th: `${ok.analysis_th} ประตูคาดหวัง 1,9 ต่อ 1.0 ตามโมเดล` }, big).violations).toEqual(['analysis_th: number not in input: 1,9']);
   });
 });

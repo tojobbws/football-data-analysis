@@ -32,7 +32,7 @@ jobs:
   publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
   hybrid [--budget-minutes M]  Hybrid AI decides each due publish round (PICK_ENGINE=shadow|hybrid; stored, published only in hybrid mode)
   ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs ANTHROPIC_API_KEY
-  preview [--hours N] [--refresh] [--budget-minutes M]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48); AI text with ANTHROPIC_API_KEY, template text without; --refresh rewrites previews from an older version
+  preview [--hours N] [--until ISO] [--refresh] [--budget-minutes M]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48), only those kicking off before --until when given; AI text with an AI key, template text without; --refresh rewrites previews from an older version
   pick-notes [--refresh]      Game Compass note (pick_th) for every published pick not yet explained; AI text with an AI key, template text without; --refresh rewrites notes from an older prompt
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
   closing                     keep the closing market (1X2 + main AH/O/U line) of kicked-off matches for good
@@ -43,11 +43,18 @@ jobs:
   health                       pipeline health: stale jobs, odds feed, unpublished matches; exits 1 on a problem
   refresh-web                  refresh the materialized model results /performance reads (run after settle and closing)`;
 
+/** --until must be a full moment with its zone (2026-10-29T06:00:00+07:00): a bare date would be read as UTC midnight */
+function untilDate(s: string): Date {
+  const d = new Date(s);
+  if (!/T.*(Z|[+-]\d\d:\d\d)$/.test(s) || Number.isNaN(d.getTime())) throw new Error(`--until needs a time with its zone, e.g. 2026-10-29T06:00:00+07:00 (got ${s})`);
+  return d;
+}
+
 async function main() {
   loadDotEnvFile();
   const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, 'frozen-from': { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' } },
+    options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, 'frozen-from': { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' }, until: { type: 'string' } },
   });
   const job = positionals[0];
   if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'hybrid', 'ai-shadow', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health', 'refresh-web'].includes(job ?? '')) {
@@ -104,7 +111,7 @@ async function main() {
     }
     else if (job === 'hybrid') await hybridJob(ctx, { budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
     else if (job === 'ai-shadow') await aiShadowJob(ctx);
-    else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, refresh: values.refresh, budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
+    else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, until: values.until ? untilDate(values.until) : undefined, refresh: values.refresh, budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
     else if (job === 'report') {
       const r = await matchReport(ctx, { hours: values.hours ? Number(values.hours) : undefined });
       console.log(r.markdown);

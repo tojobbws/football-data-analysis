@@ -9,11 +9,12 @@
  * disagreement left out). Without an API key, or when the AI answer fails, the deterministic template
  * text is stored instead — so every match has a preview.
  *
- * preview-v1.0 is built around a main side (the model's lean, else the home side): its attack
- * (attack_th), its weak spots (defence_th), the opponent (opponent_th), the reasons behind the most
- * likely score (score_th), what could change the result (key_factor_th) and a lead (overview_th).
- * The game summary's confidence level and both-teams-score chance are set here by rules, never by
- * the AI. home_th, away_th, h2h_th and summary_th stay null.
+ * preview-v1.1 is laid out like a match preview in the Thai football press: a headline (headline_th),
+ * a lead (overview_th), the home side (home_th), the away side (away_th), the team news
+ * (team_news_th), the analysis with the reasons behind the most likely score (analysis_th) and a few
+ * facts read off the data (facts_th). The game summary's confidence level and both-teams-score chance
+ * are set here by rules, never by the AI. The v1.0 parts (attack_th, defence_th, opponent_th,
+ * score_th, key_factor_th) and h2h_th / summary_th stay null.
  */
 import {
   isPersistentApiError,
@@ -62,6 +63,8 @@ export interface PreviewJobOptions {
   budgetMinutes?: number;
   /** rewrite a stage whose rows all came from an older PREVIEW_VERSION (once per version, still before kickoff only) */
   refresh?: boolean;
+  /** only fixtures kicking off before this moment (e.g. the end of today's football day for a refresh of today only) */
+  until?: Date;
 }
 
 /** attempts per (fixture, stage): the first, plus one retry when the AI attempt was INVALID / REFUSED */
@@ -80,12 +83,13 @@ function defaultPreviewWriter(ctx: JobContext): PreviewWriter | null {
 export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
   const leagues = ctx.env.TRACKED_LEAGUES;
   const hours = opts.hours ?? 48;
-  return runJob(ctx, 'preview', { leagues, hours, version: PREVIEW_VERSION, refresh: Boolean(opts.refresh) }, async () => {
+  return runJob(ctx, 'preview', { leagues, hours, version: PREVIEW_VERSION, refresh: Boolean(opts.refresh), until: opts.until?.toISOString() ?? null }, async () => {
     const now = opts.now ?? new Date();
     let writer = opts.writer === undefined ? defaultPreviewWriter(ctx) : opts.writer;
     if (!writer) ctx.log.warn('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY) — previews use the template text');
 
-    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, hours).toISOString());
+    const end = addHours(now, hours);
+    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.until && opts.until < end ? opts.until : end).toISOString());
     const report: Array<Record<string, unknown>> = [];
     let written = 0;
     const deadline = opts.budgetMinutes ? Date.now() + opts.budgetMinutes * 60_000 : null;
@@ -172,14 +176,18 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
           main_side: facts.focus?.mainSide ?? 'HOME',
           confidence: confidence.level,
           confidence_notes: confidence.notes,
+          headline_th: text.headline_th,
           overview_th: text.overview_th,
-          attack_th: text.attack_th,
-          defence_th: text.defence_th,
-          opponent_th: text.opponent_th,
-          score_th: text.score_th,
-          key_factor_th: text.key_factor_th,
-          home_th: null,
-          away_th: null,
+          home_th: text.home_th,
+          away_th: text.away_th,
+          team_news_th: text.team_news_th,
+          analysis_th: text.analysis_th,
+          facts_th: text.facts_th,
+          attack_th: null,
+          defence_th: null,
+          opponent_th: null,
+          score_th: null,
+          key_factor_th: null,
           h2h_th: null,
           summary_th: null,
           facts: input,

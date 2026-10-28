@@ -124,6 +124,8 @@ const CONFIDENCE: Record<NonNullable<MatchPreview['confidence']>, { label: strin
  * reasons, and a game summary (สรุปเกม). The score keeps its honest name (สกอร์ที่โมเดลให้โอกาส
  * สูงสุด, never a forecast) and the summary's confidence comes from fixed rules. The Game Compass keeps
  * its own name and its own block: the summary is not a second pick.
+ * preview-v1.1 keeps this frame in the order of a Thai press preview: a headline, each side in turn
+ * with its form chips, the team news, the analysis, the score, then a list of facts read off the data.
  */
 function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: { label: string; sel: MarketSelection } | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null }) {
   const mainAway = p.main_side === 'AWAY';
@@ -136,6 +138,8 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
   const ifScore = pick && hasScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
   const factors = [p.key_factor_th, ...limits].filter((x): x is string => Boolean(x));
   const conf = p.confidence ? CONFIDENCE[p.confidence] : null;
+  // preview-v1.1: each side in turn, the team news, the analysis and a facts list replace the three points
+  const v11 = p.analysis_th != null;
   const points = [
     { n: 1, title: `เกมรุกของ ${main.name}`, text: p.attack_th, team: main },
     { n: 2, title: `จุดอ่อนและสิ่งที่ ${main.name} ต้องระวัง`, text: p.defence_th, team: null },
@@ -144,6 +148,7 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
 
   return (
     <div className="space-y-5">
+      {p.headline_th ? <p className="text-lg font-semibold leading-snug text-zinc-950 sm:text-xl">{p.headline_th}</p> : null}
       {info ? (
         <section aria-labelledby="pv-info">
           <SectionTitle id="pv-info">ข้อมูลก่อนเกม</SectionTitle>
@@ -169,23 +174,42 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
         <p className="max-w-prose text-base leading-7 text-zinc-800">{p.overview_th}</p>
       )}
 
-      <section aria-labelledby="pv-points" className="border-t border-zinc-100 pt-4">
-        <SectionTitle id="pv-points">วิเคราะห์เกม 3 ประเด็น</SectionTitle>
-        <ol className="mt-3 space-y-4">
-          {points.map((x) => (
-            <li key={x.n}>
-              <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-950">
-                {x.team && logos ? <TeamLogo src={x.team.logo ?? null} alt="" size={20} /> : null}
-                <span>
-                  {x.n}. {x.title}
-                </span>
-                {x.team?.form.length ? <FormChips results={x.team.form} /> : null}
-              </p>
-              {x.text ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{x.text}</p> : null}
-            </li>
-          ))}
-        </ol>
-      </section>
+      {v11 ? (
+        <>
+          <section aria-labelledby="pv-teams" className="border-t border-zinc-100 pt-4">
+            <SectionTitle id="pv-teams">ฟอร์มของทั้งสองทีม</SectionTitle>
+            <TeamTexts p={p} home={home} away={away} teams={teams} logos={logos} className="mt-3" />
+          </section>
+          {p.team_news_th ? (
+            <section aria-labelledby="pv-news" className="border-t border-zinc-100 pt-4">
+              <SectionTitle id="pv-news">สภาพความพร้อมของทีม</SectionTitle>
+              <p className="mt-2 max-w-prose text-sm leading-relaxed text-zinc-700">{p.team_news_th}</p>
+            </section>
+          ) : null}
+          <section aria-labelledby="pv-analysis" className="border-t border-zinc-100 pt-4">
+            <SectionTitle id="pv-analysis">วิเคราะห์คู่นี้</SectionTitle>
+            <p className="mt-2 max-w-prose text-[15px] leading-7 text-zinc-800">{p.analysis_th}</p>
+          </section>
+        </>
+      ) : (
+        <section aria-labelledby="pv-points" className="border-t border-zinc-100 pt-4">
+          <SectionTitle id="pv-points">วิเคราะห์เกม 3 ประเด็น</SectionTitle>
+          <ol className="mt-3 space-y-4">
+            {points.map((x) => (
+              <li key={x.n}>
+                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-zinc-950">
+                  {x.team && logos ? <TeamLogo src={x.team.logo ?? null} alt="" size={20} /> : null}
+                  <span>
+                    {x.n}. {x.title}
+                  </span>
+                  {x.team?.form.length ? <FormChips results={x.team.form} /> : null}
+                </p>
+                {x.text ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{x.text}</p> : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section aria-labelledby="pv-score" className="border-t border-zinc-100 pt-4">
         <SectionTitle id="pv-score">สกอร์ที่โมเดลให้โอกาสสูงสุด</SectionTitle>
@@ -210,7 +234,7 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
             {p.expected_home != null ? ` · ประตูที่โมเดลคาด (xG) ${Number(p.expected_home).toFixed(2)}–${Number(p.expected_away).toFixed(2)}` : ''}
           </p>
         ) : null}
-        <p className="mt-3 max-w-prose text-sm leading-relaxed text-zinc-700">{p.score_th}</p>
+        {p.score_th ? <p className="mt-3 max-w-prose text-sm leading-relaxed text-zinc-700">{p.score_th}</p> : null}
         {ifScore ? (
           <p className="mt-2 text-xs text-zinc-600">
             ถ้าจบ {p.predicted_home}–{p.predicted_away} เข็มทิศเกม {pick!.label} = <b className="font-semibold text-zinc-950">{STATUS[ifScore].label}</b>
@@ -223,6 +247,20 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
         ) : null}
         {hasScore && !modelTested ? <p className="mt-1 text-xs text-zinc-400">อยู่ระหว่างการวัดผล</p> : null}
       </section>
+
+      {p.facts_th?.length ? (
+        <section aria-labelledby="pv-facts" className="border-t border-zinc-100 pt-4">
+          <SectionTitle id="pv-facts">ข้อมูลน่าสนใจ</SectionTitle>
+          <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-zinc-700">
+            {p.facts_th.map((x) => (
+              <li key={x} className="flex gap-2.5">
+                <span className="mt-[0.6em] h-px w-2.5 shrink-0 bg-zinc-300" aria-hidden />
+                <span>{x}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section aria-labelledby="pv-summary" className="border-t border-zinc-100 pt-4">
         <SectionTitle id="pv-summary">สรุปเกม</SectionTitle>

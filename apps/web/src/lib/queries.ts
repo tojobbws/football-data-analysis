@@ -60,7 +60,8 @@ export interface MatchPreview {
   overview_th: string;
   home_th: string | null;
   away_th: string | null;
-  score_th: string;
+  /** null from preview-v1.1 (analysis_th holds the score's reasons) */
+  score_th: string | null;
   created_at: string;
   /** which build of the write-up: preview-v0.8 is the four-part layout */
   version: string;
@@ -77,12 +78,17 @@ export interface MatchPreview {
   confidence: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   confidence_notes: string[];
   p_btts: number | null;
+  /** preview-v1.1: headline, team news, the analysis and the facts list (null on older rows) */
+  headline_th: string | null;
+  team_news_th: string | null;
+  analysis_th: string | null;
+  facts_th: string[] | null;
 }
 
 const PREVIEW_SELECT = `fixture_id, stage, version, text_source, ai_status, data_support, data_notes, predicted_home, predicted_away, predicted_p,
   expected_home, expected_away, p_home, p_draw, p_away, overview_th, home_th, away_th, score_th, created_at,
   p_goals_0_1, p_goals_2, p_goals_3plus, attack_th, defence_th, h2h_th, key_factor_th, summary_th,
-  opponent_th, main_side, confidence, confidence_notes, p_btts`;
+  opponent_th, main_side, confidence, confidence_notes, p_btts, headline_th, team_news_th, analysis_th, facts_th`;
 
 async function previewsFor(fixtureIds: number[]): Promise<Map<number, MatchRow['preview']>> {
   const out = new Map<number, MatchRow['preview']>();

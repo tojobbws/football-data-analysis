@@ -297,29 +297,34 @@ describe('bothTeamsScore', () => {
 });
 
 describe('buildTemplateText', () => {
-  it('v1.0 parts around the main side, every number from the facts; nothing stock when the facts name no risk', () => {
+  it('v1.1 parts: headline, each side in turn, team news, analysis and facts, every number from the facts', () => {
     const f = facts();
     const t = buildTemplateText(f, assessDataSupport(f));
-    expect(Object.keys(t)).toEqual(['overview_th', 'attack_th', 'defence_th', 'opponent_th', 'score_th', 'key_factor_th']);
+    expect(Object.keys(t)).toEqual(['headline_th', 'overview_th', 'home_th', 'away_th', 'team_news_th', 'analysis_th', 'facts_th']);
+    expect(t.headline_th).toContain('Arsenal พบ Chelsea');
     expect(t.overview_th).toContain('Arsenal ชนะ 52%');
     expect(t.overview_th).toContain('ตัวเลขเอียงไปทาง Arsenal');
     expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกัน');
-    // Arsenal is the model's lean: its attack and its weak spots, then Chelsea as the opponent
-    expect(t.attack_th).toContain('Arsenal: 5 นัดล่าสุด ชนะ 3 เสมอ 1 แพ้ 1 ยิงได้ 7 ประตู');
-    expect(t.defence_th).toContain('Arsenal: เสีย 3 ประตูใน 5 นัดล่าสุด');
-    expect(t.defence_th).toContain('A. Player');
-    expect(t.opponent_th.startsWith('Chelsea: ')).toBe(true);
-    expect(t.score_th).toContain('โมเดลคาดประตู (xG) Arsenal 1.70 ต่อ Chelsea 1.00');
-    expect(t.score_th).toContain('Arsenal 1-0 Chelsea (12%)');
-    expect(t.key_factor_th).toBeNull();
-    for (const s of Object.values(t)) expect(s ?? '').not.toMatch(/[—–]/);
+    expect(t.home_th).toContain('Arsenal: 5 นัดล่าสุด ชนะ 3 เสมอ 1 แพ้ 1 ยิงได้ 7 ประตู');
+    expect(t.home_th).toContain('เสีย 3 ประตูใน 5 นัดล่าสุด');
+    expect(t.away_th.startsWith('Chelsea: ')).toBe(true);
+    // absences are the team news part's, not a side's
+    expect(t.team_news_th).toContain('A. Player');
+    expect(t.home_th).not.toContain('A. Player');
+    expect(t.team_news_th).toContain('ยังไม่ประกาศรายชื่อตัวจริง');
+    expect(t.analysis_th).toContain('โมเดลคาดประตู (xG) Arsenal 1.70 ต่อ Chelsea 1.00');
+    expect(t.analysis_th).toContain('Arsenal 1-0 Chelsea (12%)');
+    expect(t.facts_th.length).toBeGreaterThan(0);
+    expect(t.facts_th.length).toBeLessThanOrEqual(5);
+    for (const x of t.facts_th) expect(x).not.toMatch(/%/);
+    for (const x of [...Object.values(t).filter((v): v is string => typeof v === 'string'), ...t.facts_th]) expect(x).not.toMatch(/[—–]/);
   });
 
-  it('no model: says so in the overview and the score part', () => {
+  it('no model: says so in the overview and the analysis', () => {
     const thin = facts({ model: null });
     const t = buildTemplateText(thin, assessDataSupport(thin));
     expect(t.overview_th).toContain('โมเดลยังไม่มีตัวเลข');
-    expect(t.score_th).toContain('ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด');
+    expect(t.analysis_th).toContain('ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด');
   });
 
   it('a market far from the model, a missing key player, a rest gap and recent form against the model are named', () => {
@@ -331,9 +336,10 @@ describe('buildTemplateText', () => {
     f.views = compareViews(f);
     const t = buildTemplateText(f, assessDataSupport(f));
     expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกันแต่ให้โอกาสเพียง 54%');
-    expect(t.key_factor_th).toContain('Chelsea ขาด C. Palmer');
-    expect(t.key_factor_th).toContain('ผลงานช่วงหลัง Chelsea ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล');
-    expect(t.key_factor_th).toContain('Arsenal มีเวลาพักน้อยกว่า');
+    expect(t.analysis_th).toContain('Chelsea ขาด C. Palmer');
+    expect(t.analysis_th).toContain('ผลงานช่วงหลัง Chelsea ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล');
+    expect(t.analysis_th).toContain('Arsenal มีเวลาพักน้อยกว่า');
+    expect(t.team_news_th).toContain('Chelsea มีรายงานตัวเจ็บ/ติดโทษ 1 คน (C. Palmer)');
   });
 });
 
