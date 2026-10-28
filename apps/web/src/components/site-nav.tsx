@@ -22,7 +22,7 @@ const isActive = (path: string, href: string) => (href === '/' ? path === '/' : 
 /**
  * Site navigation:
  *  - score strip (scrolls away with the page) — today's matches, live first
- *  - sticky white bar — logo, sections with an underline on the current one, LIVE count, 🧭 shortcut
+ *  - sticky white bar — logo, sections with an underline on the current one, LIVE count
  *  - phones: the sections move to a bottom tab bar with the 🧭 shortcut raised in the middle
  */
 export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & { clock: string }>; tickerLabel: string }) {
@@ -77,13 +77,6 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
                 LIVE {live}
               </Link>
             ) : null}
-            <Link
-              href={COMPASS_HREF}
-              className="hidden min-h-10 items-center gap-2 rounded-full bg-[var(--color-compass)] py-1 pl-1 pr-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-amber-800 md:inline-flex"
-            >
-              <CompassMark size={32} />
-              คู่น่าจับตา
-            </Link>
           </div>
         </div>
       </header>
