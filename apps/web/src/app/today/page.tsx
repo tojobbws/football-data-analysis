@@ -1,11 +1,11 @@
 import type { Metadata } from 'next';
-import { BigMatches, ThaiMatches } from '@/components/big-matches';
+import { ThaiMatches } from '@/components/big-matches';
 import { finishedWatch } from '@/components/featured-picks';
 import { ArticleGrid, MoreLink } from '@/components/home';
 import { MatchList } from '@/components/match-list';
 import { Empty, Section } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
-import { bigMatchesOf, thaiMatchesOf } from '@/lib/popularity';
+import { thaiMatchesOf } from '@/lib/popularity';
 import { featuredRanks, latestArticles, matchDayCounts, matchesOnFootballDay, popularityRegistry } from '@/lib/queries';
 import { SITE_NAME, siteUrl } from '@/lib/site';
 import { addDaysStr, dayTH, footballDate } from '@/lib/time';
@@ -39,7 +39,6 @@ export default async function TodayPage() {
     }
   }
   const [ranks, registry] = await Promise.all([featuredRanks(day), popularityRegistry()]);
-  const big = bigMatchesOf(matches, registry);
   const thai = thaiMatchesOf(matches, registry);
   const picks = matches.filter((m) => m.compass?.kind === 'SIGNAL' && !FINISHED.includes(m.status_short));
   // matches marked คู่น่าจับตา: the day's ranked list when switched on and filled, otherwise every pick of the day;
@@ -77,8 +76,6 @@ export default async function TodayPage() {
           ส่วนเข็มทิศเกม เลือก 1 ตัวเลือกต่อคู่ ตรงจุดที่โมเดลมองต่างจากตลาดชัดที่สุด และล็อกไว้ก่อนเตะเสมอ
         </p>
       </header>
-
-      <BigMatches items={big} title={day === today ? 'คู่ใหญ่วันนี้' : 'คู่ใหญ่'} />
 
       <ThaiMatches matches={thai} />
 

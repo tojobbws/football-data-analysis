@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { BigMatches } from '@/components/big-matches';
 import { ArticleGrid, MoreLink, PreviewTable } from '@/components/home';
 import { featuredList, finishedWatch } from '@/components/featured-picks';
 import { IconChevronRight } from '@/components/icons';
@@ -9,8 +8,7 @@ import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from 
 import { Empty } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
 import { isLive as liveNow } from '@/lib/live';
-import { bigMatchesOf } from '@/lib/popularity';
-import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, popularityRegistry, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
+import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, previewCards, upcomingSignals, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
@@ -38,7 +36,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, live, signals, articles, leagues, upcomingPreviews, ranks, registry] = await Promise.all([
+  const [shown, live, signals, articles, leagues, upcomingPreviews, ranks] = await Promise.all([
     date ? matchesOnFootballDay(date) : liveMatches(),
     liveMatches(),
     upcomingSignals(5),
@@ -46,9 +44,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     leagueWidgets(5),
     previewCards('upcoming', 4),
     date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
-    popularityRegistry(),
   ]);
-  const big = date ? bigMatchesOf(shown, registry, 4) : [];
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
   // on today: live first, then upcoming, then finished; other days keep kickoff order
@@ -91,7 +87,6 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
       <div className="mx-auto mt-8 grid max-w-5xl grid-cols-1 gap-8 px-4">
         <div className="space-y-8">
-          <BigMatches items={big} title={onToday ? 'คู่ใหญ่วันนี้' : 'คู่ใหญ่'} />
           {/* ---------------- 3: match previews, then editorial articles when there are some ---------------- */}
           <section aria-labelledby="previews-h">
             <DayHeading id="previews-h" kicker="อ่านต่อ" title="บทวิเคราะห์ล่าสุด" href="/analysis" />
