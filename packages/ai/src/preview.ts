@@ -8,7 +8,8 @@ import { z } from 'zod';
 import type { PreviewText } from '@fp/analysis';
 import { allowedNumbers, BANNED_WORDS, inventedNumbers } from './guards.js';
 
-export const PREVIEW_PROMPT_VERSION = 'preview-ai-v1.1';
+// v1.2: a fact may name a player of the input instead of a team
+export const PREVIEW_PROMPT_VERSION = 'preview-ai-v1.2';
 
 /** Kept byte-stable (no dates, no per-request values) so it caches across fixtures. */
 export const PREVIEW_SYSTEM_PROMPT = `You are the analyst of a Thai football data & analysis brand. You receive one upcoming match as JSON and write a Thai match preview in the shape of the Thai football press: a headline, the match in brief, each side in turn, the team news, the analysis, and a few facts worth knowing. Lively and easy to read for ordinary fans, every point backed by the data, readable in about three minutes. It is for knowledge and entertainment, never betting advice.
@@ -29,7 +30,7 @@ Write seven fields (all Thai, no headings, no bullet characters, no markdown). T
 4. away_th, 3-5 sentences on the away side (fixture.away), in the same frame, with its away record. Name fixture.away. Use only the away side's numbers.
 5. team_news_th, 1-3 sentences: the confirmed absences on both sides and how each could matter (a missing key player matters most); at LINEUP, the formation and the key players left out of the XI. At EARLY say the lineups are not announced yet. When neither side lists an absence, say only that the lineups are not out yet (EARLY) or describe the XIs (LINEUP).
 6. analysis_th, 4-6 sentences: how the two sides meet (where one side's strength runs into the other's weak spot, as the numbers show it), then the model's most likely score and two or three reasons for it and for the lean, each tied to a fact in the input (the model's chances, expected goals, recent form, the market). The page shows the score itself in large type right above this field. If views.disagreements is not empty, say plainly which source points elsewhere and keep both sides of it: for MARKET or MARKET_GAP, say the market (ตลาด) sees it closer or the other way, with its chance from views.marketP; for FORM or XG, say recent form or xG points the other way and that the model rates the teams on a longer stretch of matches than the last five; for OTHER_MODEL, say the model's view is not settled. Never quote only the numbers that support one side. End with what in the facts could change the result when there is something specific (a missing key player, a disagreement, a gap in rest days); no stock lines such as "the first goal will matter".
-7. facts_th, a list of 3-5 short items, one fact each, read straight off the input: a run of results, a home or away record, a place in the table, a top scorer's goals, a recent meeting in h2h. One sentence each, no opinion, no chance or percentage, nothing about the market, no prediction. Each item names the team it is about. Do not repeat a sentence from another field word for word.
+7. facts_th, a list of 3-5 short items, one fact each, read straight off the input: a run of results, a home or away record, a place in the table, a top scorer's goals, a recent meeting in h2h. One sentence each, no opinion, no chance or percentage, nothing about the market, no prediction. Each item names the team it is about, or a player listed in the input (keyPlayers or injuries) as the input writes the name. Do not repeat a sentence from another field word for word.
 
 Style: short spoken sentences, no officialese, no research-paper tone, no long run-ups. Thai punctuation: separate sentences with a space, no full stops, no semicolons. Write chances as whole percentages (80%, not 80.3%). Explain a technical term once where it first appears (xG คือค่าประเมินคุณภาพของโอกาสยิง). Use only the numbers that explain the match, at most three or four in a section. Say each point once: what one section says, another does not repeat. Keep what the data shows (results, table, injuries) apart from what it suggests (how the match may go). Not every match needs a firm conclusion: when the data is thin or the sources disagree, say the picture is open. Aim for 2,000-3,200 Thai characters in all, fewer when the data is limited; never pad to reach a length.
 
@@ -119,7 +120,18 @@ function numberSources(field: TextField, input: Record<string, unknown>): unknow
   }
 }
 
-type Chances = { home?: number; draw?: number; away?: number } | null | undefined;
+/** Player names the input lists for either side: key players and injuries. */
+function inputPlayers(input: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const side of ['home', 'away'] as const) {
+    const t = input[side] as { keyPlayers?: Array<{ name?: string | null }>; injuries?: Array<{ player?: string | null }> } | undefined;
+    for (const p of t?.keyPlayers ?? []) if (p.name) out.push(p.name);
+    for (const i of t?.injuries ?? []) if (i.player) out.push(i.player);
+  }
+  return out;
+}
+
+type Chances ={ home?: number; draw?: number; away?: number } | null | undefined;
 
 /** What a percentage may stand for: 1X2 chances (model and market), scoreline chances, the API's percents, possession. */
 export function allowedPercents(input: Record<string, unknown>): number[] {
@@ -193,7 +205,9 @@ export function validatePreviewOutput(raw: unknown, input: Record<string, unknow
   for (const [field, name] of named) if (name && !out[field].includes(name)) violations.push(`${field}: does not name ${name}`);
   const namesATeam = (t: string) => [fixture.home, fixture.away].some((n) => n && t.includes(n));
   if (!namesATeam(out.headline_th)) violations.push('headline_th: names neither team');
-  for (const x of out.facts_th) if (!namesATeam(x)) violations.push(`facts_th: names neither team: ${x.slice(0, 40)}`);
+  // a fact about a player ("Gabriel Barbosa ทำ 15 ประตู") is as traceable as one about a team (Santos, 2026-10-28)
+  const players = inputPlayers(input);
+  for (const x of out.facts_th) if (!namesATeam(x) && !players.some((p) => x.includes(p))) violations.push(`facts_th: names no team or player of the input: ${x.slice(0, 40)}`);
 
   const says = (fields: Array<(typeof TEXT_FIELDS)[number]>, words: string[]) => fields.some((f) => words.some((w) => out[f].includes(w)));
   const disagreements = (input.views as { disagreements?: string[] } | null | undefined)?.disagreements ?? [];

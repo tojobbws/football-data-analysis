@@ -89,7 +89,13 @@ describe('validatePreviewOutput: teams named as the input names them', () => {
     ]);
     expect(validatePreviewOutput({ ...ok, home_th: ok.home_th.replace('Arsenal', 'เจ้าบ้าน') }, input).violations).toEqual(['home_th: does not name Arsenal']);
     expect(validatePreviewOutput({ ...ok, headline_th: 'ศึกใหญ่กลางสัปดาห์' }, input).violations).toEqual(['headline_th: names neither team']);
-    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'เจ้าบ้านอยู่อันดับ 3 ของตาราง'] }, input).violations).toEqual(['facts_th: names neither team: เจ้าบ้านอยู่อันดับ 3 ของตาราง']);
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'เจ้าบ้านอยู่อันดับ 3 ของตาราง'] }, input).violations).toEqual(['facts_th: names no team or player of the input: เจ้าบ้านอยู่อันดับ 3 ของตาราง']);
+  });
+
+  it('a fact may name a player the input lists instead of a team, never one it does not', () => {
+    const withPlayer = { ...input, home: { ...input.home, keyPlayers: [{ name: 'B. Saka', goals: 4, assists: 3, appearances: 8 }] } };
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'B. Saka ทำ 4 ประตูในฤดูกาลนี้'] }, withPlayer).ok).toBe(true);
+    expect(validatePreviewOutput({ ...ok, facts_th: [...ok.facts_th, 'C. Palmer เป็นตัวหลักในเกมรุก'] }, withPlayer).violations).toEqual(['facts_th: names no team or player of the input: C. Palmer เป็นตัวหลักในเกมรุก']);
   });
 });
 
