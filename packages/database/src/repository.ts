@@ -1040,6 +1040,8 @@ export class Repository {
   async teamRecentMatches(teamId: number, before: Date, n = 10) {
     const res = await this.db.query<Record<string, unknown>>(
       `select f.kickoff_at, f.home_team_id, l.name as competition, th.name as home_name, ta.name as away_name,
+              f.league_id, f.season, l.type as league_type,
+              case when f.home_team_id = $1 then f.away_team_id else f.home_team_id end as opp_id,
               coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga,
               max(s.value_num) filter (where s.type = 'expected_goals' and s.team_id = f.home_team_id) as xg_h,
               max(s.value_num) filter (where s.type = 'expected_goals' and s.team_id = f.away_team_id) as xg_a,
@@ -1059,7 +1061,7 @@ export class Repository {
          left join fixture_statistics s on s.fixture_id = f.id and s.type in ('expected_goals', 'shots_on_goal', 'total_shots')
         where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $2
           and coalesce(f.ft_home, f.goals_home) is not null
-        group by f.id, l.name, th.name, ta.name
+        group by f.id, l.name, l.type, th.name, ta.name
         order by f.kickoff_at desc limit $3`,
       [teamId, before.toISOString(), n],
     );
@@ -1072,6 +1074,11 @@ export class Repository {
         competition: String(r.competition),
         venue: (home ? 'HOME' : 'AWAY') as 'HOME' | 'AWAY',
         opponent: String(home ? r.away_name : r.home_name),
+        // for rebuilding the opponent's position as of the match date (hybrid input v2); not part of the AI input
+        leagueId: Number(r.league_id),
+        season: Number(r.season),
+        leagueType: r.league_type == null ? null : String(r.league_type),
+        opponentId: Number(r.opp_id),
         opponentRank: rank,
         opponentTableSize: rank === null ? null : num(r.table_size),
         goalsFor: Number(home ? r.gh : r.ga),
@@ -1084,6 +1091,52 @@ export class Repository {
         shotsAgainst: num(home ? r.sh_a : r.sh_h),
       };
     });
+  }
+
+  /** Finished results of one league season before a date: the raw input for rebuilding a table as it stood then. */
+  async seasonResults(leagueId: number, season: number, before: Date) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select kickoff_at, home_team_id, away_team_id, coalesce(ft_home, goals_home) as gh, coalesce(ft_away, goals_away) as ga
+         from fixtures
+        where league_id = $1 and season = $2 and status_short in ('FT','AET','PEN') and kickoff_at < $3
+          and coalesce(ft_home, goals_home) is not null and coalesce(ft_away, goals_away) is not null`,
+      [leagueId, season, before.toISOString()],
+    );
+    return res.rows.map((r) => ({
+      kickoffAt: new Date(r.kickoff_at as string),
+      homeTeamId: Number(r.home_team_id),
+      awayTeamId: Number(r.away_team_id),
+      goalsHome: Number(r.gh),
+      goalsAway: Number(r.ga),
+    }));
+  }
+
+  /**
+   * How many different tables the stored standings hold for a league season: groups with the same set of teams count once
+   * (the API repeats a full table under two names, e.g. La Liga), conferences or split phases with different teams count
+   * separately. More than one means there is no single table to rebuild from results.
+   */
+  async standingsDistinctTables(leagueId: number, season: number): Promise<number> {
+    const res = await this.db.query<{ n: string | number }>(
+      `select count(distinct teams) as n
+         from (select array_agg(team_id order by team_id) as teams from standings where league_id = $1 and season = $2 group by group_name) g`,
+      [leagueId, season],
+    );
+    return Number(res.rows[0]?.n ?? 0);
+  }
+
+  /**
+   * Does the API report injuries for this league at all? The number of injury rows first seen in the last `days` days
+   * before `asOf`. Zero means the league gives no injury data, which an empty injuries list alone cannot tell apart from
+   * "nobody is out".
+   */
+  async injuryRowsRecently(leagueId: number, asOf: Date, days = 30): Promise<number> {
+    const res = await this.db.query<{ n: string | number }>(
+      `select count(*) as n from injuries
+        where league_id = $1 and first_seen_at <= $2 and first_seen_at > $2::timestamptz - ($3 || ' days')::interval`,
+      [leagueId, asOf.toISOString(), String(days)],
+    );
+    return Number(res.rows[0]?.n ?? 0);
   }
 
   // ---------- Hybrid AI decisions (ADR 0010) ----------

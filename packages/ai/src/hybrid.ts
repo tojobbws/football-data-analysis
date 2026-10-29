@@ -58,6 +58,13 @@ export interface HybridSource {
   injuries: Array<{ team: 'HOME' | 'AWAY' | null; player: string | null; type: string | null; reason: string | null }>;
   lineup: { home: string[]; away: string[] } | null;
   market: HybridMarket;
+  /**
+   * Input v2 only (undefined = v1, the input is then unchanged). Whether the API reports injuries for this league at all:
+   * an empty `injuries` list is only "nobody is out" when it does.
+   */
+  injuriesCoverage?: 'available' | 'unavailable_for_league';
+  /** Input v2 only. How each recent match's opponent position was obtained: today's table, or rebuilt as of that match's date. */
+  opponentRankBasis?: 'current_table' | 'as_of_results';
   /** legacy Dixon-Coles probability of each option's selection and line, and its 1X2; context only */
   legacy: { options: Partial<Record<HybridSide, number>>; x12: { home: number; draw: number; away: number } | null } | null;
 }
@@ -136,6 +143,7 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   if (noXg) missing.push(`no xG for ${noXg} recent matches`);
   if (!src.lineup) missing.push('lineups not confirmed yet');
   if (!src.standings.home || !src.standings.away) missing.push('league table not available for both teams');
+  if (src.injuriesCoverage === 'unavailable_for_league') missing.push('this league provides no injury data: an empty injuries list does not mean nobody is out');
   if (m.ah.status !== 'OK') missing.push(`no usable main Asian handicap line (${m.ah.status})`);
   if (m.ou.status !== 'OK') missing.push(`no usable main over/under line (${m.ou.status})`);
 
@@ -176,6 +184,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
       away_recent_matches: recentAway.length,
       lineups_confirmed: Boolean(src.lineup),
       injuries_reported: src.injuries.length,
+      ...(src.injuriesCoverage ? { injuries_coverage: src.injuriesCoverage } : {}),
+      ...(src.opponentRankBasis ? { opponent_rank_basis: src.opponentRankBasis } : {}),
       missing,
     },
   };

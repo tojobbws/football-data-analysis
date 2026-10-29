@@ -132,3 +132,34 @@ describe('validateHybridOutput', () => {
     expect(validateHybridOutput(answer({ side: 'HOME' }), input, options).ok).toBe(false);
   });
 });
+
+describe('input v2 flags (audit gaps G1, G2): off by default, never change the v1 input', () => {
+  it('leaves the v1 input byte-identical when the v2 fields are not given', () => {
+    const again = buildHybridInput({ ...src });
+    expect(JSON.stringify(again)).toBe(JSON.stringify(input));
+    const dq = (input as { data_quality: Record<string, unknown> }).data_quality;
+    expect(dq).not.toHaveProperty('injuries_coverage');
+    expect(dq).not.toHaveProperty('opponent_rank_basis');
+  });
+
+  it('says so when the league provides no injury data, so an empty list is not read as "nobody is out"', () => {
+    const v2 = buildHybridInput({ ...src, injuries: [], injuriesCoverage: 'unavailable_for_league', opponentRankBasis: 'as_of_results' }) as {
+      data_quality: { injuries_coverage: string; opponent_rank_basis: string; injuries_reported: number; missing: string[] };
+    };
+    expect(v2.data_quality.injuries_coverage).toBe('unavailable_for_league');
+    expect(v2.data_quality.opponent_rank_basis).toBe('as_of_results');
+    expect(v2.data_quality.injuries_reported).toBe(0);
+    expect(v2.data_quality.missing.some((x) => x.includes('no injury data'))).toBe(true);
+  });
+
+  it('records coverage without a warning when the league reports injuries (an empty list is then real)', () => {
+    const v2 = buildHybridInput({ ...src, injuries: [], injuriesCoverage: 'available' }) as { data_quality: { injuries_coverage: string; missing: string[] } };
+    expect(v2.data_quality.injuries_coverage).toBe('available');
+    expect(v2.data_quality.missing.some((x) => x.includes('no injury data'))).toBe(false);
+  });
+
+  it('still accepts an answer that was valid on the v1 input (the new block adds no number to quote or trip over)', () => {
+    const v2 = buildHybridInput({ ...src, injuriesCoverage: 'unavailable_for_league', opponentRankBasis: 'as_of_results' });
+    expect(validateHybridOutput(answer(), v2, options).ok).toBe(validateHybridOutput(answer(), input, options).ok);
+  });
+});

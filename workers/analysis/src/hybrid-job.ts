@@ -28,6 +28,7 @@ import {
 import { DEFAULT_RULES, hybridMarket, hybridOptions, type HybridSide } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours } from '@fp/shared';
+import { injuriesCoverage, withOpponentRanksAsOf } from './hybrid-input-v2.js';
 import { decisionFresh, dueRound, type PickEngine } from './publish-job.js';
 
 export interface HybridJobOptions {
@@ -164,7 +165,7 @@ type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[
  * lineups, the market's main lines from quotes known at `now`, and the legacy model's prices as context;
  * plus the rules' decision of the moment, which is stored beside the AI's for comparison and never shown to it.
  */
-export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date) {
+export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date, opts: { inputV2?: boolean } = {}) {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
   const quotes = await ctx.repo.latestQuotes(f.id, now);
   const market = hybridMarket(quotes, now);
@@ -178,6 +179,14 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     ctx.repo.latestProbabilities(f.id, 'dixon-coles-v0.2', now),
     ctx.repo.latestRun(f.id, DEFAULT_RULES.version),
   ]);
+  // input v2 (off by default): opponent positions as of each match date, and whether the league reports injuries at all
+  const v2 = opts.inputV2
+    ? {
+        recentHome: await withOpponentRanksAsOf(ctx, recentHome),
+        recentAway: await withOpponentRanksAsOf(ctx, recentAway),
+        injuriesCoverage: await injuriesCoverage(ctx, f.leagueId, now),
+      }
+    : null;
   const side = (teamId: unknown) => (Number(teamId) === f.homeTeamId ? 'HOME' : Number(teamId) === f.awayTeamId ? 'AWAY' : null);
   const starters = (s: 'HOME' | 'AWAY') => lineupPlayers.filter((p) => side(p.team_id) === s && p.is_starter).map((p) => String(p.player_name));
   const standing = (teamId: number) => {
@@ -195,9 +204,10 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     fixture: { id: f.id, home: header.home, away: header.away, league: header.league, kickoffAt: f.kickoffAt },
     predictionAt: now,
     publishRound: round,
-    recent: { home: recentHome, away: recentAway },
+    recent: { home: v2 ? v2.recentHome : recentHome, away: v2 ? v2.recentAway : recentAway },
     standings: { home: standing(f.homeTeamId), away: standing(f.awayTeamId) },
     injuries: injuries.map((i) => ({ team: side(i.team_id), player: i.player_name == null ? null : String(i.player_name), type: i.type == null ? null : String(i.type), reason: i.reason == null ? null : String(i.reason) })),
+    ...(v2 ? { injuriesCoverage: v2.injuriesCoverage, opponentRankBasis: 'as_of_results' as const } : {}),
     lineup: starters('HOME').length >= 11 && starters('AWAY').length >= 11 ? { home: starters('HOME'), away: starters('AWAY') } : null,
     market,
     legacy: dcRows.length ? { options: legacyOptions, x12: h !== undefined && d !== undefined && a !== undefined ? { home: h, draw: d, away: a } : null } : null,
