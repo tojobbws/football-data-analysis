@@ -15,7 +15,9 @@
   --color-compass: #b45309; /* 🧭 signals only (5.0:1 on white) */
   --color-compass-soft: #fef3c7;
   --color-compass-bright: #fbbf24; /* 🧭 on dark chrome (10:1 on ink) */
+  --color-compass-ring: #d97706; /* ring around a signal row: 3.2:1 on white (non-text 3:1) */
   --color-live: #e11d48;
+  --color-live-text: #be123c; /* live text on light surfaces: 6:1 (live itself is 4.5:1 on white only) */
 
   /* layout */
   --spacing-tabbar: 4rem; /* mobile bottom tab bar height (without safe area) */
@@ -36,7 +38,11 @@ body {
 :where(a, button, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--color-pitch);
   outline-offset: 2px;
-  border-radius: 0.5rem;
+}
+
+::selection {
+  background: var(--color-pitch-soft);
+  color: var(--color-ink);
 }
 
 /* on dark chrome (score strip, footer) the teal ring is too dim: use the bright tint */

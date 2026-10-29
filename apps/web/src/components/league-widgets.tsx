@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { LeagueWidget } from '@/lib/queries';
 import { Empty, Section, TeamLogo } from './primitives';
 
@@ -12,6 +12,7 @@ export function LeagueWidgets({ widgets }: { widgets: LeagueWidget[] }) {
   const [id, setId] = useState(() => (widgets.find((w) => w.standings.length) ?? widgets[0])?.league.id);
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState(false);
+  const pickerId = useId();
   const w = widgets.find((x) => x.league.id === id);
   if (!w) return null;
   const table = all ? w.standings : w.standings.slice(0, 10);
@@ -42,7 +43,7 @@ export function LeagueWidgets({ widgets }: { widgets: LeagueWidget[] }) {
     >
       <TeamLogo src={l.logo_url} alt="" size={28} />
       <span className="line-clamp-2 text-center">{l.name}</span>
-      {dup.has(l.name) && l.country ? <span className="-mt-0.5 text-[10px] text-slate-500">{l.country}</span> : null}
+      {dup.has(l.name) && l.country ? <span className="-mt-0.5 text-xs text-slate-600">{l.country}</span> : null}
     </button>
   );
 
@@ -58,7 +59,7 @@ export function LeagueWidgets({ widgets }: { widgets: LeagueWidget[] }) {
               type="button"
               onClick={() => setOpen((x) => !x)}
               aria-expanded={open}
-              aria-controls="league-picker"
+              aria-controls={pickerId}
               className="mt-2 flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-1 text-left text-sm font-medium text-[var(--color-pitch)] hover:bg-slate-50"
             >
               <span>{open ? 'ซ่อน' : `ลีกอื่น ๆ อีก ${more.length} รายการ`}</span>
@@ -66,7 +67,7 @@ export function LeagueWidgets({ widgets }: { widgets: LeagueWidget[] }) {
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
-            <div id="league-picker" hidden={!open} className="mt-2 space-y-3">
+            <div id={pickerId} hidden={!open} className="mt-2 space-y-3">
               {groups.map((g) => (
                 <div key={g.label}>
                   <h3 className="mb-1.5 text-xs font-medium text-slate-500">

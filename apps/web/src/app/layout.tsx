@@ -27,7 +27,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover', // lets the bottom tab bar pad for the home indicator
-  themeColor: '#0b1324',
+  themeColor: '#ffffff', // the site chrome is white
 };
 
 const footerLinks = [
@@ -44,9 +44,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="th" className={thai.variable}>
       <body className="min-h-screen pb-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom))] font-sans antialiased md:pb-0">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-[var(--color-ink)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+        >
+          ข้ามไปยังเนื้อหา
+        </a>
         <LiveProvider>
           <SiteNav ticker={tickerRows} tickerLabel={tickerLabel} />
-          {children}
+          <div id="main-content" tabIndex={-1} className="outline-none">
+            {children}
+          </div>
         </LiveProvider>
         <footer className="on-dark mt-12 bg-[var(--color-ink)] text-slate-300">
           <div className="mx-auto grid max-w-5xl gap-6 px-4 py-10 text-sm sm:grid-cols-[1fr_auto]">

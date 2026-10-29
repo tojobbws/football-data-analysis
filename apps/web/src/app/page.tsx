@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArticleGrid, MoreLink, PreviewTable } from '@/components/home';
 import { featuredList, finishedWatch } from '@/components/featured-picks';
-import { IconChevronRight } from '@/components/icons';
+import { CompassMark, IconChevronRight } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { Empty } from '@/components/ui';
@@ -72,6 +72,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
               sub={liveView ? 'อัปเดตสด' : `${dayTH(noon(date!))} · ${shown.length} คู่`}
               aside={!liveView ? <BandLink href="/today" label="วิเคราะห์ทุกคู่" /> : null}
             />
+            {ordered.some((m) => m.compass?.kind === 'SIGNAL') ? <SignalLegend /> : null}
             {ordered.length ? (
               <ScoreboardList matches={ordered} date={date} watch={watch} />
             ) : (
@@ -80,7 +81,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           </section>
 
           {/* tracked leagues beside the day's matches on wide screens; phones and tablets get them further down */}
-          <aside className="mt-4 hidden space-y-4 lg:block" aria-label="ลีกที่เราวิเคราะห์">
+          <aside className="mt-4 hidden space-y-4 lg:sticky lg:top-32 lg:block lg:self-start" aria-label="ลีกที่เราวิเคราะห์">
             <LeagueWidgets widgets={leagues} />
           </aside>
         </div>
@@ -90,12 +91,12 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <div className="space-y-8">
           {/* ---------------- 3: match previews, then editorial articles when there are some ---------------- */}
           <section aria-labelledby="previews-h">
-            <DayHeading id="previews-h" kicker="อ่านต่อ" title="บทวิเคราะห์ล่าสุด" href="/analysis" />
+            <DayHeading id="previews-h" title="บทวิเคราะห์ล่าสุด" href="/analysis" />
             {previews.length ? <PreviewTable previews={previews} /> : <Empty>บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</Empty>}
           </section>
           {articles.length ? (
             <section aria-labelledby="articles-h">
-              <DayHeading id="articles-h" kicker="อ่านต่อ" title="บทความ" href="/analysis" />
+              <DayHeading id="articles-h" title="บทความ" href="/analysis" />
               <ArticleGrid articles={articles} />
             </section>
           ) : null}
@@ -110,20 +111,25 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   );
 }
 
-function DayHeading({ id, kicker, title, href, linkLabel = 'ทั้งหมด' }: { id: string; kicker: string; title: string; href?: string; linkLabel?: string }) {
+function DayHeading({ id, title, href, linkLabel = 'ทั้งหมด' }: { id: string; title: string; href?: string; linkLabel?: string }) {
   return (
-    <div className="mb-2 flex items-end justify-between gap-3">
-      <div className="min-w-0">
-        <p className="flex items-center gap-2 text-xs font-semibold text-[var(--color-pitch)]">
-          <span className="h-3 w-1 rounded-full bg-current" aria-hidden />
-          {kicker}
-        </p>
-        <h2 id={id} className="mt-0.5 text-base font-bold leading-tight">
-          {title}
-        </h2>
-      </div>
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <h2 id={id} className="flex min-w-0 items-center gap-2 text-base font-bold leading-snug">
+        <span className="h-4 w-1 shrink-0 rounded-full bg-[var(--color-pitch)]" aria-hidden />
+        {title}
+      </h2>
       {href ? <MoreLink href={href} label={linkLabel} /> : null}
     </div>
+  );
+}
+
+/** Says what the compass emblem on a row means; shown only when the day has such a row. */
+function SignalLegend() {
+  return (
+    <p className="mb-3 flex items-center gap-2 text-[13px] leading-snug text-slate-600">
+      <CompassMark size={20} />
+      <span>คู่ที่มีสัญญาณเข็มทิศเกม · แตะคู่เพื่ออ่านเหตุผล</span>
+    </p>
   );
 }
 

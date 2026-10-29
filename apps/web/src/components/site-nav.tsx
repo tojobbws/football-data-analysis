@@ -16,7 +16,7 @@ const NAV = [
   { href: '/performance', label: 'ผลงาน', Icon: IconChart },
 ] as const;
 
-const COMPASS_HREF = '/#compass';
+const COMPASS_HREF = '/today'; // วิเคราะห์บอลวันนี้: where the day's signals are listed
 const isActive = (path: string, href: string) => (href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`));
 
 /**
@@ -70,7 +70,7 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
             {live ? (
               <Link
                 href="/matches"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-rose-50 px-3 text-xs font-bold text-[var(--color-live)] ring-1 ring-inset ring-rose-200 transition-colors hover:bg-rose-100"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-rose-50 px-3 text-[13px] font-bold text-[var(--color-live-text)] ring-1 ring-inset ring-rose-200 transition-colors hover:bg-rose-100"
                 aria-label={`กำลังแข่ง ${live} คู่`}
               >
                 <span className="h-2 w-2 rounded-full bg-[var(--color-live)] motion-safe:animate-pulse" aria-hidden />

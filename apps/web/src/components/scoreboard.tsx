@@ -10,7 +10,7 @@ import { LiveCountBadge, LiveGoal, LiveMinute, LiveWatch } from './live';
 import { TeamLogo } from './primitives';
 import { ResultMark } from './ui';
 
-// Dark, livescore-style scoreboard: date strip → league header → one card per match.
+// Livescore-style scoreboard: date strip → league header → one card per match.
 // Shared by the home page and /matches. White surface, light-grey cards.
 
 const noon = (d: string) => `${d}T12:00:00+07:00`;
@@ -42,7 +42,7 @@ export function DateStrip({ base, selected, today, liveCount }: { base: string; 
             href={`${base}?live=1`}
             scroll={false}
             aria-current={selected === null ? 'page' : undefined}
-            className={`relative flex h-11 min-w-11 items-center justify-center rounded-full px-3 text-xs font-bold transition-colors duration-150 ${
+            className={`relative flex h-11 min-w-11 items-center justify-center rounded-full px-3 text-[13px] font-bold transition-colors duration-150 ${
               selected === null ? 'bg-[var(--color-live)] text-white' : 'bg-slate-100 text-[var(--color-ink)] hover:bg-slate-200'
             }`}
           >
@@ -59,12 +59,12 @@ export function DateStrip({ base, selected, today, liveCount }: { base: string; 
                 href={isToday && base === '/' ? '/' : `${base}?date=${d}`}
                 scroll={false}
                 aria-current={on ? 'date' : undefined}
-                className={`flex h-11 flex-col items-center justify-center rounded-xl text-center leading-tight transition-colors duration-150 ${
-                  on ? 'bg-slate-100 font-semibold text-[var(--color-ink)]' : 'text-slate-500 hover:bg-slate-50 hover:text-[var(--color-ink)]'
+                className={`flex h-11 flex-col items-center justify-center rounded-xl text-center leading-snug transition-colors duration-150 ${
+                  on ? 'bg-[var(--color-pitch-soft)] font-semibold text-[var(--color-ink)]' : 'text-slate-600 hover:bg-slate-50 hover:text-[var(--color-ink)]'
                 }`}
               >
-                <span className={`text-xs font-semibold ${isToday && !on ? 'text-[var(--color-pitch)]' : ''}`}>{isToday ? 'วันนี้' : weekdayShortTH(noon(d))}</span>
-                <span className="whitespace-nowrap text-xs">{dayMonthTH(noon(d))}</span>
+                <span className={`text-[13px] font-semibold ${isToday && !on ? 'text-[var(--color-pitch)]' : ''}`}>{isToday ? 'วันนี้' : weekdayShortTH(noon(d))}</span>
+                <span className="whitespace-nowrap text-[13px]">{dayMonthTH(noon(d))}</span>
               </Link>
             </li>
           );
@@ -116,24 +116,24 @@ const longWeekday = (d: string) => new Intl.DateTimeFormat('th-TH', { timeZone: 
 function LeagueHeader({ league, count }: { league: MatchRow['league']; count: number }) {
   return (
     <div className="mb-2 flex items-center gap-2.5">
-      {/* ringed badge: gradient ring, white disc so dark league logos stay readable */}
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--color-pitch-bright)] via-sky-500 to-violet-600 p-[2px]" aria-hidden>
+      {/* ringed badge: pitch ring, white disc so dark league logos stay readable */}
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--color-pitch)] p-[2px]" aria-hidden>
         <span className="flex h-full w-full items-center justify-center rounded-full bg-white">
           <TeamLogo src={league.logo_url} alt="" size={18} />
         </span>
       </span>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-bold leading-tight">{league.name}</h3>
-        {league.country ? <p className="truncate text-xs text-slate-500">{league.country}</p> : null}
+        <h3 className="truncate text-sm font-bold leading-snug">{league.name}</h3>
+        {league.country ? <p className="truncate text-[13px] text-slate-500">{league.country}</p> : null}
       </div>
-      <span className="shrink-0 text-xs text-slate-500">{count} คู่</span>
+      <span className="shrink-0 text-[13px] text-slate-500">{count} คู่</span>
     </div>
   );
 }
 
 function Divider({ label }: { label: string }) {
   return (
-    <p className="my-2 flex items-center gap-3 text-xs font-semibold text-slate-500">
+    <p className="my-2 flex items-center gap-3 text-[13px] font-semibold text-slate-500">
       <span className="h-px w-4 bg-slate-300" aria-hidden />
       {label}
       <span className="h-px flex-1 bg-slate-200" aria-hidden />
@@ -160,19 +160,19 @@ function MatchCard({ m, watched = false }: { m: MatchRow; watched?: boolean }) {
   return (
     <Link
       href={`/matches/${m.slug}`}
-      className={`flex min-h-14 items-center rounded-xl py-2 pl-2 pr-1.5 ring-inset transition-colors duration-150 ${watched ? 'bg-[var(--color-compass-soft)]/40 ring-2 ring-[var(--color-compass-bright)] hover:bg-[var(--color-compass-soft)]/70' : `bg-slate-50 ring-1 hover:bg-slate-100 ${live ? 'ring-[var(--color-live)]/50' : 'ring-slate-200/80'}`}`}
+      className={`flex min-h-14 items-center rounded-xl py-2 pl-2 pr-1.5 ring-inset transition-colors duration-150 ${watched ? 'bg-[var(--color-compass-soft)]/40 ring-2 ring-[var(--color-compass-ring)] hover:bg-[var(--color-compass-soft)]/70' : `bg-slate-50 ring-1 hover:bg-slate-100 ${live ? 'ring-[var(--color-live)]/50' : 'ring-slate-200/80'}`}`}
     >
       {/* status */}
-      <div className="flex w-11 shrink-0 flex-col items-center justify-center text-center leading-none">
+      <div className="flex w-11 shrink-0 flex-col items-center justify-center text-center leading-snug">
         {live ? (
-          <LiveMinute seed={seed} className="text-xs font-bold text-[var(--color-live)]" />
+          <LiveMinute seed={seed} className="text-[13px] font-bold text-[var(--color-live-text)]" />
         ) : finished ? (
-          <span className="text-xs font-semibold text-slate-500">{DONE[m.status_short] ?? m.status_short}</span>
+          <span className="text-[13px] font-semibold text-slate-500">{DONE[m.status_short] ?? m.status_short}</span>
         ) : off ? (
-          <span className="text-xs font-semibold text-rose-700">{off}</span>
+          <span className="text-[13px] font-semibold text-rose-700">{off}</span>
         ) : (
           <>
-            <span className="text-[13px] font-semibold tabular-nums">{timeTH(m.kickoff_at)}</span>
+            <span className="text-sm font-semibold tabular-nums">{timeTH(m.kickoff_at)}</span>
             <LiveWatch seed={seed} />
           </>
         )}
@@ -182,6 +182,7 @@ function MatchCard({ m, watched = false }: { m: MatchRow; watched?: boolean }) {
 
       {/* teams + score */}
       <div className="min-w-0 flex-1 space-y-1">
+        {showScore && gh != null && ga != null ? <span className="sr-only">{live ? 'กำลังแข่ง ' : ''}ผล {gh} ต่อ {ga}</span> : null}
         {teams.map(({ t, g, won }, i) => (
           <div key={t.id} className="flex items-center gap-2">
             <TeamLogo src={t.logo_url} alt="" size={18} />
@@ -227,10 +228,10 @@ export function BandTitle({ id, title, sub, aside }: { id?: string; title: strin
   return (
     <div className="mb-3 mt-4 flex items-end justify-between gap-3">
       <div className="min-w-0">
-        <h2 id={id} className="text-base font-bold leading-tight">
+        <h2 id={id} className="text-base font-bold leading-snug">
           {title}
         </h2>
-        {sub ? <p className="mt-0.5 text-xs text-slate-500">{sub}</p> : null}
+        {sub ? <p className="mt-0.5 text-[13px] text-slate-500">{sub}</p> : null}
       </div>
       {aside}
     </div>

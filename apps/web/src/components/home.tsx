@@ -76,7 +76,7 @@ export function PreviewGrid({ previews }: { previews: PreviewCard[] }) {
               {p.league} · {shortDayTH(p.kickoff_at)} {timeTH(p.kickoff_at)}
             </p>
             <p className="mt-1 text-base font-semibold leading-snug">
-              {p.home} <span className="font-normal text-slate-400">vs</span> {p.away}
+              {p.home} <span className="font-normal text-slate-500">vs</span> {p.away}
             </p>
             <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-slate-600">{p.overview_th}</p>
             <p className="mt-auto inline-flex items-center gap-0.5 pt-3 text-sm font-medium text-[var(--color-pitch)]">
@@ -99,7 +99,7 @@ export function PreviewTable({ previews }: { previews: PreviewCard[] }) {
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <table className="w-full border-collapse text-left">
         <caption className="sr-only">บทวิเคราะห์ล่าสุด</caption>
-        <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-600">
+        <thead className="border-b border-slate-200 bg-slate-50 text-[13px] text-slate-600">
           <tr>
             <th scope="col" className="w-20 px-3 py-2 font-medium sm:w-28 sm:px-4">เตะ</th>
             <th scope="col" className="px-3 py-2 font-medium">คู่</th>
@@ -114,7 +114,7 @@ export function PreviewTable({ previews }: { previews: PreviewCard[] }) {
             // swallowed clicks across the page); only the match name is focusable, the rest are mouse targets
             <tr key={p.slug} className="transition-colors hover:bg-slate-50">
               <td className="p-0 align-top">
-                <Link href={`/matches/${p.slug}`} tabIndex={-1} aria-hidden className="block px-3 py-3 text-xs leading-tight text-slate-600 sm:px-4">
+                <Link href={`/matches/${p.slug}`} tabIndex={-1} className="block px-3 py-3 text-[13px] leading-snug text-slate-600 sm:px-4">
                   <span className="block text-sm font-semibold tabular-nums text-[var(--color-ink)]">{timeTH(p.kickoff_at)}</span>
                   {shortDayTH(p.kickoff_at)}
                 </Link>
@@ -122,18 +122,18 @@ export function PreviewTable({ previews }: { previews: PreviewCard[] }) {
               <td className="min-w-0 p-0 align-top">
                 <Link href={`/matches/${p.slug}`} className="block px-3 py-3">
                   <span className="text-sm font-semibold leading-snug text-[var(--color-ink)] sm:text-base">
-                    {p.home} <span className="font-normal text-slate-400">vs</span> {p.away}
+                    {p.home} <span className="font-normal text-slate-500">vs</span> {p.away}
                   </span>
-                  <span className="mt-0.5 block text-xs text-slate-600 md:hidden">{p.league}</span>
+                  <span className="mt-0.5 block text-[13px] text-slate-600 md:hidden">{p.league}</span>
                 </Link>
               </td>
               <td className="hidden p-0 align-top md:table-cell">
-                <Link href={`/matches/${p.slug}`} tabIndex={-1} aria-hidden className="block px-3 py-3 text-sm text-slate-600">
+                <Link href={`/matches/${p.slug}`} tabIndex={-1} className="block px-3 py-3 text-sm text-slate-600">
                   {p.league}
                 </Link>
               </td>
               <td className="hidden p-0 align-top lg:table-cell">
-                <Link href={`/matches/${p.slug}`} tabIndex={-1} aria-hidden className="block px-3 py-3 text-sm leading-relaxed text-slate-600">
+                <Link href={`/matches/${p.slug}`} tabIndex={-1} className="block px-3 py-3 text-sm leading-relaxed text-slate-600">
                   <span className="line-clamp-2">{p.overview_th}</span>
                 </Link>
               </td>
