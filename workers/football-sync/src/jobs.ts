@@ -5,6 +5,7 @@ import {
   toInjuryRow,
   toLeagueRow,
   toLeagueSeasonRows,
+  standingGroupNames,
   standingTeamsWithoutId,
   toPlayerRows,
   toStandingRows,
@@ -207,11 +208,16 @@ export function syncStandings(ctx: JobContext) {
     let n = 0;
     for (const { league, season } of await trackedLeagueSeasons(ctx)) {
       const { data } = await ctx.api.standings({ league, season });
+      const sent = new Set<string>();
       for (const item of data) {
         const skipped = standingTeamsWithoutId(item);
         if (skipped.length) ctx.log.warn('standings rows without a team id skipped', { league, season, teams: skipped });
         n += await ctx.repo.upsertStandings(toStandingRows(item));
+        for (const g of standingGroupNames(item)) sent.add(g);
       }
+      // a group the API no longer sends (renamed) would otherwise stay as a stale table next to the live one
+      const dropped = await ctx.repo.pruneStandingGroups(league, season, [...sent]);
+      if (dropped) ctx.log.warn('standings groups the API no longer sends were removed', { league, season, rows: dropped, kept: [...sent] });
     }
     return n;
   });

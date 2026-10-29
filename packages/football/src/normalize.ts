@@ -271,6 +271,14 @@ export function standingTeamsWithoutId(item: StandingsItem): string[] {
   return (item.league.standings ?? []).flat().filter((r) => validId(r.team?.id) == null).map((r) => r.team?.name ?? `rank ${r.rank}`);
 }
 
+/**
+ * The group names the API sent for a league season, counting rows that cannot be stored (no team id), so a group made
+ * only of such rows is still "present". Used to tell a group the API stopped sending (renamed) from one it still sends.
+ */
+export function standingGroupNames(item: StandingsItem): string[] {
+  return [...new Set((item.league.standings ?? []).flat().map((r) => r.group ?? ''))];
+}
+
 /** Skips the rows of standingTeamsWithoutId: the team's previous row stays until the API sends its id again. */
 export function toStandingRows(item: StandingsItem): Row[] {
   const rows: Row[] = [];

@@ -279,6 +279,22 @@ export class Repository {
     return writeRows(this.db, 'standings', rows, { conflict: ['league_id', 'season', 'group_name', 'team_id'], touch: 'synced_at' });
   }
 
+  /**
+   * Drops the groups of a league season that the latest API response no longer contains. The upsert key includes the group
+   * name, so when the API renames a group (La Liga: 'La Liga' to 'Primera División') the old rows would stay for good, never
+   * refreshed, beside the live table. Whole groups only, never single teams, and never with an empty `keep` (an empty or
+   * failed response must not wipe a table). Returns the rows removed.
+   */
+  async pruneStandingGroups(leagueId: number, season: number, keep: string[]): Promise<number> {
+    if (!keep.length) return 0;
+    const res = await this.db.query<{ n: string | number }>(
+      `with gone as (delete from standings where league_id = $1 and season = $2 and not (group_name = any($3::text[])) returning 1)
+       select count(*) as n from gone`,
+      [leagueId, season, keep],
+    );
+    return Number(res.rows[0]?.n ?? 0);
+  }
+
   async insertApiPrediction(row: Row): Promise<number> {
     await insertReturning(this.db, 'api_predictions', row);
     return 1;
