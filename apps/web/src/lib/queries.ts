@@ -330,7 +330,7 @@ export const matchBySlug = cache(async (slug: string) => {
     sb.from('web_market_consensus').select('market, selection, line, bookmakers, opening_odds, current_odds, last_quote_at').eq('fixture_id', m.id),
     finished ? sb.from('fixture_statistics').select('team_id, type, value_num, value_text').eq('fixture_id', m.id) : Promise.resolve({ data: [], error: null }),
     finished ? sb.from('fixture_events').select('elapsed, extra, team_id, player_name, type, detail').eq('fixture_id', m.id).order('seq') : Promise.resolve({ data: [], error: null }),
-    sb.from('web_model_outlook').select('computed_at, p_home, p_draw, p_away, p_over25, sides_tested, totals_tested').eq('fixture_id', m.id).maybeSingle(),
+    sb.rpc('web_model_outlook_for', { p_fixture_id: m.id }).maybeSingle(), // one fixture only: the view builds every fixture's outlook first and timed out cold (migration 0051)
     sb.from('web_match_previews').select(PREVIEW_SELECT).eq('fixture_id', m.id).maybeSingle(),
     sb.from('web_qualification').select('leg, stage, agg_a, agg_b, p_a, p_b, p_extra_time, p_penalties, assumptions, computed_at, sides_tested, team_a_id, team_b_id').eq('fixture_id', m.id).maybeSingle(),
     sb.from('web_pick_explanations').select('analysis_prediction_id, note_th').eq('fixture_id', m.id),
