@@ -16,7 +16,7 @@
 import { buildHybridReason, buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
 import { HYBRID_ENGINE_VERSION } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
-import { addHours } from '@fp/shared';
+import { addHours, footballDayHorizon } from '@fp/shared';
 
 export type PickEngine = 'legacy' | 'shadow' | 'hybrid';
 
@@ -29,6 +29,8 @@ export interface PublishOptions {
   maxRunAgeMinutes?: Partial<Record<PublishRound, number>>;
   /** who makes the published pick; default env PICK_ENGINE (docs/adr/0010-hybrid-ai-picks.md) */
   engine?: PickEngine;
+  /** only matches of the current football day (06:00→06:00 Thai); false lifts the cap, for tests */
+  sameFootballDay?: boolean;
 }
 
 /** How old a decision may be when its round is published (minutes). */
@@ -86,7 +88,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
   const shadowVersion = opts.shadowRulesVersion === undefined ? SHADOW_RULES.version : opts.shadowRulesVersion;
   return runJob(ctx, 'publish', { leagues, rulesVersion, engine, engineVersion }, async () => {
     const now = opts.now ?? new Date();
-    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, 24).toISOString());
+    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.sameFootballDay === false ? addHours(now, 24) : footballDayHorizon(now, 24)).toISOString());
     const report: Array<Record<string, unknown>> = [];
     let published = 0;
     if (engine === 'hybrid') await ctx.repo.ensureModelVersion(HYBRID_ENGINE_VERSION, 'Hybrid AI decision engine: verified pre-match data + market main lines (ADR 0010)', {});

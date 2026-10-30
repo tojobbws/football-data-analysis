@@ -50,7 +50,7 @@ import {
   type PreviewText,
 } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
-import { addHours, toDateString } from '@fp/shared';
+import { footballDayHorizon, toDateString } from '@fp/shared';
 import { ENSEMBLE_VERSION } from './jobs.js';
 
 export interface PreviewJobOptions {
@@ -88,7 +88,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
     let writer = opts.writer === undefined ? defaultPreviewWriter(ctx) : opts.writer;
     if (!writer) ctx.log.warn('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY) — previews use the template text');
 
-    const end = addHours(now, hours);
+    const end = footballDayHorizon(now, hours);
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.until && opts.until < end ? opts.until : end).toISOString());
     const report: Array<Record<string, unknown>> = [];
     let written = 0;

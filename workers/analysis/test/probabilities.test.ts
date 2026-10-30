@@ -186,7 +186,7 @@ describe('candidate generator job (Phase 5)', () => {
   const RUN_AT = new Date(LATER.getTime() + 60_000);
 
   it('thin market (1 bookmaker) -> NO_CLEAR_SIGNAL, but every selection is still recorded', async () => {
-    await generateCandidatesJob(ctx, { hours: 72, now: RUN_AT });
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: RUN_AT });
     const run = (await q(`select id, outcome, summary from analysis_runs where fixture_id = 9001`))[0]!;
     expect(run.outcome).toBe('NO_CLEAR_SIGNAL');
     const cands = await q(`select rank, factors from analysis_candidates where run_id = '${run.id}'`);
@@ -199,7 +199,7 @@ describe('candidate generator job (Phase 5)', () => {
 
   it('does not re-evaluate when nothing changed', async () => {
     const before = (await q(`select count(*)::int n from analysis_runs`))[0]!.n;
-    await generateCandidatesJob(ctx, { hours: 72, now: new Date(RUN_AT.getTime() + 60_000) });
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: new Date(RUN_AT.getTime() + 60_000) });
     expect((await q(`select count(*)::int n from analysis_runs`))[0]!.n).toBe(before);
   });
 
@@ -208,7 +208,7 @@ describe('candidate generator job (Phase 5)', () => {
 
     // the fixture's only AH line is priced off the model's ~70% -> allow it as the main line here
     const rules = { ...DEFAULT_RULES, version: 'rules-test', minOdds: 1.1, maxMainLineOffEven: 0.5 };
-    await generateCandidatesJob(ctx, { hours: 72, now: new Date(RUN_AT.getTime() + 4 * 3_600_000), rules });
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: new Date(RUN_AT.getTime() + 4 * 3_600_000), rules });
     const latest = (await q(`select * from analysis_latest_decision where fixture_id = 9001`))[0]!;
     expect(latest.outcome).toBe('SIGNAL');
     expect(latest.market).toBe('ASIAN_HANDICAP');
@@ -285,7 +285,7 @@ describe('player impact layer', () => {
   });
 
   it('untrusted layer + big absence -> candidates blocked (MAJOR_ABSENCE_UNMODELLED)', async () => {
-    await generateCandidatesJob(ctx, { hours: 72, now: new Date(T.getTime() + 120_000), rules: { ...DEFAULT_RULES, version: 'rules-test-2', minOdds: 1.1 } });
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: new Date(T.getTime() + 120_000), rules: { ...DEFAULT_RULES, version: 'rules-test-2', minOdds: 1.1 } });
     const run = (await q(`select outcome, summary from analysis_runs where fixture_id = 9001 and decision_rule_version = 'rules-test-2'`))[0]!;
     expect(run.outcome).toBe('NO_CLEAR_SIGNAL');
     const s = run.summary as { rejectReasons: Record<string, number>; modelSource: string; impact: { used: boolean } };
@@ -298,7 +298,7 @@ describe('player impact layer', () => {
       { leagueId: 39, purpose: 'IMPACT', modelVersionId: 'dc-impact-v0.1', params: { alpha: 0.5 }, metrics: { test: { z: 2 } }, enabled: true, matchesEvaluated: 400 },
     ]);
     await playerImpactJob(ctx, { hours: 72, now: new Date(T.getTime() + 180_000) }); // trusted flag changed -> rewrite
-    await generateCandidatesJob(ctx, { hours: 72, now: new Date(T.getTime() + 240_000), rules: { ...DEFAULT_RULES, version: 'rules-test-3', minOdds: 1.1 } });
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: new Date(T.getTime() + 240_000), rules: { ...DEFAULT_RULES, version: 'rules-test-3', minOdds: 1.1 } });
     const run = (await q(`select summary from analysis_runs where fixture_id = 9001 and decision_rule_version = 'rules-test-3'`))[0]!;
     const s = run.summary as { rejectReasons: Record<string, number>; modelSource: string; impact: { used: boolean } };
     expect(s.modelSource).toBe('DC+IMPACT');
@@ -315,8 +315,8 @@ describe('publish (Phase 6)', () => {
 
   it('EARLY round: publishes the latest decision with hash chain + snapshot, once', async () => {
     const P = new Date(KO.getTime() - 20 * 3_600_000);
-    await generateCandidatesJob(ctx, { hours: 72, now: P });
-    expect(await publishJob(ctx, { now: P })).toBe(1);
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: P });
+    expect(await publishJob(ctx, { sameFootballDay: false, now: P })).toBe(1);
 
     const row = (await q(`select * from published_analysis where fixture_id = 9001 and publish_round = 'EARLY'`))[0]!;
     expect(String(row.record_hash)).toMatch(/^[0-9a-f]{64}$/);
@@ -328,20 +328,20 @@ describe('publish (Phase 6)', () => {
     expect(Array.isArray(snap.candidates_snapshot)).toBe(true);
     expect(String(snap.snapshot_hash)).toMatch(/^[0-9a-f]{64}$/);
 
-    expect(await publishJob(ctx, { now: new Date(P.getTime() + 5 * 60_000) })).toBe(0); // same round never twice
+    expect(await publishJob(ctx, { sameFootballDay: false, now: new Date(P.getTime() + 5 * 60_000) })).toBe(0); // same round never twice
   });
 
   it('PREMATCH after a rules change: EARLY under the old rules gets one new round from the new rules (ADR 0009)', async () => {
     const R = new Date(KO.getTime() - 6 * 3_600_000);
     const rules = { ...DEFAULT_RULES, version: 'rules-test-next' };
-    await generateCandidatesJob(ctx, { hours: 72, now: R, rules });
-    expect(await publishJob(ctx, { now: new Date(R.getTime() + 60_000), rulesVersion: rules.version })).toBe(1);
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: R, rules });
+    expect(await publishJob(ctx, { sameFootballDay: false, now: new Date(R.getTime() + 60_000), rulesVersion: rules.version })).toBe(1);
 
     const rows = await q(`select publish_round, decision_rule_version, reason from analysis_predictions where fixture_id = 9001 order by published_at`);
     expect(rows.map((r) => `${r.publish_round} ${r.decision_rule_version}`)).toEqual([`EARLY ${DEFAULT_RULES.version}`, 'PREMATCH rules-test-next']);
     expect(String(rows[1]!.reason)).toContain('ก่อนเตะ หลังปรับกติกาให้วิเคราะห์เฉพาะเส้นหลักของตลาด');
     // once only; and nothing for a match whose EARLY already used the rules in force
-    expect(await publishJob(ctx, { now: new Date(R.getTime() + 5 * 60_000), rulesVersion: rules.version })).toBe(0);
+    expect(await publishJob(ctx, { sameFootballDay: false, now: new Date(R.getTime() + 5 * 60_000), rulesVersion: rules.version })).toBe(0);
   });
 
   it('LINEUP round: confirmed lineups + real market edge -> 🧭 SIGNAL priced with DC+IMPACT, chained after PREMATCH', async () => {
@@ -350,8 +350,8 @@ describe('publish (Phase 6)', () => {
     await ahMarketBelowModel('dc-impact-v0.1', new Date(L.getTime() - 10 * 60_000).toISOString());
 
     const rules = { ...DEFAULT_RULES, version: 'rules-test-pub', minOdds: 1.01 };
-    await generateCandidatesJob(ctx, { hours: 72, now: L, rules });
-    expect(await publishJob(ctx, { now: new Date(L.getTime() + 60_000), rulesVersion: rules.version })).toBe(1);
+    await generateCandidatesJob(ctx, { sameFootballDay: false, hours: 72, now: L, rules });
+    expect(await publishJob(ctx, { sameFootballDay: false, now: new Date(L.getTime() + 60_000), rulesVersion: rules.version })).toBe(1);
 
     const prev = (await q(`select record_hash from analysis_predictions where fixture_id = 9001 and publish_round = 'PREMATCH'`))[0]!;
     const lu = (await q(`select * from analysis_predictions where fixture_id = 9001 and publish_round = 'LINEUP'`))[0]!;

@@ -13,7 +13,7 @@ import {
   type OutcomeDistribution,
 } from '@fp/analysis';
 import { runJob, type JobContext, type ModelConfig } from '@fp/database';
-import { addHours, stableStringify } from '@fp/shared';
+import { addHours, footballDayHorizon, stableStringify } from '@fp/shared';
 import { ENSEMBLE_VERSION } from './jobs.js';
 
 /**
@@ -22,10 +22,11 @@ import { ENSEMBLE_VERSION } from './jobs.js';
  * decision (SIGNAL / NO_CLEAR_SIGNAL) + all candidates. Nothing is published here.
  * A fixture is re-evaluated when probabilities / gates / phase change, or when odds moved and
  * the last evaluation is older than `minGapHours` (keeps storage small on the free tier).
+ * The window stops at the end of the current football day (`sameFootballDay: false` lifts that, for tests).
  */
 export function generateCandidatesJob(
   ctx: JobContext,
-  opts: { hours?: number; now?: Date; rules?: DecisionRules; shadowRules?: DecisionRules | null; minGapHours?: number } = {},
+  opts: { hours?: number; now?: Date; rules?: DecisionRules; shadowRules?: DecisionRules | null; minGapHours?: number; sameFootballDay?: boolean } = {},
 ) {
   const leagues = ctx.env.TRACKED_LEAGUES;
   const hours = opts.hours ?? 36;
@@ -34,7 +35,7 @@ export function generateCandidatesJob(
   const shadowRules = opts.shadowRules === undefined ? SHADOW_RULES : opts.shadowRules;
   return runJob(ctx, 'candidates', { leagues, hours, rules: rules.version }, async () => {
     const now = opts.now ?? new Date();
-    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, hours).toISOString());
+    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.sameFootballDay === false ? addHours(now, hours) : footballDayHorizon(now, hours)).toISOString());
     const configs = new Map<number, Partial<Record<string, ModelConfig>>>();
     const report: Array<Record<string, unknown>> = [];
     let written = 0;

@@ -27,7 +27,7 @@ import {
 } from '@fp/ai';
 import { DEFAULT_RULES, hybridMarket, hybridOptions, type HybridSide } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
-import { addHours } from '@fp/shared';
+import { footballDayHorizon } from '@fp/shared';
 import { injuriesCoverage, withOpponentRanksAsOf } from './hybrid-input-v2.js';
 import { decisionFresh, dueRound, type PickEngine } from './publish-job.js';
 
@@ -61,7 +61,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
     }
     const now = opts.now ?? new Date();
     const leagues = ctx.env.TRACKED_LEAGUES;
-    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), addHours(now, 24).toISOString());
+    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), footballDayHorizon(now, 24).toISOString());
     const engineVersion = engine === 'hybrid' ? HYBRID_ENGINE_VERSION : DEFAULT_RULES.version;
     const report: Array<Record<string, unknown>> = [];
     let stored = 0;
