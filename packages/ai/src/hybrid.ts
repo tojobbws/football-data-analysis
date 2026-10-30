@@ -14,7 +14,9 @@ import { BANNED_WORDS, allowedNumbers, inventedNumbers } from './guards.js';
 export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 // v1.1 (2026-10-27): the 14-day window is a value in the input (the AI quoted it and the number guard refused it)
 // v1.2 (2026-10-30): each team carries next_match, its next scheduled fixture in a tracked competition (rotation context)
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.2';
+// v1.3 (2026-10-30): input v2 on: each opponent's table position as of its match date (null for a cup or split league),
+//   and whether the league reports injuries at all (docs/research/hybrid-input-audit-2026-10-29.md, gaps G1 and G2)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.3';
 /** The pick decision matters more than prose: Sonnet by default, HYBRID_AI_MODEL overrides it. */
 export const HYBRID_AI_MODEL = 'claude-sonnet-5-5';
 /** Answers that fail validation are asked again this many times in total before the decision fails safely. */
@@ -167,6 +169,10 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   if (recentAway.length < 10) missing.push(`${fx.away}: ${recentAway.length} of 10 recent matches`);
   const noXg = [...recentHome, ...recentAway].filter((x) => x.xgFor === null).length;
   if (noXg) missing.push(`no xG for ${noXg} recent matches`);
+  if (src.opponentRankBasis === 'as_of_results') {
+    const noRank = [...recentHome, ...recentAway].filter((x) => x.opponentRank === null).length;
+    if (noRank) missing.push(`no opponent table position for ${noRank} recent matches (a cup, a split league, or the opponent had not played yet)`);
+  }
   if (src.nextMatch) {
     if (!src.nextMatch.home) missing.push(`${fx.home}: no next fixture in the competitions we track`);
     if (!src.nextMatch.away) missing.push(`${fx.away}: no next fixture in the competitions we track`);

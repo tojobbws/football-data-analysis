@@ -165,6 +165,11 @@ describe('hybridJob', () => {
     expect(row!.input.away_team.next_match).toBeNull();
     expect(row!.input.data_quality.missing).toContain('Away FC: no next fixture in the competitions we track');
     expect(row!.input.data_quality.next_match_scope).toContain('competitions we track only');
+    // input v2 is on in production: the league reports no injuries here, and no opponent position exists for a league without a type
+    expect(row!.input.data_quality).toMatchObject({ injuries_coverage: 'unavailable_for_league', opponent_rank_basis: 'as_of_results' });
+    expect(row!.input.data_quality.missing.some((x: string) => x.includes('no injury data'))).toBe(true);
+    expect(row!.input.data_quality.missing.some((x: string) => x.startsWith('no opponent table position for'))).toBe(true);
+    expect(row!.input.home_team.recent_matches.every((m: { opponent_table_position: string | null }) => m.opponent_table_position === null)).toBe(true);
     expect(row!.input_hash).toMatch(/^[0-9a-f]{64}$/);
 
     // shadow mode: the rules engine still owns publishing (no rules run here, so nothing at all)

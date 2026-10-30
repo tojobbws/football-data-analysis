@@ -80,7 +80,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
       const existing = await ctx.repo.latestHybridDecision(f.id, round, HYBRID_ENGINE_VERSION);
       if (existing && !(await decisionFresh(ctx, f.id, round, existing.decidedAt, now))) continue;
 
-      const { header, input, inputHash, options, legacy } = await collectHybridInput(ctx, f, round, now);
+      const { header, input, inputHash, options, legacy } = await collectHybridInput(ctx, f, round, now, { inputV2: true });
       const base = { fixture_id: f.id, publish_round: round, engine_mode: engine, engine_version: HYBRID_ENGINE_VERSION, prompt_version: HYBRID_PROMPT_VERSION, input, input_hash: inputHash, legacy };
       const match = `${header.home} vs ${header.away} (${round})`;
 

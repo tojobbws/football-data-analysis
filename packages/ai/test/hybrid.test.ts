@@ -164,7 +164,7 @@ describe('input v2 flags (audit gaps G1, G2): off by default, never change the v
   });
 });
 
-describe('next_match (prompt hybrid-ai-v1.2): the next fixture of each team, computed from stored kickoff times', () => {
+describe('next_match (since prompt hybrid-ai-v1.2): the next fixture of each team, computed from stored kickoff times', () => {
   const next = { kickoffAt: '2026-10-27T19:45:00.000Z', competition: 'UEFA Champions League', venue: 'AWAY' as const };
   type Built = { home_team: { next_match?: Record<string, unknown> | null }; away_team: { next_match?: Record<string, unknown> | null }; data_quality: { missing: string[]; next_match_scope?: string } };
 
@@ -195,8 +195,26 @@ describe('next_match (prompt hybrid-ai-v1.2): the next fixture of each team, com
     expect(validateHybridOutput(quote, input, options).ok).toBe(false); // without the field, 3.2 would be an invented number
   });
 
-  it('names the field in the system prompt and bumps the prompt version', () => {
+  it('names the field in the system prompt and the prompt version is v1.3 (input v2 on)', () => {
     expect(HYBRID_SYSTEM_PROMPT).toContain('next_match');
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.2');
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.3');
+  });
+});
+
+describe('opponent positions as of the match date (input v2): what the AI is told when some are missing', () => {
+  type Built = { data_quality: { missing: string[] }; home_team: { recent_matches: Array<{ opponent_table_position: string | null }> } };
+
+  it('counts the recent matches without an opponent position (cup, split league) in data_quality.missing', () => {
+    const recent = { home: Array.from({ length: 10 }, (_, i) => match(i, i < 3 ? { opponentRank: null, opponentTableSize: null } : {})), away: Array.from({ length: 10 }, (_, i) => match(i)) };
+    const b = buildHybridInput({ ...src, recent, opponentRankBasis: 'as_of_results' }) as Built;
+    expect(b.data_quality.missing.some((x) => x.startsWith('no opponent table position for 3 recent matches'))).toBe(true);
+    expect(b.home_team.recent_matches.filter((m) => m.opponent_table_position === null).length).toBe(3);
+  });
+
+  it('says nothing when every opponent has a position, and nothing in the v1 input', () => {
+    const full = { home: Array.from({ length: 10 }, (_, i) => match(i)), away: Array.from({ length: 10 }, (_, i) => match(i)) };
+    expect((buildHybridInput({ ...src, recent: full, opponentRankBasis: 'as_of_results' }) as Built).data_quality.missing.some((x) => x.includes('opponent table position'))).toBe(false);
+    const holes = { home: Array.from({ length: 10 }, (_, i) => match(i, { opponentRank: null, opponentTableSize: null })), away: full.away };
+    expect((buildHybridInput({ ...src, recent: holes }) as Built).data_quality.missing.some((x) => x.includes('opponent table position'))).toBe(false); // v1: no basis given, no note
   });
 });
