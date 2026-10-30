@@ -187,6 +187,8 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
         injuriesCoverage: await injuriesCoverage(ctx, f.leagueId, now),
       }
     : null;
+  // each team's next fixture after this one (a stored schedule, no API call); today's and later matches only, nothing is re-derived for past decisions
+  const [nextHome, nextAway] = await Promise.all([ctx.repo.nextFixtureOfTeam(f.homeTeamId, f.kickoffAt), ctx.repo.nextFixtureOfTeam(f.awayTeamId, f.kickoffAt)]);
   const side = (teamId: unknown) => (Number(teamId) === f.homeTeamId ? 'HOME' : Number(teamId) === f.awayTeamId ? 'AWAY' : null);
   const starters = (s: 'HOME' | 'AWAY') => lineupPlayers.filter((p) => side(p.team_id) === s && p.is_starter).map((p) => String(p.player_name));
   const standing = (teamId: number) => {
@@ -207,6 +209,7 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     recent: { home: v2 ? v2.recentHome : recentHome, away: v2 ? v2.recentAway : recentAway },
     standings: { home: standing(f.homeTeamId), away: standing(f.awayTeamId) },
     injuries: injuries.map((i) => ({ team: side(i.team_id), player: i.player_name == null ? null : String(i.player_name), type: i.type == null ? null : String(i.type), reason: i.reason == null ? null : String(i.reason) })),
+    nextMatch: { home: nextHome, away: nextAway },
     ...(v2 ? { injuriesCoverage: v2.injuriesCoverage, opponentRankBasis: 'as_of_results' as const } : {}),
     lineup: starters('HOME').length >= 11 && starters('AWAY').length >= 11 ? { home: starters('HOME'), away: starters('AWAY') } : null,
     market,

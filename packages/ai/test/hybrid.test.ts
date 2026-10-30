@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hybridMarket, hybridOptions, type OddsQuote } from '@fp/analysis';
-import { allowedNumbers, buildHybridInput, validateHybridOutput, type HybridSource, type TeamMatch } from '../src/index.js';
+import { allowedNumbers, buildHybridInput, HYBRID_PROMPT_VERSION, HYBRID_SYSTEM_PROMPT, validateHybridOutput, type HybridSource, type TeamMatch } from '../src/index.js';
 
 const NOW = new Date('2026-10-24T08:00:00Z');
 const quotes: OddsQuote[] = [1, 2, 3].flatMap((b) => [
@@ -161,5 +161,42 @@ describe('input v2 flags (audit gaps G1, G2): off by default, never change the v
   it('still accepts an answer that was valid on the v1 input (the new block adds no number to quote or trip over)', () => {
     const v2 = buildHybridInput({ ...src, injuriesCoverage: 'unavailable_for_league', opponentRankBasis: 'as_of_results' });
     expect(validateHybridOutput(answer(), v2, options).ok).toBe(validateHybridOutput(answer(), input, options).ok);
+  });
+});
+
+describe('next_match (prompt hybrid-ai-v1.2): the next fixture of each team, computed from stored kickoff times', () => {
+  const next = { kickoffAt: '2026-10-27T19:45:00.000Z', competition: 'UEFA Champions League', venue: 'AWAY' as const };
+  type Built = { home_team: { next_match?: Record<string, unknown> | null }; away_team: { next_match?: Record<string, unknown> | null }; data_quality: { missing: string[]; next_match_scope?: string } };
+
+  it('adds no next_match key at all when the schedule was not looked up', () => {
+    const b = buildHybridInput({ ...src }) as Built;
+    expect(b.home_team).not.toHaveProperty('next_match');
+    expect(b.data_quality).not.toHaveProperty('next_match_scope');
+  });
+
+  it('gives the days after this match (computed, 1 decimal), the date, competition and venue', () => {
+    const b = buildHybridInput({ ...src, nextMatch: { home: next, away: null } }) as Built;
+    // this match is 2026-10-24 14:00, the next one 2026-10-27 19:45: 3 days 5 h 45 min = 3.2 days
+    expect(b.home_team.next_match).toEqual({ days_after_this_match: 3.2, date_utc: '2026-10-27', competition: 'UEFA Champions League', venue: 'AWAY' });
+  });
+
+  it('says so when a team has no next fixture in the tracked competitions, and that it does not mean none exists', () => {
+    const b = buildHybridInput({ ...src, nextMatch: { home: next, away: null } }) as Built;
+    expect(b.away_team.next_match).toBeNull();
+    expect(b.data_quality.missing).toContain('Everton: no next fixture in the competitions we track');
+    expect(b.data_quality.missing.some((x) => x.startsWith('Arsenal: no next fixture'))).toBe(false);
+    expect(b.data_quality.next_match_scope).toContain('does not mean the team has no fixture');
+  });
+
+  it('keeps the quoted day count inside the numbers the AI may quote (the number guard)', () => {
+    const withNext = buildHybridInput({ ...src, nextMatch: { home: next, away: next } });
+    const quote = answer({ supporting_evidence: ['Arsenal มีเกมถัดไปอีก 3.2 วันหลังเกมนี้'] });
+    expect(validateHybridOutput(quote, withNext, options).ok).toBe(true);
+    expect(validateHybridOutput(quote, input, options).ok).toBe(false); // without the field, 3.2 would be an invented number
+  });
+
+  it('names the field in the system prompt and bumps the prompt version', () => {
+    expect(HYBRID_SYSTEM_PROMPT).toContain('next_match');
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.2');
   });
 });

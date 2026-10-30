@@ -13,7 +13,8 @@ import { BANNED_WORDS, allowedNumbers, inventedNumbers } from './guards.js';
 
 export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 // v1.1 (2026-10-27): the 14-day window is a value in the input (the AI quoted it and the number guard refused it)
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.1';
+// v1.2 (2026-10-30): each team carries next_match, its next scheduled fixture in a tracked competition (rotation context)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.2';
 /** The pick decision matters more than prose: Sonnet by default, HYBRID_AI_MODEL overrides it. */
 export const HYBRID_AI_MODEL = 'claude-sonnet-5-5';
 /** Answers that fail validation are asked again this many times in total before the decision fails safely. */
@@ -48,6 +49,13 @@ export interface TeamStanding {
   goalDiff: number | null;
 }
 
+/** A team's next scheduled fixture after the analysed one, in the competitions we track. */
+export interface NextMatch {
+  kickoffAt: string;
+  competition: string;
+  venue: 'HOME' | 'AWAY';
+}
+
 export interface HybridSource {
   fixture: { id: number; home: string; away: string; league: string; kickoffAt: Date };
   predictionAt: Date;
@@ -58,6 +66,11 @@ export interface HybridSource {
   injuries: Array<{ team: 'HOME' | 'AWAY' | null; player: string | null; type: string | null; reason: string | null }>;
   lineup: { home: string[]; away: string[] } | null;
   market: HybridMarket;
+  /**
+   * Each team's next fixture after this one (null = none found in the tracked competitions). Undefined = not looked up,
+   * the input then has no next_match at all.
+   */
+  nextMatch?: { home: NextMatch | null; away: NextMatch | null };
   /**
    * Input v2 only (undefined = v1, the input is then unchanged). Whether the API reports injuries for this league at all:
    * an empty `injuries` list is only "nobody is out" when it does.
@@ -97,7 +110,7 @@ function summary(ms: readonly TeamMatch[]) {
   };
 }
 
-function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, at: Date) {
+function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, at: Date, next?: { match: NextMatch | null; from: Date }) {
   const last = ms[0];
   const days = (iso: string) => (at.getTime() - Date.parse(iso)) / 86_400_000;
   return {
@@ -121,6 +134,19 @@ function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', st
     // the window is a value, not only part of a key: the AI may then quote it (number guard)
     recent_congestion: { days: 14, matches: ms.filter((m) => days(m.kickoffAt) <= 14).length },
     league_table: standing,
+    ...(next
+      ? {
+          next_match: next.match
+            ? {
+                // computed here from the stored kickoff times, never by the AI
+                days_after_this_match: r((Date.parse(next.match.kickoffAt) - next.from.getTime()) / 86_400_000, 1),
+                date_utc: next.match.kickoffAt.slice(0, 10),
+                competition: next.match.competition,
+                venue: next.match.venue,
+              }
+            : null,
+        }
+      : {}),
   };
 }
 
@@ -141,6 +167,10 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   if (recentAway.length < 10) missing.push(`${fx.away}: ${recentAway.length} of 10 recent matches`);
   const noXg = [...recentHome, ...recentAway].filter((x) => x.xgFor === null).length;
   if (noXg) missing.push(`no xG for ${noXg} recent matches`);
+  if (src.nextMatch) {
+    if (!src.nextMatch.home) missing.push(`${fx.home}: no next fixture in the competitions we track`);
+    if (!src.nextMatch.away) missing.push(`${fx.away}: no next fixture in the competitions we track`);
+  }
   if (!src.lineup) missing.push('lineups not confirmed yet');
   if (!src.standings.home || !src.standings.away) missing.push('league table not available for both teams');
   if (src.injuriesCoverage === 'unavailable_for_league') missing.push('this league provides no injury data: an empty injuries list does not mean nobody is out');
@@ -150,8 +180,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   return {
     match: { home: fx.home, away: fx.away, competition: fx.league, kickoff_utc: fx.kickoffAt.toISOString(), publish_round: src.publishRound },
     prediction_timestamp_utc: src.predictionAt.toISOString(),
-    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt),
-    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt),
+    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }),
+    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }),
     injuries: src.injuries,
     confirmed_lineup: src.lineup,
     market: {
@@ -184,6 +214,7 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
       away_recent_matches: recentAway.length,
       lineups_confirmed: Boolean(src.lineup),
       injuries_reported: src.injuries.length,
+      ...(src.nextMatch ? { next_match_scope: 'competitions we track only: a missing next_match does not mean the team has no fixture' } : {}),
       ...(src.injuriesCoverage ? { injuries_coverage: src.injuriesCoverage } : {}),
       ...(src.opponentRankBasis ? { opponent_rank_basis: src.opponentRankBasis } : {}),
       missing,
@@ -194,6 +225,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
 // ---------------------------------------------------------------- prompt and schema
 
 export const HYBRID_SYSTEM_PROMPT = `You are a football match analyst for a Thai football analysis site. Analyze the match using only the supplied, verified pre-match data (JSON). Review each team's recent form (up to 10 matches, the last 5 separately), home/away performance, opponent quality (table position of each opponent), scoring patterns (goals, xG, shots on target), rest schedule, available player information (injuries, confirmed lineups), and the current main market lines.
+
+Each team may carry next_match: its next scheduled fixture after this one (days after this match, competition and venue), from the competitions we track only. A near fixture in a bigger competition can point to squad rotation or fatigue, but treat it as weak context: never state that a team will rotate or rest players, and a missing next_match only means we track no such fixture, not that none exists.
 
 Compare the available choices: Over, Under, Asian Handicap Favorite, and Asian Handicap Underdog. Only the options listed under market.asian_handicap.options and market.over_under.options exist; a market with no options cannot be chosen.
 

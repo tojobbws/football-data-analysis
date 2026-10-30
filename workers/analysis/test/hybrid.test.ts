@@ -107,6 +107,8 @@ beforeAll(async () => {
   await q(`insert into fixture_statistics (fixture_id, team_id, type, value_num) values (4001, 301, 'expected_goals', 1.7), (4001, 998, 'expected_goals', 0.6), (4001, 301, 'shots_on_goal', 7), (4001, 998, 'shots_on_goal', 2)`);
   // a match that has not been played yet must never reach the input
   await q(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values (4999, 39, 2026, $1, 998, 301, 'NS')`, [new Date(Date.now() + 30 * 3_600_000).toISOString()]);
+  // a postponed match of Good FC that falls before the real next one: it is not a next fixture
+  await q(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values (4950, 39, 2026, $1, 301, 998, 'PST')`, [new Date(Date.now() + 20 * 3_600_000).toISOString()]);
   for (const f of [301, 303, 304, 305]) await odds(f);
 }, 60_000);
 
@@ -157,6 +159,12 @@ describe('hybridJob', () => {
     expect(row!.input.home_team.recent_matches.every((m: { date_utc: string }) => m.date_utc < new Date().toISOString().slice(0, 10))).toBe(true);
     expect(row!.input.home_team.recent_matches[0]).toMatchObject({ xg_for: 1.7, shots_on_target_for: 7, opponent: 'Other FC' });
     expect(row!.input.market.asian_handicap).toMatchObject({ status: 'OK', home_line: -0.75, favourite: 'Good FC', bookmakers: 3 });
+    // next_match: Good FC's next stored fixture after this one is 4999 (not the postponed 4950); Away FC has none in the data
+    expect(row!.input.home_team.next_match).toMatchObject({ competition: 'Premier League', venue: 'AWAY' });
+    expect(row!.input.home_team.next_match.days_after_this_match).toBeCloseTo(0.8, 1);
+    expect(row!.input.away_team.next_match).toBeNull();
+    expect(row!.input.data_quality.missing).toContain('Away FC: no next fixture in the competitions we track');
+    expect(row!.input.data_quality.next_match_scope).toContain('competitions we track only');
     expect(row!.input_hash).toMatch(/^[0-9a-f]{64}$/);
 
     // shadow mode: the rules engine still owns publishing (no rules run here, so nothing at all)

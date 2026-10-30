@@ -1093,6 +1093,22 @@ export class Repository {
     });
   }
 
+  /**
+   * The team's next scheduled fixture after a date (not postponed, cancelled or played), in the competitions we sync.
+   * Null when none is stored: a cup we do not track is invisible here.
+   */
+  async nextFixtureOfTeam(teamId: number, after: Date) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.kickoff_at, l.name as competition, (f.home_team_id = $1) as is_home
+         from fixtures f join leagues l on l.id = f.league_id
+        where (f.home_team_id = $1 or f.away_team_id = $1) and f.kickoff_at > $2 and f.status_short in ('NS','TBD')
+        order by f.kickoff_at limit 1`,
+      [teamId, after.toISOString()],
+    );
+    const x = res.rows[0];
+    return x ? { kickoffAt: new Date(x.kickoff_at as string).toISOString(), competition: String(x.competition), venue: (x.is_home ? 'HOME' : 'AWAY') as 'HOME' | 'AWAY' } : null;
+  }
+
   /** Finished results of one league season before a date: the raw input for rebuilding a table as it stood then. */
   async seasonResults(leagueId: number, season: number, before: Date) {
     const res = await this.db.query<Record<string, unknown>>(
