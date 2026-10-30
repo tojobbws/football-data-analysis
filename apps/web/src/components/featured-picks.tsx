@@ -35,6 +35,14 @@ export function finishedWatch(matches: MatchRow[], ranks: Map<number, number>): 
   return matches.filter((m) => FINISHED.includes(m.status_short) && m.compass?.kind === 'SIGNAL' && (!ranks.size || ranks.has(m.id))).map((m) => m.slug);
 }
 
+/**
+ * Slugs that get the gold frame: the day's ranked list that has not started yet, plus the finished ones. No list yet
+ * means no frame on a match still to play. One rule for the home page and /today.
+ */
+export function watchSlugs(matches: MatchRow[], ranks: Map<number, number>): Set<string> {
+  return new Set([...featuredList(matches, ranks).map((f) => f.slug), ...finishedWatch(matches, ranks)]);
+}
+
 /** The day's list (เข็มทิศเกมประจำวัน, ADR 0006): the matches holding a slot, best first. Renders nothing when the list is empty. */
 export function FeaturedPicks({ matches, ranks }: { matches: MatchRow[]; ranks: Map<number, number> }) {
   const listed = matches

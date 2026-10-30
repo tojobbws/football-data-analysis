@@ -104,7 +104,7 @@ export function MatchItem({ m, compact, note, watched = false }: { m: MatchRow; 
               watched && finished ? (
                 <span title={`🧭 ${pick}`}>
                   <span className="sr-only">🧭 เข็มทิศเกม คู่น่าจับตา {pick}: </span>
-                  <ResultMark status={c.status} />
+                  <ResultMark status={c.status} compact />
                 </span>
               ) : c.status !== 'PENDING' ? (
                 <StatusBadge status={c.status} />

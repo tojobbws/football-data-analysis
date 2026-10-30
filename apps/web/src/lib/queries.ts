@@ -1,4 +1,5 @@
 import 'server-only';
+import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 import { DEFAULT_RULES, readMainLines, summarizeBenchmarkDays, type BenchmarkDay, type OutcomeDistribution } from '@fp/analysis';
 import { buildRegistry, type LeagueImportanceRow, type PopularityRegistry, type RivalryRow, type TeamPopularityRow } from '@fp/shared/popularity';
@@ -225,35 +226,6 @@ export async function matchDayCounts(fromDate: string, days: number): Promise<Ma
     out.set(d, (out.get(d) ?? 0) + 1);
   }
   return out;
-}
-
-/** Upcoming 🧭 signals (published, not started), soonest first. */
-export async function upcomingSignals(limit = 6) {
-  const { data, error } = await db()
-    .from('published_analysis')
-    .select('public_id, fixture_slug, kickoff_at, published_at, kind, league_name, home_team, away_team, market, selection, line, model_probability, market_probability, odds_at_publish, signal_strength, publish_round')
-    .gt('kickoff_at', new Date().toISOString())
-    .order('kickoff_at')
-    .order('published_at')
-    .limit(200);
-  if (error) fail('published_analysis', error);
-  // one card per match from its latest round, as on the match page: a later round replaces an earlier
-  // pick, also when the later round is fog (rows are in published order within a match)
-  const seen = new Map<string, NonNullable<typeof data>[number]>();
-  for (const r of data ?? []) seen.set(r.fixture_slug, r);
-  const rows = [...seen.values()].filter((r) => r.kind === 'SIGNAL').slice(0, limit);
-  // team logos for the card (the published view carries names only)
-  const logos = new Map<string, { home: string | null; away: string | null }>();
-  if (rows.length) {
-    const fx = await db()
-      .from('fixtures')
-      .select('slug, home:teams!fixtures_home_team_id_fkey(logo_url), away:teams!fixtures_away_team_id_fkey(logo_url)')
-      .in('slug', rows.map((r) => r.fixture_slug));
-    if (fx.error) fail('fixtures', fx.error);
-    for (const f of (fx.data ?? []) as unknown as Array<{ slug: string; home: { logo_url: string | null } | null; away: { logo_url: string | null } | null }>)
-      logos.set(f.slug, { home: f.home?.logo_url ?? null, away: f.away?.logo_url ?? null });
-  }
-  return rows.map((r) => ({ ...r, home_logo: logos.get(r.fixture_slug)?.home ?? null, away_logo: logos.get(r.fixture_slug)?.away ?? null }));
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +605,129 @@ export async function performance() {
     }>,
     leagueNames: new Map((leagues.data ?? []).map((l) => [String(l.id), String(l.name)])),
   };
+}
+
+export interface WatchedPick {
+  rank: number;
+  slug: string;
+  kickoff_at: string;
+  status_short: string;
+  goals_home: number | null;
+  goals_away: number | null;
+  home: Team;
+  away: Team;
+  market: string;
+  selection: string;
+  line: number | null;
+  /** decimal odds when the pick was published (null when not stored) */
+  odds: number | null;
+  status: Status;
+}
+
+/**
+ * คู่น่าจับตา of `days` football days from `from`, by the rule of the gold frame on the scoreboard (see watchSlugs):
+ * the day's ranked list when it has one, otherwise only the finished picks. Each carries the pick of its latest round and its result.
+ *
+ * Narrowed step by step so a week does not drag every fixture and every round through the wire: bare fixture rows first,
+ * the gold-frame candidates picked from them, their picks read in chunks (one request can hold at most 1000 rows),
+ * and the team and league joins fetched only for the picks that are shown.
+ */
+async function loadWatchedPicks(from: string, days: number): Promise<Map<string, WatchedPick[]>> {
+  const dates = Array.from({ length: days }, (_, i) => addDaysStr(from, i));
+  const out = new Map<string, WatchedPick[]>(dates.map((d) => [d, []]));
+  const sb = db();
+  const first = dates[0]!;
+  const last = dates[days - 1]!;
+  const [fx, listed] = await Promise.all([
+    allRows<{ id: number; kickoff_at: string; status_short: string }>((a, b) =>
+      sb.from('fixtures').select('id, kickoff_at, status_short').in('league_id', webEnv().leagues).gte('kickoff_at', footballDayRange(first).from).lt('kickoff_at', footballDayRange(last).to).order('id').range(a, b),
+    ),
+    webEnv().featuredList
+      ? sb.from('featured_selections').select('football_date, fixture_id, rank').eq('version', 'featured-v2').not('rank', 'is', null).gte('football_date', first).lte('football_date', last)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
+  ]);
+  if (fx.error) fail('fixtures', fx.error);
+  if (listed.error) fail('featured_selections', listed.error);
+  const ranks = new Map<number, number>();
+  const daysWithList = new Set<string>();
+  for (const r of listed.data ?? []) {
+    ranks.set(Number(r.fixture_id), Number(r.rank));
+    daysWithList.add(String(r.football_date));
+  }
+  // the gold frame: a day with a list shows its slots; a day without one only keeps its finished picks
+  const dayOf = new Map<number, string>();
+  const candidates: number[] = [];
+  for (const f of fx.data ?? []) {
+    const day = footballDate(new Date(f.kickoff_at));
+    if (daysWithList.has(day) ? !ranks.has(f.id) : !FINISHED.includes(f.status_short)) continue;
+    dayOf.set(f.id, day);
+    candidates.push(f.id);
+  }
+  if (!candidates.length) return out;
+
+  // latest round of each candidate (published order, the last one wins), only the columns this view uses
+  type Pick = { fixture_id: number; kind: string; market: string | null; selection: string | null; line: number | null; odds_at_publish: number | null; status: Status };
+  const chunks: number[][] = [];
+  for (let i = 0; i < candidates.length; i += 200) chunks.push(candidates.slice(i, i + 200));
+  const rounds = await Promise.all(
+    chunks.map((ids) =>
+      allRows<Pick>((a, b) =>
+        sb.from('analysis_predictions').select('fixture_id, kind, market, selection, line, odds_at_publish, status').in('fixture_id', ids).order('published_at').order('id').range(a, b),
+      ),
+    ),
+  );
+  const latest = new Map<number, Pick>();
+  for (const r of rounds) {
+    if (r.error) fail('analysis_predictions', r.error);
+    for (const p of r.data) latest.set(Number(p.fixture_id), p);
+  }
+  const shown = [...latest.values()].filter((p) => p.kind === 'SIGNAL' && p.market && p.selection);
+  if (!shown.length) return out;
+
+  const detail = await allRows<Omit<MatchRow, 'compass'>>((a, b) => sb.from('fixtures').select(MATCH_SELECT).in('id', shown.map((p) => Number(p.fixture_id))).order('id').range(a, b));
+  if (detail.error) fail('fixtures', detail.error);
+  const fixtures = new Map(detail.data.map((f) => [f.id, f]));
+  for (const c of shown) {
+    const f = fixtures.get(Number(c.fixture_id));
+    if (!f) continue;
+    out.get(dayOf.get(f.id)!)?.push({
+      rank: ranks.get(f.id) ?? 0,
+      slug: f.slug,
+      kickoff_at: f.kickoff_at,
+      status_short: f.status_short,
+      goals_home: f.goals_home,
+      goals_away: f.goals_away,
+      home: f.home,
+      away: f.away,
+      market: c.market!,
+      selection: c.selection!,
+      line: c.line,
+      odds: c.odds_at_publish == null ? null : Number(c.odds_at_publish),
+      status: c.status,
+    });
+  }
+  for (const list of out.values()) list.sort((a, b) => a.rank - b.rank || a.kickoff_at.localeCompare(b.kickoff_at));
+  return out;
+}
+
+/** How long a read of the /performance calendar stays fresh: a week that is still moving is read again each minute. */
+const WATCHED_FRESH_SECONDS = 60;
+/** A day that ended two or more football days ago only changes if a late settlement lands, so an hour is plenty. */
+const WATCHED_PAST_SECONDS = 3600;
+
+/**
+ * `loadWatchedPicks` behind Next's data cache (a Map cannot be cached, so it travels as entries). The cache is shared by
+ * every visitor; on Cloudflare it only persists once OpenNext has an incremental cache (R2 or KV) configured,
+ * until then each request simply reads the database as before.
+ */
+export async function watchedPicks(from: string, days = 7): Promise<Map<string, WatchedPick[]>> {
+  const lastDay = addDaysStr(from, days - 1);
+  const settled = lastDay <= addDaysStr(footballDate(), -2);
+  const entries = await unstable_cache(async () => [...(await loadWatchedPicks(from, days)).entries()], ['watched-picks', from, String(days)], {
+    revalidate: settled ? WATCHED_PAST_SECONDS : WATCHED_FRESH_SECONDS,
+    tags: ['watched-picks'],
+  })();
+  return new Map(entries);
 }
 
 // ---------------------------------------------------------------------------

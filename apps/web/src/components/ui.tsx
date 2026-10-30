@@ -14,11 +14,25 @@ export function StatusBadge({ status, admin = false }: { status: Status; admin?:
   );
 }
 
+/** Badge artwork (all 240px tall) that stands in for the text label of a settled result. */
+const RESULT_ART: Partial<Record<Status, { src: string; width: number }>> = {
+  WIN: { src: '/brand/result-win.webp', width: 209 },
+  HALF_WIN: { src: '/brand/result-half-win.webp', width: 212 },
+  LOSS: { src: '/brand/result-loss.webp', width: 207 },
+  HALF_LOSS: { src: '/brand/result-half-loss.webp', width: 213 },
+  PUSH: { src: '/brand/result-push.webp', width: 241 },
+};
+
 /** ถูก/ผิด on a finished คู่น่าจับตา: a tick or a cross with the outcome word (รอผล until it is settled). */
-export function ResultMark({ status }: { status: Status }) {
+export function ResultMark({ status, compact = false }: { status: Status; compact?: boolean }) {
   const s = STATUS[status] ?? STATUS.PENDING;
   const right = status === 'WIN' || status === 'HALF_WIN';
   const wrong = status === 'LOSS' || status === 'HALF_LOSS';
+  const art = RESULT_ART[status];
+  if (art) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={art.src} width={art.width} height={240} alt={s.label} loading="lazy" decoding="async" className={`block w-auto shrink-0 select-none ${compact ? 'h-8' : 'h-10'}`} draggable={false} />;
+  }
   const tone = right ? 'bg-emerald-600 text-white' : wrong ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-700';
   return (
     <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full py-0.5 pl-1 pr-2 text-xs font-bold ${tone}`}>
