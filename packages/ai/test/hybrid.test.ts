@@ -195,9 +195,10 @@ describe('next_match (since prompt hybrid-ai-v1.2): the next fixture of each tea
     expect(validateHybridOutput(quote, input, options).ok).toBe(false); // without the field, 3.2 would be an invented number
   });
 
-  it('names the field in the system prompt and the prompt version is v1.3 (input v2 on)', () => {
+  it('names the field in the system prompt and the prompt version is v1.4 (no confidence level in the Thai text)', () => {
     expect(HYBRID_SYSTEM_PROMPT).toContain('next_match');
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.3');
+    expect(HYBRID_SYSTEM_PROMPT).toContain('Never state how confident you are');
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.4');
   });
 });
 

@@ -155,6 +155,18 @@ export interface HybridReasonInput {
 const CONFIDENCE_TH: Record<string, string> = { HIGH: 'STRONG (หลักฐานหนักแน่น)', MEDIUM: 'MEDIUM', LOW: 'LEAN (หลักฐานยังบาง)' };
 
 /**
+ * The AI's summary sometimes says how sure it is ("เลือก OVER 2.75 ด้วยความมั่นใจต่ำ เพราะ..."). The level is
+ * stored apart (`confidence`) and stays in admin; on the fan pages it only costs the reader's trust in the pick.
+ */
+export function stripConfidenceWords(s: string): string {
+  return s
+    .replace(/\s*ด้วย(?:ระดับ)?ความ(?:มั่นใจ|เชื่อมั่น)(?:ระดับ|ที่)?(?:ค่อนข้าง)?(?:ต่ำ|ปานกลาง|สูง|น้อย)?/g, '')
+    .replace(/\s*(?:โดย)?มี?ความ(?:มั่นใจ|เชื่อมั่น)(?:ระดับ)?(?:ค่อนข้าง)?(?:ต่ำ|ปานกลาง|สูง|น้อย)/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+/**
  * Thai text of a Hybrid AI decision (ADR 0010). The analysis is the AI's, checked before it was stored; the
  * frame (who decided, which line, the price) is built here from stored values, so a reader can tell it apart
  * from the rules' picks.
@@ -165,7 +177,7 @@ export function buildHybridReason(r: HybridReasonInput): string {
   const lines: string[] = [];
   if (r.kind === 'SIGNAL' && r.label) {
     lines.push(`${BRAND.SIGNAL}: ${r.label} (${when})`);
-    if (r.summaryTh) lines.push(r.summaryTh);
+    if (r.summaryTh) lines.push(stripConfidenceWords(r.summaryTh));
     for (const s of r.supporting.slice(0, 2)) lines.push(`✓ ${s}`);
     for (const s of r.risks.slice(0, 2)) lines.push(`• ${s}`);
     lines.push(`วิเคราะห์โดย Hybrid AI จากฟอร์มล่าสุดและราคาตลาด · เส้นหลักของตลาด${r.nBookmakers && r.odds ? ` · อ้างอิงราคาจาก ${r.nBookmakers} เจ้า (ราคากลาง ${r.odds.toFixed(2)})` : ''}`);

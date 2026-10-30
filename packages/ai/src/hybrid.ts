@@ -16,7 +16,8 @@ export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 // v1.2 (2026-10-30): each team carries next_match, its next scheduled fixture in a tracked competition (rotation context)
 // v1.3 (2026-10-30): input v2 on: each opponent's table position as of its match date (null for a cup or split league),
 //   and whether the league reports injuries at all (docs/research/hybrid-input-audit-2026-10-29.md, gaps G1 and G2)
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.3';
+// v1.4 (2026-10-30): the Thai text no longer states the confidence level (it is the `confidence` field, shown in admin only)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.4';
 /** The pick decision matters more than prose: Sonnet by default, HYBRID_AI_MODEL overrides it. */
 export const HYBRID_AI_MODEL = 'claude-sonnet-5-5';
 /** Answers that fail validation are asked again this many times in total before the decision fails safely. */
@@ -248,6 +249,7 @@ Output rules:
 - market: AH with side FAVORITE or UNDERDOG; OU with side OVER or UNDER; NONE with side NO_PICK.
 - main_line: the chosen option's line exactly as given in its options entry (e.g. 1.25 for an underdog getting +1.25, the total for over/under); null for NO_PICK.
 - confidence: HIGH, MEDIUM or LOW for a pick; NONE for NO_PICK.
+- Never state how confident you are inside a Thai text field (no ด้วยความมั่นใจต่ำ, ความมั่นใจสูง, หลักฐานยังบาง and the like): the confidence level goes only in the confidence field. Say what the evidence is and what the risks are; the reader judges the strength.
 - Write every text field in Thai, short and clear for a football fan. Facts and interpretation stay apart: in evidence lists, state the fact first.
 - Never create a number. You may only repeat numbers that appear in the input (a probability like 0.634 may be written as 63%). If unsure, leave the number out. Do not write dates or scores that are not in the input.
 - This is data analysis, not gambling advice. Never use these words: ทีเด็ด, แทง, แทงบอล, กำไร, ตามคู่นี้, การันตี. Prefer: ข้อมูล, สัญญาณ, ฟอร์ม, ตลาด, ราคา.`;

@@ -1,4 +1,4 @@
-import type { OutcomeDistribution } from '@fp/analysis';
+import { stripConfidenceWords, type OutcomeDistribution } from '@fp/analysis';
 import type { Compass } from '@/lib/queries';
 import { ROUND, STATUS, odds, pct, pickRationale, selectionLabel, toSelection, winCondition } from '@/lib/labels';
 import type { LiveSeed } from '@/lib/live';
@@ -33,7 +33,7 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
     .split('\n')
     .map(plainLine)
     .filter((l) => l && !REPEATS.some((p) => l.startsWith(p)))
-    .map((l) => l.replace('โมเดล Elo', 'อีกโมเดลหนึ่งของเรา'));
+    .map((l) => stripConfidenceWords(l.replace('โมเดล Elo', 'อีกโมเดลหนึ่งของเรา')));
   const isTechnical = (l: string) => TECHNICAL.some((p) => l.startsWith(p));
   const edge = c.model_probability != null && c.market_probability != null ? Math.round((Number(c.model_probability) - Number(c.market_probability)) * 1000) / 10 : null;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReason, prematchCause, prematchDue, publishRoundFor, selectionLabel } from '../src/index.js';
+import { buildReason, prematchCause, prematchDue, publishRoundFor, selectionLabel, stripConfidenceWords } from '../src/index.js';
 
 describe('selectionLabel', () => {
   it('formats every market', () => {
@@ -127,5 +127,13 @@ describe('prematchCause: EARLY published under replaced pick rules (ADR 0009)', 
       buildReason({ kind: 'NO_CLEAR_SIGNAL', round: 'PREMATCH', prematchCause: cause, home: 'Liverpool', away: 'Villarreal', fogReasons: [{ market: 'ASIAN_HANDICAP', reason: 'EDGE_TOO_LARGE' }] });
     expect(text('RULES_CHANGED')).toContain('(ก่อนเตะ หลังปรับกติกาให้วิเคราะห์เฉพาะเส้นหลักของตลาด)');
     expect(text('GATES_RETUNED')).toContain('(ก่อนเตะ หลังปรับโมเดลของลีก)');
+  });
+});
+
+describe('stripConfidenceWords', () => {
+  it('drops the confidence phrase from the AI summary and keeps the rest', () => {
+    expect(stripConfidenceWords('เลือก OVER 2.75 ด้วยความมั่นใจต่ำ เพราะแนวโน้มประตูรวมช่วงหลังหนุนฝั่งสูง')).toBe('เลือก OVER 2.75 เพราะแนวโน้มประตูรวมช่วงหลังหนุนฝั่งสูง');
+    expect(stripConfidenceWords('เลือก UNDER 2.5 ด้วยความมั่นใจระดับปานกลาง เพราะเกมรับแน่น')).toBe('เลือก UNDER 2.5 เพราะเกมรับแน่น');
+    expect(stripConfidenceWords('ทีมเยือนรับได้แน่นกว่าที่ราคาสะท้อน')).toBe('ทีมเยือนรับได้แน่นกว่าที่ราคาสะท้อน');
   });
 });
