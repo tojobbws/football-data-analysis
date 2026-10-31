@@ -1,4 +1,4 @@
-import { stripConfidenceWords, type OutcomeDistribution } from '@fp/analysis';
+import { hybridSummaryFromReason, stripConfidenceWords, type OutcomeDistribution } from '@fp/analysis';
 import type { Compass } from '@/lib/queries';
 import { ROUND, STATUS, odds, pct, pickRationale, selectionLabel, toSelection, winCondition } from '@/lib/labels';
 import type { LiveSeed } from '@/lib/live';
@@ -28,12 +28,15 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
   const rows = sel ? winCondition(sel, home, away) : [];
   const dist = c.model_distribution;
 
+  // a Hybrid AI pick has no pick note (ADR 0010): its own one-sentence reason stands in, and is not repeated in the list below
+  const aiNote = c.note_th ? null : hybridSummaryFromReason(c.reason);
   // the stored reason is hashed and can't change: only how it is shown can
   const reasons = (c.reason ?? '')
     .split('\n')
     .map(plainLine)
     .filter((l) => l && !REPEATS.some((p) => l.startsWith(p)))
-    .map((l) => stripConfidenceWords(l.replace('โมเดล Elo', 'อีกโมเดลหนึ่งของเรา')));
+    .map((l) => stripConfidenceWords(l.replace('โมเดล Elo', 'อีกโมเดลหนึ่งของเรา')))
+    .filter((l) => l !== aiNote);
   const isTechnical = (l: string) => TECHNICAL.some((p) => l.startsWith(p));
   const edge = c.model_probability != null && c.market_probability != null ? Math.round((Number(c.model_probability) - Number(c.market_probability)) * 1000) / 10 : null;
 
@@ -61,8 +64,8 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
       </div>
       <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-zinc-950">{label}</p>
       {/* the note (pick_th) says the same direction as the rationale, with the facts behind it */}
-      {c.note_th ? (
-        <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{c.note_th}</p>
+      {c.note_th || aiNote ? (
+        <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{c.note_th ?? aiNote}</p>
       ) : sel ? (
         <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{pickRationale(sel, home, away)}</p>
       ) : null}

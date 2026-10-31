@@ -167,6 +167,20 @@ export function stripConfidenceWords(s: string): string {
 }
 
 /**
+ * The AI's own one-sentence reason inside a published Hybrid AI `reason` (the line after the headline). The
+ * pick-note job skips Hybrid AI picks (ADR 0010: they carry their own explanation), so the pages show this
+ * sentence where a note would be. null for the rules' picks and for anything that is not in the Hybrid shape.
+ */
+export function hybridSummaryFromReason(reason: string | null | undefined): string | null {
+  if (!reason || !reason.includes('วิเคราะห์โดย Hybrid AI')) return null;
+  const line = reason
+    .split('\n')
+    .slice(1)
+    .find((l) => l.trim() && !/^[✓•]/.test(l) && !l.startsWith('วิเคราะห์โดย') && !l.startsWith('ระดับสัญญาณ'));
+  return line ? stripConfidenceWords(line) : null;
+}
+
+/**
  * Thai text of a Hybrid AI decision (ADR 0010). The analysis is the AI's, checked before it was stored; the
  * frame (who decided, which line, the price) is built here from stored values, so a reader can tell it apart
  * from the rules' picks.

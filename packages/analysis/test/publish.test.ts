@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildReason, prematchCause, prematchDue, publishRoundFor, selectionLabel, stripConfidenceWords } from '../src/index.js';
+import { buildReason, prematchCause, prematchDue, publishRoundFor, selectionLabel, stripConfidenceWords, hybridSummaryFromReason } from '../src/index.js';
 
 describe('selectionLabel', () => {
   it('formats every market', () => {
@@ -135,5 +135,23 @@ describe('stripConfidenceWords', () => {
     expect(stripConfidenceWords('เลือก OVER 2.75 ด้วยความมั่นใจต่ำ เพราะแนวโน้มประตูรวมช่วงหลังหนุนฝั่งสูง')).toBe('เลือก OVER 2.75 เพราะแนวโน้มประตูรวมช่วงหลังหนุนฝั่งสูง');
     expect(stripConfidenceWords('เลือก UNDER 2.5 ด้วยความมั่นใจระดับปานกลาง เพราะเกมรับแน่น')).toBe('เลือก UNDER 2.5 เพราะเกมรับแน่น');
     expect(stripConfidenceWords('ทีมเยือนรับได้แน่นกว่าที่ราคาสะท้อน')).toBe('ทีมเยือนรับได้แน่นกว่าที่ราคาสะท้อน');
+  });
+});
+
+describe('hybridSummaryFromReason', () => {
+  const reason = [
+    '🧭 เข็มทิศเกม: Over 2.75 (ล่วงหน้าก่อนเกม)',
+    'เลือก OVER 2.75 ด้วยความมั่นใจต่ำ เพราะแนวโน้มประตูรวมช่วงหลังและผลงานในบ้านของวาสโกหนุนฝั่งสูง แต่ราคาใกล้สูสี',
+    '✓ ข้อมูลระบุว่าทั้งสองทีมมี 7 จาก 10 นัดล่าสุดที่ประตูรวมเกิน 2.5',
+    '• ฟลาเมงโกมีวันพักเพียง 2 วัน',
+    'วิเคราะห์โดย Hybrid AI จากฟอร์มล่าสุดและราคาตลาด · เส้นหลักของตลาด',
+    'ระดับสัญญาณ: LEAN (หลักฐานยังบาง)',
+  ].join('\n');
+  it('returns the AI sentence without the confidence phrase', () => {
+    expect(hybridSummaryFromReason(reason)).toBe('เลือก OVER 2.75 เพราะแนวโน้มประตูรวมช่วงหลังและผลงานในบ้านของวาสโกหนุนฝั่งสูง แต่ราคาใกล้สูสี');
+  });
+  it('is null for the rules picks and for empty text', () => {
+    expect(hybridSummaryFromReason('🧭 เข็มทิศเกม: Over 2.5\nโมเดลให้โอกาส 60%')).toBeNull();
+    expect(hybridSummaryFromReason(null)).toBeNull();
   });
 });
