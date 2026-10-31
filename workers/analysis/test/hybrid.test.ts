@@ -130,14 +130,14 @@ const answers = {
 describe('hybridJob', () => {
   it('does nothing while the engine is legacy', async () => {
     const d = fakeDecider(answers);
-    expect(await hybridJob(ctx, { engine: 'legacy', decider: d })).toBe(0);
+    expect(await hybridJob(ctx, { sameFootballDay: false, engine: 'legacy', decider: d })).toBe(0);
     expect(d.calls).toEqual([]);
     expect(await count('select count(*) n from hybrid_decisions')).toBe(0);
   });
 
   it('shadow: stores every decision as the AI saw and answered it, and publishes nothing from it', async () => {
     const d = fakeDecider(answers);
-    expect(await hybridJob(ctx, { engine: 'shadow', decider: d })).toBe(5);
+    expect(await hybridJob(ctx, { sameFootballDay: false, engine: 'shadow', decider: d })).toBe(5);
     // no market for 302: no AI call; 303 asked twice
     expect(d.calls.sort()).toEqual(['Down FC', 'Fog FC', 'Good FC', 'Invalid FC', 'Invalid FC']);
     const rows = await q<{ fixture_id: string; status: string; side: string | null; selection: string | null; line: string | null; odds: string | null; attempts: number; engine_mode: string; violations: string[] }>(
@@ -173,20 +173,20 @@ describe('hybridJob', () => {
     expect(row!.input_hash).toMatch(/^[0-9a-f]{64}$/);
 
     // shadow mode: the rules engine still owns publishing (no rules run here, so nothing at all)
-    await publishJob(ctx, { engine: 'shadow' });
+    await publishJob(ctx, { sameFootballDay: false, engine: 'shadow' });
     expect(await count('select count(*) n from analysis_predictions')).toBe(0);
   });
 
   it('a repeated run decides again only where no valid decision is fresh', async () => {
     const d = fakeDecider(answers);
-    await hybridJob(ctx, { engine: 'shadow', decider: d });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'shadow', decider: d });
     expect(d.calls.filter((c) => c === 'Good FC' || c === 'Fog FC')).toEqual([]);
     expect(await count(`select count(*) n from hybrid_decisions where fixture_id in (301, 302, 305)`)).toBe(3);
     expect(d.calls).toContain('Invalid FC');
   });
 
   it('hybrid: publishes the valid decision with its engine version, and nothing where there is none', async () => {
-    await publishJob(ctx, { engine: 'hybrid' });
+    await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
     const rows = await q<{ fixture_id: string; kind: string; market: string | null; selection: string | null; line: string | null; model_probability: string | null; market_probability: string | null; signal_strength: string | null; decision_rule_version: string; prompt_version: string; model_version_id: string; reason: string; odds_at_publish: string | null }>(
       `select fixture_id, kind, market, selection, line, model_probability, market_probability, signal_strength, decision_rule_version, prompt_version, model_version_id, reason, odds_at_publish
          from analysis_predictions order by fixture_id`,
@@ -209,7 +209,7 @@ describe('hybridJob', () => {
     expect(String(snap!.ai_reasoning.inputHash)).toMatch(/^[0-9a-f]{64}$/);
 
     // again: no duplicate publication, and the job has nothing left to decide for published rounds
-    await publishJob(ctx, { engine: 'hybrid' });
+    await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
     expect(await count('select count(*) n from analysis_predictions')).toBe(3);
   });
 
@@ -222,7 +222,7 @@ describe('hybridJob', () => {
         throw new Anthropic.BadRequestError(400, undefined, 'Your credit balance is too low', new Headers());
       },
     };
-    await hybridJob(ctx, { engine: 'hybrid', decider: broke });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: broke });
     expect(calls).toHaveLength(1);
     expect(await count('select count(*) n from hybrid_decisions')).toBe(before + 1);
   });

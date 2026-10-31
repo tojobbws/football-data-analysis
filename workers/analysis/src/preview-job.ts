@@ -50,7 +50,7 @@ import {
   type PreviewText,
 } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
-import { footballDayHorizon, toDateString } from '@fp/shared';
+import { addHours, footballDayHorizon, toDateString } from '@fp/shared';
 import { ENSEMBLE_VERSION } from './jobs.js';
 
 export interface PreviewJobOptions {
@@ -63,6 +63,8 @@ export interface PreviewJobOptions {
   budgetMinutes?: number;
   /** rewrite a stage whose rows all came from an older PREVIEW_VERSION (once per version, still before kickoff only) */
   refresh?: boolean;
+  /** only matches of the current football day (06:00→06:00 Thai); false lifts the cap, for tests */
+  sameFootballDay?: boolean;
   /** only fixtures kicking off before this moment (e.g. the end of today's football day for a refresh of today only) */
   until?: Date;
 }
@@ -88,7 +90,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
     let writer = opts.writer === undefined ? defaultPreviewWriter(ctx) : opts.writer;
     if (!writer) ctx.log.warn('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY) — previews use the template text');
 
-    const end = footballDayHorizon(now, hours);
+    const end = opts.sameFootballDay === false ? addHours(now, hours) : footballDayHorizon(now, hours);
     const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.until && opts.until < end ? opts.until : end).toISOString());
     const report: Array<Record<string, unknown>> = [];
     let written = 0;

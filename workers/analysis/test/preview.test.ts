@@ -154,7 +154,7 @@ describe('matchPreviewJob', () => {
       'Home B': prose('Home B', 'Away B', { analysis_th: 'สกอร์น่าจะเป็น 2-1 โดยเจ้าบ้านมีโอกาส 72% ตามตัวเลขที่เห็นในข้อมูลของทั้งสองทีมตอนนี้' }), // invented number + foreign scoreline
       'Home C': { output: null, stopReason: 'refusal', refusal: { category: 'general_harms', explanation: null } },
     });
-    expect(await matchPreviewJob(ctx, { now: NOW, writer })).toBe(3);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer })).toBe(3);
     expect(writer.calls).toBe(3);
 
     const a = await one(`select * from match_previews where fixture_id = 101`);
@@ -241,14 +241,14 @@ describe('matchPreviewJob', () => {
   it('retries a failed AI attempt once per stage (append-only), never a passed one', async () => {
     // API down: 102 (INVALID) and 103 (REFUSED) are retried, 101 (OK) is not; nothing stored
     const down = fakeWriter({});
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: down })).toBe(0);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: down })).toBe(0);
     expect(down.calls).toBe(2);
 
     const second = fakeWriter({
       'Home B': prose('Home B', 'Away B', { overview_th: 'บอลถ้วยข้ามลีก Home B กับ Away B ข้อมูลเทียบกันได้น้อย โมเดลเอียงไปทางเจ้าบ้านเล็กน้อยเท่านั้น', analysis_th: 'สกอร์ของโมเดลสูสี ข้อมูลยังบางมากสำหรับคู่นี้ จึงยังสรุปภาพของเกมนี้ได้ไม่ชัดนักในตอนนี้' }),
       'Home C': prose('Home C', 'Away C', { overview_th: 'โมเดลให้ Home C 99% แน่นอนว่าชนะ Away C' }),
     });
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: second })).toBe(2);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: second })).toBe(2);
     const b = (await db.query<Record<string, unknown>>(`select text_source, ai_status from match_previews where fixture_id = 102 order by id`)).rows;
     expect(b).toEqual([
       { text_source: 'TEMPLATE', ai_status: 'INVALID' },
@@ -258,21 +258,21 @@ describe('matchPreviewJob', () => {
 
     // two attempts is the limit, even when both failed (103); without a writer nothing is retried
     const third = fakeWriter({ 'Home C': prose('Home C', 'Away C') });
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: third })).toBe(0);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: third })).toBe(0);
     expect(third.calls).toBe(0);
     expect(Number((await one(`select count(*) n from match_previews where fixture_id = 103`)).n)).toBe(2);
   });
 
   it('is idempotent per stage; a LINEUP stage is added once the XIs are confirmed', async () => {
     const writer = fakeWriter({});
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: null })).toBe(0);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: null })).toBe(0);
     expect(writer.calls).toBe(0);
 
     await db.query(`insert into fixture_lineups (fixture_id, team_id, formation) values (101, 1, '4-3-3'), (101, 2, '4-4-2')`);
     await db.query(`insert into fixture_lineup_players (fixture_id, team_id, player_id, player_name, number, position, is_starter)
                     select 101, t, t * 100 + g, 'P' || g, g, 'M', true from generate_series(1, 11) g, (values (1), (2)) as teams(t)`);
     const later = new Date(KO.getTime() - 60 * 60_000);
-    expect(await matchPreviewJob(ctx, { now: later, writer: null })).toBe(1);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: later, writer: null })).toBe(1);
     const rows = (await db.query<Record<string, unknown>>(`select stage, text_source, ai_status from match_previews where fixture_id = 101 order by id`)).rows;
     expect(rows).toEqual([
       { stage: 'EARLY', text_source: 'AI', ai_status: 'OK' },
@@ -300,11 +300,11 @@ describe('matchPreviewJob', () => {
        values (104, 'EARLY', $1, 'preview-v0.0', 'AI', 'OK', 'GOOD', 'a', 'b', 'c', 'd', '{}')`,
       [KO.toISOString()],
     );
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: null })).toBe(0);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: null })).toBe(0);
     // --until: only matches kicking off before it (a refresh of today's matches only)
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: null, refresh: true, until: new Date(KO.getTime() - 60_000) })).toBe(0);
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: null, refresh: true })).toBe(1);
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: null, refresh: true })).toBe(0);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: null, refresh: true, until: new Date(KO.getTime() - 60_000) })).toBe(0);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: null, refresh: true })).toBe(1);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: null, refresh: true })).toBe(0);
     const rows = (await db.query<Record<string, unknown>>(`select version from match_previews where fixture_id = 104 order by id`)).rows;
     expect(rows.map((r) => r.version)).toEqual(['preview-v0.0', PREVIEW_VERSION]);
   });
@@ -333,7 +333,7 @@ describe('matchPreviewJob', () => {
         throw new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Your credit balance is too low' } }, 'credit balance is too low', new Headers());
       },
     };
-    expect(await matchPreviewJob(ctx, { now: NOW, writer: broke })).toBe(2);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: broke })).toBe(2);
     expect(broke.calls).toBe(1);
     const rows = (await db.query<Record<string, unknown>>(`select fixture_id, text_source, ai_status, model from match_previews where fixture_id in (105, 106) order by fixture_id`)).rows;
     expect(rows).toEqual([
@@ -349,10 +349,10 @@ describe('matchPreviewJob', () => {
       [KO.toISOString()],
     );
     const writer = fakeWriter({ 'Home G': prose('Home G', 'Away G') });
-    expect(await matchPreviewJob(ctx, { now: NOW, writer, budgetMinutes: -1 })).toBe(0);
+    expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer, budgetMinutes: -1 })).toBe(0);
     expect(writer.calls).toBe(0);
     expect((await db.query(`select 1 from match_previews where fixture_id = 107`)).rows).toHaveLength(0);
-    await matchPreviewJob(ctx, { now: NOW, writer });
+    await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer });
     expect((await db.query(`select 1 from match_previews where fixture_id = 107`)).rows).toHaveLength(1);
   });
 });

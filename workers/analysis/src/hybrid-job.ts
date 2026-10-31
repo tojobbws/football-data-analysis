@@ -27,7 +27,7 @@ import {
 } from '@fp/ai';
 import { DEFAULT_RULES, hybridMarket, hybridOptions, type HybridSide } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
-import { footballDayHorizon } from '@fp/shared';
+import { addHours, footballDayHorizon } from '@fp/shared';
 import { injuriesCoverage, withOpponentRanksAsOf } from './hybrid-input-v2.js';
 import { decisionFresh, dueRound, type PickEngine } from './publish-job.js';
 
@@ -38,6 +38,8 @@ export interface HybridJobOptions {
   budgetMinutes?: number;
   /** tests inject a fake; null = no AI available */
   decider?: HybridDecider | null;
+  /** only matches of the current football day (06:00→06:00 Thai); false lifts the cap, for tests */
+  sameFootballDay?: boolean;
 }
 
 /** OpenAI when OPENAI_API_KEY and OPENAI_MODEL are set, else Claude when ANTHROPIC_API_KEY is, else none. */
@@ -61,7 +63,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
     }
     const now = opts.now ?? new Date();
     const leagues = ctx.env.TRACKED_LEAGUES;
-    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), footballDayHorizon(now, 24).toISOString());
+    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.sameFootballDay === false ? addHours(now, 24) : footballDayHorizon(now, 24)).toISOString());
     const engineVersion = engine === 'hybrid' ? HYBRID_ENGINE_VERSION : DEFAULT_RULES.version;
     const report: Array<Record<string, unknown>> = [];
     let stored = 0;
