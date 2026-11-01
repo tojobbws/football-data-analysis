@@ -4,7 +4,7 @@ import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from 
 import { finishedWatch } from '@/components/featured-picks';
 import { byLeagueThenKickoff } from '@/lib/popularity';
 import { featuredRanks, liveMatches, matchesOnFootballDay, popularityRegistry } from '@/lib/queries';
-import { dayTH, footballDate, isValidDate } from '@/lib/time';
+import { addDaysStr, dayTH, footballDate, footballDayRange, isValidDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -19,16 +19,20 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
   const today = footballDate();
   const liveView = q.live === '1';
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
-  const [shown, live, ranks, registry] = await Promise.all([
-    date ? matchesOnFootballDay(date) : liveMatches(),
+  const [shown, live, ranks, prevRanks, registry] = await Promise.all([
+    date ? matchesOnFootballDay(date, { withPreDawn: true }) : liveMatches(),
     liveMatches(),
     date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
+    date ? featuredRanks(addDaysStr(date, -1)) : Promise.resolve(new Map<number, number>()),
     popularityRegistry(),
   ]);
   // league by league: PL, La Liga, Bundesliga, Serie A, Ligue 1 first, then the rest by importance; kickoff order inside a league
   const matches = byLeagueThenKickoff(shown, registry);
   // finished คู่น่าจับตา keep their gold frame and show ถูก/ผิด
-  const watch = new Set(finishedWatch(matches, ranks));
+  // the day's own 00:00-06:00 kick-offs belong to the previous football day: they keep that day's gold frames
+  const dayFrom = date ? Date.parse(footballDayRange(date).from) : 0;
+  const preDawn = matches.filter((m) => Date.parse(m.kickoff_at) < dayFrom);
+  const watch = new Set([...finishedWatch(matches.filter((m) => !preDawn.includes(m)), ranks), ...finishedWatch(preDawn, prevRanks)]);
   const title = liveView ? 'กำลังแข่งขัน' : date === today ? 'แมตช์วันนี้' : date! < today ? 'ผลการแข่งขัน' : 'โปรแกรมแข่ง';
 
   return (

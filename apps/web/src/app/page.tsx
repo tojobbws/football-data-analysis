@@ -11,7 +11,7 @@ import { isLive as liveNow } from '@/lib/live';
 import { byLeagueThenKickoff } from '@/lib/popularity';
 import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, popularityRegistry, previewCards, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
-import { dayTH, footballDate, isValidDate } from '@/lib/time';
+import { addDaysStr, dayTH, footballDate, footballDayRange, isValidDate } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -36,19 +36,23 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, live, articles, leagues, upcomingPreviews, ranks, registry] = await Promise.all([
-    date ? matchesOnFootballDay(date) : liveMatches(),
+  const [shown, live, articles, leagues, upcomingPreviews, ranks, prevRanks, registry] = await Promise.all([
+    date ? matchesOnFootballDay(date, { withPreDawn: true }) : liveMatches(),
     liveMatches(),
     latestArticles(4),
     leagueWidgets(5),
     previewCards('upcoming', 4),
     date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
+    date ? featuredRanks(addDaysStr(date, -1)) : Promise.resolve(new Map<number, number>()),
     popularityRegistry(),
   ]);
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
   // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list; finished ones keep the mark with their result
-  const watch = watchSlugs(shown, ranks);
+  // the day's own 00:00-06:00 kick-offs belong to the previous football day: they keep that day's gold frames
+  const dayFrom = date ? Date.parse(footballDayRange(date).from) : 0;
+  const preDawn = shown.filter((m) => Date.parse(m.kickoff_at) < dayFrom);
+  const watch = new Set([...watchSlugs(shown.filter((m) => !preDawn.includes(m)), ranks), ...watchSlugs(preDawn, prevRanks)]);
   // league by league: PL, La Liga, Bundesliga, Serie A, Ligue 1 first, then the rest by importance;
   // inside a league on today: live first, then upcoming, then finished; then kickoff order
   const ordered = byLeagueThenKickoff(shown, registry, onToday ? phase : undefined);

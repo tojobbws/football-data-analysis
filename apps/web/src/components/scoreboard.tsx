@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { MatchRow } from '@/lib/queries';
 import { FINISHED, STATUS, selectionLabel } from '@/lib/labels';
-import { addDaysStr, dayMonthTH, thaiDate, timeTH, weekdayShortTH } from '@/lib/time';
+import { addDaysStr, dayMonthTH, footballDayRange, thaiDate, timeTH, weekdayShortTH } from '@/lib/time';
 import { DatePickerButton } from './date-picker-button';
 import { isLive, toSeed } from '@/lib/live';
 import { CompassMark, CompassPicksTitle } from './icons';
@@ -89,16 +89,24 @@ export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; 
     groups.set(m.league.id, g);
   }
   const nextMorning = date ? addDaysStr(date, 1) : null;
+  // the day's own 00:00-06:00 kick-offs (listed with the day as well as with the previous football day)
+  const dayStart = date ? Date.parse(footballDayRange(date).from) : null;
+  const isPreDawn = (m: MatchRow) => dayStart != null && Date.parse(m.kickoff_at) < dayStart;
   return (
     <div className="space-y-5">
       {[...groups.values()].map(({ league, rows }) => {
         const firstLate = nextMorning ? rows.findIndex((m) => thaiDate(new Date(m.kickoff_at)) === nextMorning) : -1;
+        const firstEarly = rows.findIndex(isPreDawn);
+        // when the pre-dawn matches come first, the first regular one gets a divider of the day itself
+        const firstRegular = firstEarly === 0 ? rows.findIndex((m) => !isPreDawn(m) && thaiDate(new Date(m.kickoff_at)) !== nextMorning) : -1;
         return (
           <section key={league.id} aria-label={league.name}>
             <LeagueHeader league={league} count={rows.length} />
             <ul className="space-y-1.5">
               {rows.map((m, i) => (
                 <li key={m.id}>
+                  {i === firstEarly ? <Divider label={`เช้ามืดวัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
+                  {i === firstRegular && firstRegular > 0 ? <Divider label={`วัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
                   {i === firstLate ? <Divider label={`เช้ามืดวัน${longWeekday(nextMorning!)} ${dayMonthTH(noon(nextMorning!))}`} /> : null}
                   <MatchCard m={m} watched={watch?.has(m.slug) ?? false} />
                 </li>

@@ -188,9 +188,10 @@ export async function previewCards(when: 'upcoming' | 'recent', limit: number): 
 // ---------------------------------------------------------------------------
 
 /** Matches of one football day (06:00 → 06:00 Thai time) — the scoreboard views and /today. */
-export async function matchesOnFootballDay(date: string): Promise<MatchRow[]> {
+export async function matchesOnFootballDay(date: string, opts: { withPreDawn?: boolean } = {}): Promise<MatchRow[]> {
   const { from, to } = footballDayRange(date);
-  return matchesBetween(from, to);
+  // withPreDawn: the scoreboard pages also list the day's own 00:00-06:00 kick-offs, which belong to the previous football day
+  return matchesBetween(opts.withPreDawn ? new Date(`${date}T00:00:00+07:00`).toISOString() : from, to);
 }
 
 async function matchesBetween(from: string, to: string): Promise<MatchRow[]> {
