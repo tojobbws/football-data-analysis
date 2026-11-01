@@ -1,4 +1,4 @@
-import { BIG_MATCH_MIN_SCORE, leagueImportance, rankBigMatches, thaiMatches, type PopularityRegistry, type RankableMatch } from '@fp/shared/popularity';
+import { BIG_MATCH_MIN_SCORE, leagueImportance, leagueListKey, rankBigMatches, thaiMatches, type PopularityRegistry, type RankableMatch } from '@fp/shared/popularity';
 import type { MatchRow } from './queries';
 
 interface Item extends RankableMatch {
@@ -25,6 +25,20 @@ export function bigMatchesOf(matches: MatchRow[], reg: PopularityRegistry, limit
 export function byKickoffThenLeague(matches: MatchRow[], reg: PopularityRegistry, first: (m: MatchRow) => number = () => 0): MatchRow[] {
   const importance = (m: MatchRow) => leagueImportance(reg, m.league.id, m.season);
   return [...matches].sort((a, b) => first(a) - first(b) || Date.parse(a.kickoff_at) - Date.parse(b.kickoff_at) || importance(b) - importance(a) || a.id - b.id);
+}
+
+/**
+ * The day's matches league by league for the scoreboards: Premier League, La Liga, Bundesliga, Serie A and Ligue 1
+ * first (in that order), then the other leagues by importance. Inside a league: `first` (e.g. live before upcoming
+ * before finished), then kickoff. Order only, as everything here.
+ */
+export function byLeagueThenKickoff(matches: MatchRow[], reg: PopularityRegistry, first: (m: MatchRow) => number = () => 0): MatchRow[] {
+  const key = (m: MatchRow) => leagueListKey(reg, m.league.id, m.season);
+  return [...matches].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2] || first(a) - first(b) || Date.parse(a.kickoff_at) - Date.parse(b.kickoff_at) || a.id - b.id;
+  });
 }
 
 /** The day's matches in leagues the registry flags as Thai, in kickoff order as given. */

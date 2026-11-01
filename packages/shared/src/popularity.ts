@@ -74,6 +74,19 @@ export function leagueImportance(reg: PopularityRegistry, leagueId: number, seas
   return pick(reg.leagues, leagueId, season)?.importance ?? DEFAULT_LEAGUE_IMPORTANCE;
 }
 
+/** The five leagues the scoreboards list first, in this order (owner's choice, 2026-11-01): PL, La Liga, Bundesliga, Serie A, Ligue 1. */
+export const TOP_FIVE_LEAGUE_IDS = [39, 140, 78, 135, 61] as const;
+
+/**
+ * Sort key of a league group on the scoreboards (smaller = listed first): the five leagues above in their order,
+ * then every other league by its importance (more important first), then by id so a league's matches stay together.
+ * Orders lists only.
+ */
+export function leagueListKey(reg: PopularityRegistry, leagueId: number, season?: number | null): [number, number, number] {
+  const top = (TOP_FIVE_LEAGUE_IDS as readonly number[]).indexOf(leagueId);
+  return top >= 0 ? [0, top, leagueId] : [1, 100 - leagueImportance(reg, leagueId, season), leagueId];
+}
+
 export interface RankableMatch {
   id: number;
   season?: number | null;

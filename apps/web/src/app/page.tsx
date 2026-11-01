@@ -8,7 +8,7 @@ import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from 
 import { Empty } from '@/components/ui';
 import { FINISHED } from '@/lib/labels';
 import { isLive as liveNow } from '@/lib/live';
-import { byKickoffThenLeague } from '@/lib/popularity';
+import { byLeagueThenKickoff } from '@/lib/popularity';
 import { featuredRanks, latestArticles, leagueWidgets, liveMatches, matchesOnFootballDay, popularityRegistry, previewCards, type MatchRow } from '@/lib/queries';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from '@/lib/site';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
@@ -49,8 +49,9 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
   // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list; finished ones keep the mark with their result
   const watch = watchSlugs(shown, ranks);
-  // on today: live first, then upcoming, then finished; then kickoff order, the more popular league first at the same kickoff
-  const ordered = byKickoffThenLeague(shown, registry, onToday ? phase : undefined);
+  // league by league: PL, La Liga, Bundesliga, Serie A, Ligue 1 first, then the rest by importance;
+  // inside a league on today: live first, then upcoming, then finished; then kickoff order
+  const ordered = byLeagueThenKickoff(shown, registry, onToday ? phase : undefined);
 
   return (
     <main className="pb-8">

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { ScrollTopOnEnter } from '@/components/scroll-top-on-enter';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { finishedWatch } from '@/components/featured-picks';
-import { byKickoffThenLeague } from '@/lib/popularity';
+import { byLeagueThenKickoff } from '@/lib/popularity';
 import { featuredRanks, liveMatches, matchesOnFootballDay, popularityRegistry } from '@/lib/queries';
 import { dayTH, footballDate, isValidDate } from '@/lib/time';
 
@@ -25,8 +25,8 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
     popularityRegistry(),
   ]);
-  // kickoff order, the more popular league first at the same kickoff
-  const matches = byKickoffThenLeague(shown, registry);
+  // league by league: PL, La Liga, Bundesliga, Serie A, Ligue 1 first, then the rest by importance; kickoff order inside a league
+  const matches = byLeagueThenKickoff(shown, registry);
   // finished คู่น่าจับตา keep their gold frame and show ถูก/ผิด
   const watch = new Set(finishedWatch(matches, ranks));
   const title = liveView ? 'กำลังแข่งขัน' : date === today ? 'แมตช์วันนี้' : date! < today ? 'ผลการแข่งขัน' : 'โปรแกรมแข่ง';

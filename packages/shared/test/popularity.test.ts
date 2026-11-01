@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { BIG_MATCH_MIN_SCORE, DEFAULT_LEAGUE_IMPORTANCE, buildRegistry, leagueImportance, popularityScore, rankBigMatches, scoreMatch, thaiMatches, type RankableMatch } from '../src/index.js';
+import { BIG_MATCH_MIN_SCORE, DEFAULT_LEAGUE_IMPORTANCE, buildRegistry, leagueImportance, leagueListKey, popularityScore, rankBigMatches, scoreMatch, thaiMatches, type RankableMatch } from '../src/index.js';
 
 const reg = buildRegistry(
   [
@@ -114,5 +114,20 @@ describe('popularity never touches probabilities, edges, picks or the featured l
   it('none of it mentions popularity, the registry or big matches', () => {
     const offenders = sources.filter((f) => FORBIDDEN.test(readFileSync(f, 'utf8'))).map((f) => f.replace(root, ''));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('leagueListKey (scoreboard league order)', () => {
+  const order = (ids: number[]) =>
+    [...ids].sort((a, b) => {
+      const ka = leagueListKey(reg, a);
+      const kb = leagueListKey(reg, b);
+      return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+    });
+  it('lists PL, La Liga, Bundesliga, Serie A and Ligue 1 first in that order, whatever the registry says', () => {
+    expect(order([61, 135, 78, 140, 39])).toEqual([39, 140, 78, 135, 61]);
+  });
+  it('puts every other league after them, the more important first (unknown leagues get the default importance)', () => {
+    expect(order([2, 296, 3, 61, 39, 140, 78, 135])).toEqual([39, 140, 78, 135, 61, 3, 296, 2]);
   });
 });
