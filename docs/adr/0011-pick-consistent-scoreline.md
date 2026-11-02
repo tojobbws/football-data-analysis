@@ -10,7 +10,7 @@ The owner decided on 2026-11-02 that a match with a published pick shows "สก
 
 - Earlier previews have no matrix and keep the old score until the next stage's preview is written.
 - Migration 0052 must run on prod before the worker writes `score_matrix`.
-- The AI and template prose of a preview may still name the plain most likely score (its inputs are written before the pick is known). Not changed here.
+- The write-up (AI prompt preview-ai-v1.3 and the template) names no scoreline of the match: the model's scorelines are left out of its input, so the guard rejects any score the AI invents. The page's score block is the only place a score appears. Write-ups stored earlier may still quote the plain most likely score.
 - Not measured in `/performance`; the scoreline stays supporting analysis, never a second pick.
 
 ## Considered Options

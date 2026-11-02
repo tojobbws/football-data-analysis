@@ -43,7 +43,7 @@ const prose = (home: string, away: string, over: Record<string, unknown> = {}) =
     home_th: `${home} ฟอร์มดีจากข้อมูลล่าสุดในระบบของเรา เกมรุกเดินได้ต่อเนื่อง ส่วนเกมรับยังมีข้อมูลไม่มาก`,
     away_th: `${away} มีข้อมูลน้อยในระบบ จึงอ่านได้ไม่มากว่าจะสร้างปัญหาให้เจ้าบ้านได้แค่ไหนในเกมนี้`,
     team_news_th: 'ยังไม่ประกาศรายชื่อตัวจริงของทั้งสองทีม',
-    analysis_th: 'สกอร์ที่โมเดลให้โอกาสสูงสุดคือ 1-0 เป็นหนึ่งในหลายสกอร์ที่เป็นไปได้ ข้อมูลของทั้งสองทีมยังมีไม่มาก',
+    analysis_th: 'โมเดลคาดประตูของเจ้าบ้านสูงกว่าทีมเยือน ข้อมูลของทั้งสองทีมยังมีไม่มาก',
     facts_th: [`${home} ฟอร์มดีในช่วงหลัง`, `${away} มีข้อมูลในระบบน้อย`, `${home} ได้เล่นในบ้าน`],
     ...over,
   },
@@ -173,7 +173,8 @@ describe('matchPreviewJob', () => {
     expect(a.home_th).toContain('Home A ฟอร์มดี');
     expect(a.away_th).toContain('Away A');
     expect(a.team_news_th).toContain('ยังไม่ประกาศรายชื่อตัวจริง');
-    expect(a.analysis_th).toContain('สกอร์ที่โมเดลให้โอกาสสูงสุด');
+    expect(a.analysis_th).toContain('โมเดลคาดประตู');
+    expect(a.analysis_th).not.toMatch(/ds*[-–]s*d/);
     expect(a.facts_th).toEqual(['Home A ฟอร์มดีในช่วงหลัง', 'Away A มีข้อมูลในระบบน้อย', 'Home A ได้เล่นในบ้าน']);
     // the summary's confidence comes from rules: limited data (short form) -> MEDIUM
     expect(a).toMatchObject({ confidence: 'MEDIUM', confidence_notes: ['ข้อมูลบางส่วนจำกัด'] });
@@ -190,7 +191,8 @@ describe('matchPreviewJob', () => {
     expect(home.standing.rank).toBe(2);
     expect(away.injuries[0]!.player).toBe('B. Injured');
     expect((seen.h2h as unknown[]).length).toBe(2);
-    expect((seen.model as { scorelines: unknown[] }).scorelines).toHaveLength(3);
+    // the written text is given no scoreline of this match: the page shows the one that fits the pick
+    expect((seen.model as { scorelines: unknown[] }).scorelines).toHaveLength(0);
     expect((seen.data_support as { level: string }).level).toBe('LIMITED');
     // the AI never sees the goal bands (3+ is over 2.5, once written up as an over lean)
     expect(JSON.stringify(seen)).not.toMatch(/threePlus|upTo1|p_goals/);
@@ -224,7 +226,8 @@ describe('matchPreviewJob', () => {
     expect(b).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'INVALID', data_support: 'THIN' });
     expect(b.guard_violations).toEqual(expect.arrayContaining(['analysis_th: number not in input: 72%', 'analysis_th: scoreline not from the model: 2-1']));
     expect((b.data_notes as string[])[0]).toContain('บอลถ้วยที่ทีมมาจากคนละลีก');
-    expect(b.analysis_th).toContain('สกอร์ที่โมเดลให้โอกาสสูงสุด');
+    expect(b.analysis_th).toContain('โมเดลคาดประตู (xG)');
+    expect(b.analysis_th).not.toMatch(/ds*[-–]s*d/);
     // a cup with no table, no recent results and no meeting in the DB: the template lists no facts rather than invent one
     expect(b.facts_th).toEqual([]);
     // a cross-league cup with 40 cup matches is THIN; the template names no stock risk

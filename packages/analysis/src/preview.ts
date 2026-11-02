@@ -539,13 +539,9 @@ export function buildTemplateText(f: PreviewFacts, _support: { level: DataSuppor
     overview += ' โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงอ่านเกมจากฟอร์มและสถิติที่มีเท่านั้น';
   }
 
-  let score = 'โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด';
-  if (m) {
-    const best = m.scorelines[0];
-    score = best
-      ? `สกอร์ที่โมเดลให้โอกาสสูงสุดคือ ${home} ${best.home}-${best.away} ${away} (${pct(best.p)}) ซึ่งเป็นเพียงหนึ่งในหลายสกอร์ที่เป็นไปได้ โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`
-      : `โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`;
-  }
+  // no scoreline here: the page shows the one that fits the match's pick (pickScoreline), chosen when it renders
+  let score = 'โมเดลยังไม่มีตัวเลขสำหรับคู่นี้';
+  if (m) score = `โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`;
   const uncertainty = uncertaintyText(f, views);
   const facts = templateFacts(f);
 

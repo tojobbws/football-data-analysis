@@ -343,7 +343,8 @@ describe('buildTemplateText', () => {
     expect(t.home_th).not.toContain('A. Player');
     expect(t.team_news_th).toContain('ยังไม่ประกาศรายชื่อตัวจริง');
     expect(t.analysis_th).toContain('โมเดลคาดประตู (xG) Arsenal 1.70 ต่อ Chelsea 1.00');
-    expect(t.analysis_th).toContain('Arsenal 1-0 Chelsea (12%)');
+    // the write-up names no scoreline: the page shows the one that fits the pick
+    expect(t.analysis_th).not.toMatch(/ds*[-–]s*d/);
     expect(t.facts_th.length).toBeGreaterThan(0);
     expect(t.facts_th.length).toBeLessThanOrEqual(5);
     for (const x of t.facts_th) expect(x).not.toMatch(/%/);
@@ -354,7 +355,7 @@ describe('buildTemplateText', () => {
     const thin = facts({ model: null });
     const t = buildTemplateText(thin, assessDataSupport(thin));
     expect(t.overview_th).toContain('โมเดลยังไม่มีตัวเลข');
-    expect(t.analysis_th).toContain('ยังไม่มีสกอร์ที่เป็นไปได้มากที่สุด');
+    expect(t.analysis_th).toContain('โมเดลยังไม่มีตัวเลขสำหรับคู่นี้');
   });
 
   it('a market far from the model, a missing key player, a rest gap and recent form against the model are named', () => {

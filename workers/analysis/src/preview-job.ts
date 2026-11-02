@@ -113,8 +113,11 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
       const { facts, bands, btts, matrix } = await collectFacts(ctx, f, stage);
       const support = assessDataSupport(facts);
       const confidence = confidenceLevel(facts, support);
-      const template = buildTemplateText(facts, support);
-      const input: Record<string, unknown> = { ...facts, data_support: { level: support.level, notes_th: support.notes } };
+      // the written text never sees the model's scorelines (so it can quote none): the page shows the score
+      // that fits the pick, chosen when it renders. The stored predicted_* below still come from `facts`.
+      const textFacts: PreviewFacts = { ...facts, model: facts.model ? { ...facts.model, scorelines: [] } : null };
+      const template = buildTemplateText(textFacts, support);
+      const input: Record<string, unknown> = { ...textFacts, data_support: { level: support.level, notes_th: support.notes } };
 
       let text: PreviewText = template;
       let row: Record<string, unknown> = { text_source: 'TEMPLATE', ai_status: 'SKIPPED', prompt_version: null, model: null, output: null, guard_violations: [], usage: null };
