@@ -10,6 +10,7 @@ import {
   EVEN,
   goalBands,
   matrixExpectedGoals,
+  pickScoreline,
   previewScoreMatrix,
   previewStageFor,
   restDays,
@@ -89,6 +90,35 @@ describe('scorelines', () => {
     const eg = matrixExpectedGoals(matrix);
     expect(eg.home).toBeCloseTo(1.7, 1);
     expect(eg.away).toBeCloseTo(1.0, 1);
+  });
+
+  it('pick-consistent scoreline: the likeliest score on which the pick wins outright', () => {
+    const matrix = previewScoreMatrix({ lambda: 1.5, mu: 1.2, rho: -0.05 });
+    // Over 2.5 needs 3+ goals; Under 2.0 wins on 0 or 1 goals, so the 1–1 push is skipped
+    const over = pickScoreline(matrix, { market: 'OVER_UNDER', selection: 'OVER', line: 2.5 })!;
+    expect(over.home + over.away).toBeGreaterThanOrEqual(3);
+    const under = pickScoreline(matrix, { market: 'OVER_UNDER', selection: 'UNDER', line: 2 })!;
+    expect(under.home + under.away).toBeLessThanOrEqual(1);
+    expect(topScorelines(matrix, 1)[0]).toMatchObject({ home: 1, away: 1 }); // the plain mode is still 1–1
+    // home -1.5 needs a two-goal margin
+    const fav = pickScoreline(matrix, { market: 'ASIAN_HANDICAP', selection: 'HOME', line: -1.5 })!;
+    expect(fav.home - fav.away).toBeGreaterThanOrEqual(2);
+    // the away side's handicap is read from the away side
+    const dog = pickScoreline(matrix, { market: 'ASIAN_HANDICAP', selection: 'AWAY', line: 1.5 })!;
+    expect(dog.away - dog.home).toBeGreaterThanOrEqual(-1);
+    // the chance shown is the score's own, never above the pick's win chance
+    expect(over.p).toBeLessThan(0.2);
+  });
+
+  it('pick-consistent scoreline: falls back to a half win, then a push, only when nothing wins outright', () => {
+    // all the mass on 1–1: Under 2.0 and AH 0 push there, nothing wins outright
+    const only11 = [[0, 0], [0, 1]];
+    expect(pickScoreline(only11, { market: 'OVER_UNDER', selection: 'UNDER', line: 2 })).toEqual({ home: 1, away: 1, p: 1 });
+    expect(pickScoreline(only11, { market: 'ASIAN_HANDICAP', selection: 'HOME', line: 0 })).toEqual({ home: 1, away: 1, p: 1 });
+    // Under 2.25 half wins on 1–1 (two goals), and that beats a 0–0 only when 0–0 has no mass
+    expect(pickScoreline([[0, 0], [0, 1]], { market: 'OVER_UNDER', selection: 'UNDER', line: 2.25 })).toMatchObject({ home: 1, away: 1 });
+    // a pick that can never win here gets no score
+    expect(pickScoreline(only11, { market: 'OVER_UNDER', selection: 'OVER', line: 2.5 })).toBeNull();
   });
 
   it('cross-league blend moves the expected goals towards the cross-league model', () => {

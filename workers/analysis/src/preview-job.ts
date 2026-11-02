@@ -110,7 +110,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
         ctx.log.warn('preview time budget used up; the rest wait for the next run', { budgetMinutes: opts.budgetMinutes, written });
         break;
       }
-      const { facts, bands, btts } = await collectFacts(ctx, f, stage);
+      const { facts, bands, btts, matrix } = await collectFacts(ctx, f, stage);
       const support = assessDataSupport(facts);
       const confidence = confidenceLevel(facts, support);
       const template = buildTemplateText(facts, support);
@@ -175,6 +175,8 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
           p_goals_2: bands ? r4(bands.two) : null,
           p_goals_3plus: bands ? r4(bands.threePlus) : null,
           p_btts: btts == null ? null : r4(btts),
+          // the page picks the pick-consistent scoreline from this at read time (a pick can change after the preview)
+          score_matrix: matrix ? matrix.map((row) => row.map((x) => Math.round(x * 1e6) / 1e6)) : null,
           main_side: facts.focus?.mainSide ?? 'HOME',
           confidence: confidence.level,
           confidence_notes: confidence.notes,
@@ -216,7 +218,7 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
 type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[number];
 
 /** Everything a preview (and a Game Compass note) is written from; every derived number is computed here. */
-export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<{ facts: PreviewFacts; bands: GoalBands | null; btts: number | null }> {
+export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFacts['fixture']['stage']): Promise<{ facts: PreviewFacts; bands: GoalBands | null; btts: number | null; matrix: number[][] | null }> {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
   const [formHome, formAway, standings, injuries, lineup, probs, apiPred, h2h, qHome, qDraw, qAway, place, lineupTeams, keyHome, keyAway] = await Promise.all([
     ctx.repo.teamForm(f.homeTeamId, f.kickoffAt),
@@ -259,6 +261,7 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
   // card only, kept out of the facts the AI sees (see goalBands)
   let bands: GoalBands | null = null;
   let btts: number | null = null;
+  let scoreMatrix: number[][] | null = null;
   if (inputs && dc.length) {
     const ensemble = probs.filter((p) => p.modelVersionId === ENSEMBLE_VERSION && p.market === 'MATCH_WINNER');
     const oneXTwo = ensemble.length === 3 ? ensemble : dc.filter((p) => p.market === 'MATCH_WINNER');
@@ -274,6 +277,7 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
         rho: Number(inputs.rho),
         crossLeague: inputs.crossLeague ? { lambda: Number(inputs.crossLeague.lambda), mu: Number(inputs.crossLeague.mu), weightCupOnly: Number(inputs.crossLeague.weightCupOnly) } : null,
       });
+    scoreMatrix = matrix;
     const eg = matrixExpectedGoals(matrix);
     bands = goalBands(matrix);
     btts = bothTeamsScore(matrix);
@@ -387,5 +391,5 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
   const otherModel = eloP('HOME') != null && eloP('AWAY') != null ? { home: eloP('HOME')!, away: eloP('AWAY')! } : null;
   facts.views = compareViews(facts, otherModel);
   facts.focus = previewFocus(facts, facts.views);
-  return { facts, bands, btts };
+  return { facts, bands, btts, matrix: scoreMatrix };
 }

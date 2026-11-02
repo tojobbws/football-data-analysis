@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { DataSupport, MatchPreview } from '@/lib/queries';
 import { STATUS, pct, settle, type Status } from '@/lib/labels';
-import type { MarketSelection } from '@fp/analysis';
+import { pickScoreline, type MarketSelection } from '@fp/analysis';
 import { dateTimeTH } from '@/lib/time';
 import { Badge, Card, Note } from './sheet';
 import { TeamLogo } from './primitives';
@@ -15,6 +15,10 @@ export const DATA_SUPPORT: Record<DataSupport, { label: string; variant: 'good' 
 
 /** Older previews carried an "untested model" note; fan pages no longer show it (the record is untouched). */
 const UNTESTED_NOTE = 'ยังไม่ผ่านการทดสอบ';
+
+/** Beside a pick the score is the one that fits it; without a pick it stays the model's plain top score. */
+const SCORE_PICK_TITLE = 'สกอร์ที่น่าจะเกิด';
+const SCORE_TOP_TITLE = 'สกอร์ที่โมเดลให้โอกาสสูงสุด';
 
 const STAGE: Record<MatchPreview['stage'], string> = { EARLY: 'ก่อนประกาศตัวจริง', LINEUP: 'หลังประกาศตัวจริง' };
 
@@ -34,8 +38,19 @@ export interface TeamContext {
  * From preview-v0.8 the write-up has four parts (the match, each side, the model's numbers, the Game Compass);
  * its goal numbers come from the same totals matrix as the model outlook's over 2.5.
  */
+/**
+ * With a pick and the stored matrix, the score shown is the likeliest one on which the pick wins
+ * (สกอร์ที่น่าจะเกิด), so it can never contradict the pick. Without either, the stored most likely
+ * score stays. predicted_* are replaced here only; the stored columns are untouched.
+ */
+export function withPickScore(p: MatchPreview, pick?: { sel: MarketSelection } | null): MatchPreview {
+  if (!pick || !p.score_matrix) return p;
+  const s = pickScoreline(p.score_matrix, pick.sel);
+  return s ? { ...p, predicted_home: s.home, predicted_away: s.away, predicted_p: s.p, pickScore: true } : p;
+}
+
 export function MatchPreviewCard({
-  p,
+  p: stored,
   home,
   away,
   result,
@@ -68,6 +83,7 @@ export function MatchPreviewCard({
   info?: { league: string; kickoffAt: string; venue: string | null };
   id?: string;
 }) {
+  const p = withPickScore(stored, pick);
   const notes = p.data_notes.filter((n) => !n.includes(UNTESTED_NOTE));
   // a LIMITED level whose only reason was the untested note reads as GOOD, like a preview written today
   const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
@@ -135,7 +151,7 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
   const ph = p.p_home == null ? null : Number(p.p_home);
   const pa = p.p_away == null ? null : Number(p.p_away);
   const lean = ph == null || pa == null ? null : Math.abs(ph - pa) < 0.1 ? 'สูสี ตัวเลขของโมเดลไม่เอนไปทางใดชัด' : `${ph > pa ? home : away} มีแนวโน้มทำผลงานได้ดีกว่า`;
-  const ifScore = pick && hasScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
+  const ifScore = pick && hasScore && !p.pickScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
   const factors = [p.key_factor_th, ...limits].filter((x): x is string => Boolean(x));
   const conf = p.confidence ? CONFIDENCE[p.confidence] : null;
   // preview-v1.1: each side in turn, the team news, the analysis and a facts list replace the three points
@@ -212,7 +228,7 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
       )}
 
       <section aria-labelledby="pv-score" className="border-t border-zinc-100 pt-4">
-        <SectionTitle id="pv-score">สกอร์ที่โมเดลให้โอกาสสูงสุด</SectionTitle>
+        <SectionTitle id="pv-score">{p.pickScore ? SCORE_PICK_TITLE : SCORE_TOP_TITLE}</SectionTitle>
         {hasScore ? (
           <div className="mt-3 flex items-center justify-center gap-3 rounded-lg bg-zinc-50 px-3 py-4 sm:gap-5">
             <span className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right text-sm font-semibold text-zinc-950">
@@ -266,7 +282,7 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
         <SectionTitle id="pv-summary">สรุปเกม</SectionTitle>
         <dl className="mt-2 divide-y divide-zinc-100 text-sm">
           {lean ? <SummaryRow k="แนวโน้มผล" v={lean} /> : null}
-          {hasScore ? <SummaryRow k="สกอร์ที่โมเดลให้โอกาสสูงสุด" v={`${home} ${p.predicted_home}–${p.predicted_away} ${away} (${pct(p.predicted_p)})`} /> : null}
+          {hasScore ? <SummaryRow k={p.pickScore ? SCORE_PICK_TITLE : SCORE_TOP_TITLE} v={`${home} ${p.predicted_home}–${p.predicted_away} ${away} (${pct(p.predicted_p)})`} /> : null}
           {p.p_goals_3plus != null ? (
             <SummaryRow k="แนวโน้มประตู" v={`3 ประตูขึ้นไป ${pct(p.p_goals_3plus)}${p.p_btts != null ? ` · ทั้งสองทีมยิงได้ ${pct(p.p_btts)}` : ''}`} />
           ) : null}
@@ -492,7 +508,7 @@ export function FormChips({ results, className = '' }: { results: Array<'W' | 'D
 /** The model's numbers: goal bands (or the single scoreline on rows before preview-v0.5) beside score_th. */
 function ModelNumbers({ p, result, modelTested, pick, overInOutlook, fourPart = false }: { p: MatchPreview; result?: { home: number; away: number } | null; modelTested: boolean; pick?: { label: string; sel: MarketSelection } | null; overInOutlook: boolean; fourPart?: boolean }) {
   const hasScore = p.predicted_home != null && p.predicted_away != null;
-  const ifScore = pick && hasScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
+  const ifScore = pick && hasScore && !p.pickScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
   const hit = result && hasScore ? (result.home === p.predicted_home && result.away === p.predicted_away ? 'ตรงสกอร์' : sameOutcome(result, p) ? 'ตรงผล' : 'ไม่ตรง') : null;
   const bands =
     p.p_goals_0_1 != null && p.p_goals_2 != null && p.p_goals_3plus != null
@@ -524,7 +540,7 @@ function ModelNumbers({ p, result, modelTested, pick, overInOutlook, fourPart = 
           <div className="mt-3 border-t border-zinc-100 pt-3 text-xs leading-relaxed text-zinc-500">
             {fourPart ? (
               <p className="text-zinc-600">
-                สกอร์ที่โมเดลให้โอกาสสูงสุด{' '}
+                {p.pickScore ? SCORE_PICK_TITLE : SCORE_TOP_TITLE}{' '}
                 <b className="font-semibold tabular-nums text-zinc-950">
                   {p.predicted_home}–{p.predicted_away}
                 </b>{' '}
@@ -540,7 +556,7 @@ function ModelNumbers({ p, result, modelTested, pick, overInOutlook, fourPart = 
   ) : (
     <div className="grid gap-x-8 gap-y-2 sm:grid-cols-[11rem_minmax(0,1fr)]">
       <div>
-        <p className="text-xs text-zinc-500">สกอร์ที่เป็นไปได้มากที่สุด</p>
+        <p className="text-xs text-zinc-500">{p.pickScore ? SCORE_PICK_TITLE : 'สกอร์ที่เป็นไปได้มากที่สุด'}</p>
         {hasScore ? (
           <>
             <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-950">

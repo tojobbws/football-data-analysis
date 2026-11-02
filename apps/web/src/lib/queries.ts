@@ -84,12 +84,16 @@ export interface MatchPreview {
   team_news_th: string | null;
   analysis_th: string | null;
   facts_th: string[] | null;
+  /** the totals score matrix the preview was written from (rows home goals, columns away goals); null on earlier rows */
+  score_matrix: number[][] | null;
+  /** set by the page, never stored: predicted_* were replaced by the score that fits the pick */
+  pickScore?: boolean;
 }
 
 const PREVIEW_SELECT = `fixture_id, stage, version, text_source, ai_status, data_support, data_notes, predicted_home, predicted_away, predicted_p,
   expected_home, expected_away, p_home, p_draw, p_away, overview_th, home_th, away_th, score_th, created_at,
   p_goals_0_1, p_goals_2, p_goals_3plus, attack_th, defence_th, h2h_th, key_factor_th, summary_th,
-  opponent_th, main_side, confidence, confidence_notes, p_btts, headline_th, team_news_th, analysis_th, facts_th`;
+  opponent_th, main_side, confidence, confidence_notes, p_btts, headline_th, team_news_th, analysis_th, facts_th, score_matrix`;
 
 async function previewsFor(fixtureIds: number[]): Promise<Map<number, MatchRow['preview']>> {
   const out = new Map<number, MatchRow['preview']>();

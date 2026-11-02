@@ -112,6 +112,10 @@ _Avoid_: prediction, tip (for anything that is not the pick)
 The single exact score the model rates highest; usually well under 20%, so "some other score" is far more likely. A secondary detail under the goal bands, never the headline: a low score like 1–1 can top the list while 3+ goals is the likelier band.
 _Avoid_: predicted score, สกอร์คาดการณ์
 
+**Pick-consistent scoreline** (fan-facing: "สกอร์ที่น่าจะเกิด"):
+The exact score the model rates highest among the scores on which the match's published pick wins outright (a push does not count while any outright win exists). So Over 2.5 gives a 2–1, Under 2 a 1–0, and it can never contradict the pick. Not the **Most likely scoreline**: a match without a pick has none, and its probability is the score's own chance, usually low. Replaces the Most likely scoreline wherever the match has a pick.
+_Avoid_: predicted score, สกอร์ฟันธง, calling it the model's top score
+
 **Gated-off market**:
 A market whose model is not enabled for picks (not yet back-tested, or failed it); it can't produce a pick. Its figures may appear in the model outlook of a league whose side model is tested, always with a quiet "being measured" note, never anywhere else on fan pages.
 

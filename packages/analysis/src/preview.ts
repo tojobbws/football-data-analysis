@@ -11,6 +11,7 @@
 import { noVig } from './candidates.js';
 import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
+import { settle, type MarketSelection } from './settlement.js';
 
 export const PREVIEW_VERSION = 'preview-v1.1';
 export type PreviewStage = 'EARLY' | 'LINEUP';
@@ -327,6 +328,25 @@ export interface ScoreMatrixInputs {
 export function previewScoreMatrix(i: ScoreMatrixInputs): number[][] {
   const cupOnly = scoreMatrix(i.lambda, i.mu, i.rho);
   return i.crossLeague ? mixScoreMatrices(cupOnly, scoreMatrix(i.crossLeague.lambda, i.crossLeague.mu, i.rho), i.crossLeague.weightCupOnly) : cupOnly;
+}
+
+/**
+ * The pick-consistent scoreline: the most likely score of the matrix among those on which the pick wins
+ * outright. Only when no score wins outright does a half win, then a push, count. Same tie-break as
+ * topScorelines. `p` is the score's own chance in the matrix, not conditional on the pick.
+ */
+export function pickScoreline(matrix: number[][], sel: MarketSelection): { home: number; away: number; p: number } | null {
+  for (const want of ['WIN', 'HALF_WIN', 'PUSH'] as const) {
+    let best: { home: number; away: number; p: number } | null = null;
+    matrix.forEach((row, home) =>
+      row.forEach((p, away) => {
+        if (!(p > 0) || settle(sel, home, away) !== want) return;
+        if (!best || p > best.p || (p === best.p && home + away < best.home + best.away)) best = { home, away, p };
+      }),
+    );
+    if (best) return best;
+  }
+  return null;
 }
 
 /** Most likely scorelines, best first. */
