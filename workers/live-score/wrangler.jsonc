@@ -4,9 +4,10 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  // every minute; each run checks the DB first and only calls API-Football while a match is on
-  // every minute: live scores; "5 * * * *": dispatch the hourly GitHub data-sync (needs secret GITHUB_DISPATCH_TOKEN)
-  "triggers": { "crons": ["* * * * *", "5 * * * *"] },
+  // LIVE SCORES PAUSED (2026-11-03): the every-minute cron "* * * * *" is removed because ~50% of its polls hit
+  // API-Football's per-minute rate limit. To resume, put "* * * * *" back in front of the entry below and redeploy.
+  // "5 * * * *": dispatch the hourly GitHub data-sync (needs secret GITHUB_DISPATCH_TOKEN) — keep this one.
+  "triggers": { "crons": ["5 * * * *"] },
   // Supabase via Hyperdrive (see README "Live scores"). Created with --caching-disabled: the live gate must never read stale rows.
   // Local dev: set CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE (non-TLS URL) in workers/live-score/.env
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "62619d5d61874535bcfc1db91995f9a3" }],
