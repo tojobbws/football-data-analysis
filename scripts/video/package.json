@@ -1,0 +1,8 @@
+{
+  "name": "daily-spotlight-video",
+  "private": true,
+  "description": "Daily featured matches video (เข็มทิศเกม คู่น่าจับตา), rendered frame by frame from HTML. See .claude/skills/daily-spotlight-video/SKILL.md",
+  "dependencies": {
+    "playwright-core": "1.48.2"
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+package-lock.json
+# per-day work: facts, voice takes, renders, final films
+days/
+# third-party club / league logos, downloaded by fetch.cjs
+assets/logos/
