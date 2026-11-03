@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FEATURED_V1, FEATURED_V2, blendedProbability, featuredVerdict, isFeaturedEligible, trialSide, type TrialPick, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
+import { FEATURED_AI_V1, FEATURED_V1, FEATURED_V2, blendedProbability, featuredVerdict, isFeaturedEligible, trialSide, type TrialPick, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
 
 const at = (h: number) => new Date(Date.UTC(2026, 9, 17, h));
 const pick = (fixtureId: number, leagueId: number, supportScore: number, over: Partial<FeaturedCandidate> = {}): FeaturedCandidate => ({
@@ -72,6 +72,43 @@ describe('daily featured list', () => {
     expect(featuredVerdict(side(150, 90, 0.0), side(1000, 500, 0.01)).verdict).toBe('EXTEND'); // CLV not better
     expect(featuredVerdict(side(150, 70, 0.02), side(1000, 500, 0.01)).verdict).toBe('EXTEND'); // hit rate not better
     expect(featuredVerdict(side(300, 140, 0.02), side(1000, 500, 0.01)).verdict).toBe('FAIL');
+  });
+});
+
+describe('featured-ai-v1 (ADR 0012)', () => {
+  const ai = (fixtureId: number, leagueId: number, over: Partial<FeaturedCandidate> = {}): FeaturedCandidate =>
+    pick(fixtureId, leagueId, 0, { supportScore: null, distribution: null, engine: 'hybrid-ai-v1', aiConfidence: 'MEDIUM', dataGaps: 2, market: 'ASIAN_HANDICAP', ...over });
+
+  it('takes a Hybrid AI pick of MEDIUM or higher confidence, AH or Over/Under; LOW, rules picks and excluded leagues stay out', () => {
+    expect(isFeaturedEligible(ai(1, 39), FEATURED_AI_V1)).toBe(true);
+    expect(isFeaturedEligible(ai(1, 39, { market: 'OVER_UNDER' }), FEATURED_AI_V1)).toBe(true);
+    expect(isFeaturedEligible(ai(1, 39, { aiConfidence: 'HIGH' }), FEATURED_AI_V1)).toBe(true);
+    expect(isFeaturedEligible(ai(1, 39, { aiConfidence: 'LOW' }), FEATURED_AI_V1)).toBe(false);
+    expect(isFeaturedEligible(ai(1, 39, { engine: 'rules-v0.6' }), FEATURED_AI_V1)).toBe(false);
+    expect(isFeaturedEligible(ai(1, 296), FEATURED_AI_V1)).toBe(false);
+    // an AI pick has no distribution, so the rules' lists never take it
+    expect(isFeaturedEligible(ai(1, 39), FEATURED_V2)).toBe(false);
+  });
+
+  it('orders: big five first, then fewer data gaps, then earlier kick-off', () => {
+    const r = reserveFeatured(
+      [
+        ai(1, 88, { dataGaps: 0 }), // Eredivisie: not a priority league
+        ai(2, 39, { dataGaps: 3 }),
+        ai(3, 140, { dataGaps: 1, kickoffAt: at(18) }),
+        ai(4, 78, { dataGaps: 1, kickoffAt: at(15) }),
+        ai(5, 94, { dataGaps: 0, kickoffAt: at(10) }),
+      ],
+      [],
+      FEATURED_AI_V1,
+    );
+    expect(ids(r)).toEqual([4, 3, 2, 5, 1]);
+  });
+
+  it('keeps the caps (2 per league, 5 per day) and never fills by relaxing the rules', () => {
+    const r = reserveFeatured([ai(1, 39), ai(2, 39), ai(3, 39), ai(4, 140), ai(5, 135), ai(6, 78), ai(7, 61)], [], FEATURED_AI_V1);
+    expect(ids(r)).toEqual([1, 2, 4, 5, 6]);
+    expect(reserveFeatured([ai(1, 39, { aiConfidence: 'LOW' })], [], FEATURED_AI_V1)).toEqual([]);
   });
 });
 

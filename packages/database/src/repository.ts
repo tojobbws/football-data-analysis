@@ -1679,13 +1679,19 @@ export class Repository {
   /** Matches of a football day with their latest published prediction (LINEUP over EARLY) and its support score. */
   async featuredDayMatches(leagueIds: number[], from: string, to: string) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select f.id as fixture_id, f.league_id, f.kickoff_at, p.id as prediction_id, p.publish_round, p.kind, p.model_distribution, p.market, p.model_probability, p.market_probability, c.support_score
+      `select f.id as fixture_id, f.league_id, f.kickoff_at, p.id as prediction_id, p.publish_round, p.kind, p.model_distribution, p.market, p.model_probability, p.market_probability, c.support_score,
+              p.decision_rule_version, p.signal_strength, h.data_gaps
          from fixtures f
          left join lateral (
-           select id, publish_round, kind, model_distribution, candidate_id, market, model_probability, market_probability from analysis_predictions
+           select id, publish_round, kind, model_distribution, candidate_id, market, model_probability, market_probability, decision_rule_version, signal_strength, published_at from analysis_predictions
             where fixture_id = f.id order by (publish_round = 'LINEUP') desc, published_at desc limit 1
          ) p on true
          left join analysis_candidates c on c.id = p.candidate_id
+         left join lateral (
+           select coalesce(jsonb_array_length(input->'data_quality'->'missing'), 0) as data_gaps from hybrid_decisions
+            where fixture_id = f.id and publish_round = p.publish_round and engine_version = p.decision_rule_version and status = 'OK' and decided_at <= p.published_at
+            order by decided_at desc, id desc limit 1
+         ) h on p.decision_rule_version like 'hybrid-%'
         where f.league_id = any($1::int[]) and f.kickoff_at >= $2 and f.kickoff_at < $3
         order by f.kickoff_at, f.id`,
       [leagueIds, from, to],
@@ -1702,6 +1708,9 @@ export class Repository {
       marketProbability: r.market_probability == null ? null : Number(r.market_probability),
       distribution: r.model_distribution == null ? null : (parseJson(r.model_distribution) as unknown as OutcomeDistributionRow),
       supportScore: r.support_score == null ? null : Number(r.support_score),
+      engine: r.decision_rule_version == null ? null : String(r.decision_rule_version),
+      signalStrength: r.signal_strength == null ? null : String(r.signal_strength),
+      dataGaps: r.data_gaps == null ? null : Number(r.data_gaps),
     }));
   }
 

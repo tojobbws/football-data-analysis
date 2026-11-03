@@ -61,7 +61,7 @@ function criteria(s: Side | undefined, all: Side | undefined) {
   ];
 }
 
-function Criteria({ version, review }: { version: 'featured-v1' | 'featured-v2'; review: Review }) {
+function Criteria({ version, review }: { version: 'featured-v1' | 'featured-v2' | 'featured-ai-v1'; review: Review }) {
   const s = review.sides[version];
   const rows = criteria(s, review.sides[`all:${version}`]);
   return (
@@ -108,6 +108,7 @@ export default async function AdminReview() {
           <div className="grid gap-6 lg:grid-cols-2">
             <Criteria version="featured-v2" review={review} />
             <Criteria version="featured-v1" review={review} />
+            <Criteria version="featured-ai-v1" review={review} />
           </div>
         ) : (
           <Empty>ยังไม่มีข้อมูล</Empty>

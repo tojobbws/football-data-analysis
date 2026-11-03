@@ -648,23 +648,22 @@ async function loadWatchedPicks(from: string, days: number): Promise<Map<string,
       sb.from('fixtures').select('id, kickoff_at, status_short').in('league_id', webEnv().leagues).gte('kickoff_at', footballDayRange(first).from).lt('kickoff_at', footballDayRange(last).to).order('id').range(a, b),
     ),
     webEnv().featuredList
-      ? sb.from('featured_selections').select('football_date, fixture_id, rank').eq('version', 'featured-v2').not('rank', 'is', null).gte('football_date', first).lte('football_date', last)
+      ? sb.from('featured_selections').select('football_date, fixture_id, rank, version').in('version', FEATURED_VERSIONS).not('rank', 'is', null).gte('football_date', first).lte('football_date', last)
       : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
   ]);
   if (fx.error) fail('fixtures', fx.error);
   if (listed.error) fail('featured_selections', listed.error);
+  // each day reads one list: the newest version that has slots for it (ADR 0012)
+  const versionOfDay = new Map<string, string | null>();
+  for (const d of dates) versionOfDay.set(d, listVersion((listed.data ?? []).filter((r) => String(r.football_date) === d).map((r) => String(r.version))));
   const ranks = new Map<number, number>();
-  const daysWithList = new Set<string>();
-  for (const r of listed.data ?? []) {
-    ranks.set(Number(r.fixture_id), Number(r.rank));
-    daysWithList.add(String(r.football_date));
-  }
-  // the gold frame: a day with a list shows its slots; a day without one only keeps its finished picks
+  for (const r of listed.data ?? []) if (r.version === versionOfDay.get(String(r.football_date))) ranks.set(Number(r.fixture_id), Number(r.rank));
+  // the gold frame: only a match holding a slot in its day's list; a day without a list has none (ADR 0012)
   const dayOf = new Map<number, string>();
   const candidates: number[] = [];
   for (const f of fx.data ?? []) {
     const day = footballDate(new Date(f.kickoff_at));
-    if (daysWithList.has(day) ? !ranks.has(f.id) : !FINISHED.includes(f.status_short)) continue;
+    if (!ranks.has(f.id)) continue;
     dayOf.set(f.id, day);
     candidates.push(f.id);
   }
@@ -1038,8 +1037,13 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
 export async function featuredRanks(date: string): Promise<Map<number, number>> {
   const out = new Map<number, number>();
   if (!webEnv().featuredList) return out;
-  const { data, error } = await db().from('featured_selections').select('fixture_id, rank').eq('football_date', date).eq('version', 'featured-v2').not('rank', 'is', null);
+  const { data, error } = await db().from('featured_selections').select('fixture_id, rank, version').eq('football_date', date).in('version', FEATURED_VERSIONS).not('rank', 'is', null);
   if (error) fail('featured_selections', error);
-  for (const r of data ?? []) out.set(Number(r.fixture_id), Number(r.rank));
+  const version = listVersion((data ?? []).map((r) => String(r.version)));
+  for (const r of data ?? []) if (r.version === version) out.set(Number(r.fixture_id), Number(r.rank));
   return out;
 }
+
+/** The lists the site reads (ADR 0012). A day's list is the newest version that has slots for that day. */
+const FEATURED_VERSIONS = ['featured-v2', 'featured-ai-v1'];
+const listVersion = (versions: string[]) => (versions.includes('featured-ai-v1') ? 'featured-ai-v1' : versions.includes('featured-v2') ? 'featured-v2' : null);

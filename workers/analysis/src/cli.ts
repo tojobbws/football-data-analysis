@@ -8,7 +8,7 @@ import { matchReport } from './report-job.js';
 import { settleJob } from './settle-job.js';
 import { closingJob } from './closing-job.js';
 import { shadowReport } from './shadow-report-job.js';
-import { FEATURED_V2 } from '@fp/analysis';
+import { FEATURED_AI_V1, FEATURED_V2 } from '@fp/analysis';
 import { featuredJob } from './featured-job.js';
 import { featuredReport } from './featured-report-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
@@ -77,9 +77,10 @@ async function main() {
     else if (job === 'featured') {
       await featuredJob(ctx);
       await featuredJob(ctx, { config: FEATURED_V2 });
+      await featuredJob(ctx, { config: FEATURED_AI_V1 });
     }
     else if (job === 'featured-report') {
-      for (const version of ['featured-v1', 'featured-v2']) {
+      for (const version of ['featured-v1', 'featured-v2', 'featured-ai-v1']) {
       const r = await featuredReport(ctx, { version });
       const pct = (x: number | null) => (x === null ? '-' : `${(x * 100).toFixed(1)}%`);
       console.log(`featured list ${r.version} since ${r.since.toISOString().slice(0, 10)} — verdict: ${r.verdict} (needs ${r.trial.minPicks}, extends to ${r.trial.extendTo}; ADR 0003 must also have a verdict)`);

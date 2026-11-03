@@ -1,5 +1,5 @@
 /**
- * Daily featured list (คู่เด่นประจำวัน), shadow only — docs/adr/0004-daily-featured-shadow.md.
+ * Daily featured list (คู่น่าจับตา) — docs/adr/0004-daily-featured-shadow.md, 0006 (rules picks), 0012 (Hybrid AI picks).
  *
  * Runs hourly after `model:publish`. For the current football day (06:00 → 06:00 Thai):
  *   1. a match whose LINEUP round is published (or that kicked off without one) is locked:
@@ -30,10 +30,20 @@ export function featuredJob(ctx: JobContext, opts: FeaturedOptions = {}) {
     const confirmed = rows.filter((r) => r.phase === 'CONFIRMED').map((r) => ({ fixtureId: r.fixtureId, leagueId: r.leagueId }));
     const open = matches.filter((m) => !row.get(m.fixtureId)?.locked);
 
-    const asCandidate = (m: (typeof open)[number]): FeaturedCandidate | null =>
-      m.kind === 'SIGNAL' && m.predictionId != null && m.distribution && m.supportScore != null && (m.round === 'LINEUP' || m.kickoffAt > now)
-        ? { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: m.supportScore, distribution: m.distribution, gateEnabled: true, market: m.market ?? undefined, modelProbability: m.modelProbability, marketProbability: m.marketProbability }
-        : null;
+    const ai = cfg.pool === 'AI';
+    const confidenceOf = (s: string | null) => (s === 'STRONG' ? 'HIGH' : s === 'MEDIUM' ? 'MEDIUM' : s === 'LEAN' ? 'LOW' : null);
+    const asCandidate = (m: (typeof open)[number]): FeaturedCandidate | null => {
+      if (m.kind !== 'SIGNAL' || m.predictionId == null) return null;
+      if (ai) {
+        // An AI pick is published at its EARLY round and seldom gets a LINEUP round, so the lock is at kick-off (ADR 0012).
+        // A match that kicked off without ever holding a slot is not offered: nothing is chosen after the whistle.
+        if (m.engine !== 'hybrid-ai-v1') return null;
+        if (!(m.round === 'LINEUP' || m.kickoffAt > now || row.get(m.fixtureId)?.rank != null)) return null;
+        return { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: null, distribution: null, gateEnabled: true, market: m.market ?? undefined, marketProbability: m.marketProbability, engine: m.engine, aiConfidence: confidenceOf(m.signalStrength), dataGaps: m.dataGaps ?? 0 };
+      }
+      if (!m.distribution || m.supportScore == null || !(m.round === 'LINEUP' || m.kickoffAt > now)) return null;
+      return { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: m.supportScore, distribution: m.distribution, gateEnabled: true, market: m.market ?? undefined, modelProbability: m.modelProbability, marketProbability: m.marketProbability };
+    };
     const reserved = reserveFeatured(open.map(asCandidate).filter((c): c is FeaturedCandidate => c !== null), confirmed, cfg);
     const rankOf = (fixtureId: number) => {
       const i = reserved.findIndex((r) => r.fixtureId === fixtureId);
@@ -50,11 +60,13 @@ export function featuredJob(ctx: JobContext, opts: FeaturedOptions = {}) {
         leagueId: m.leagueId,
         predictionId: m.predictionId,
         supportScore: c?.supportScore ?? null,
-        fairProbability: c ? round5(fairProbability(c.distribution)) : null,
+        fairProbability: c?.distribution ? round5(fairProbability(c.distribution)) : null,
       };
       const lockNow = m.round === 'LINEUP' || m.kickoffAt <= now;
       if (lockNow) {
-        const phase = m.round === 'LINEUP' && lockFeatured(m.fixtureId, reserved) === 'CONFIRMED' ? 'CONFIRMED' : row.has(m.fixtureId) ? 'DROPPED' : 'SKIPPED';
+        // MODEL pool: confirmed only at the LINEUP round. AI pool: at the LINEUP round or at kick-off, whichever comes first
+        const confirmable = ai || m.round === 'LINEUP';
+        const phase = confirmable && lockFeatured(m.fixtureId, reserved) === 'CONFIRMED' ? 'CONFIRMED' : row.has(m.fixtureId) ? 'DROPPED' : 'SKIPPED';
         await ctx.repo.lockFeatured({ ...base, phase, rank: phase === 'CONFIRMED' ? rankOf(m.fixtureId) : null });
         changed++;
       } else {

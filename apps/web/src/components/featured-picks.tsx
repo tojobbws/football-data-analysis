@@ -28,16 +28,16 @@ export function featuredList(matches: MatchRow[], ranks: Map<number, number>): S
 }
 
 /**
- * Finished matches that were คู่น่าจับตา: the day's ranked picks when there is a list, otherwise every pick.
+ * Finished matches that were คู่น่าจับตา: those that held a slot in the day's list (ADR 0012). A day without a list has none.
  * They keep the gold frame after the whistle and show ถูก/ผิด.
  */
 export function finishedWatch(matches: MatchRow[], ranks: Map<number, number>): string[] {
-  return matches.filter((m) => FINISHED.includes(m.status_short) && m.compass?.kind === 'SIGNAL' && (!ranks.size || ranks.has(m.id))).map((m) => m.slug);
+  return matches.filter((m) => FINISHED.includes(m.status_short) && m.compass?.kind === 'SIGNAL' && ranks.has(m.id)).map((m) => m.slug);
 }
 
 /**
- * Slugs that get the gold frame: the day's ranked list that has not started yet, plus the finished ones. No list yet
- * means no frame on a match still to play. One rule for the home page and /today.
+ * Slugs that get the gold frame: the matches holding a slot in the day's list, to play or finished. No list means
+ * no frame. One rule for the home page and /today.
  */
 export function watchSlugs(matches: MatchRow[], ranks: Map<number, number>): Set<string> {
   return new Set([...featuredList(matches, ranks).map((f) => f.slug), ...finishedWatch(matches, ranks)]);

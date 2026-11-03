@@ -25,7 +25,14 @@ export interface FeaturedConfig {
   modelWeight: number;
   /** Over/Under needs a second independent signal (ADR 0006) that does not exist yet, so v2 leaves it out */
   allowOverUnder: boolean;
+  /** MODEL: picks of the rules engine, ranked by probability. AI: picks of the Hybrid AI, which have no model probability (ADR 0012) */
+  pool: 'MODEL' | 'AI';
+  /** AI pool: leagues listed first (the big five) */
+  priorityLeagues: readonly number[];
 }
+
+/** The AI's confidence in the evidence, as stored on its published pick (STRONG = HIGH, MEDIUM, LEAN = LOW). */
+export type AiConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
 
 /** Frozen for the shadow trial (ADR 0004): any change is a new version and the count restarts. */
 export const FEATURED_V1: FeaturedConfig = {
@@ -38,6 +45,8 @@ export const FEATURED_V1: FeaturedConfig = {
   rankBy: 'SUPPORT',
   modelWeight: 1,
   allowOverUnder: true,
+  pool: 'MODEL',
+  priorityLeagues: [],
 };
 
 /** ADR 0006: ranked by the model blended 50/50 with the market; the edge stays a gate (already one of the pick rules). */
@@ -49,14 +58,34 @@ export const FEATURED_V2: FeaturedConfig = {
   allowOverUnder: false,
 };
 
+/**
+ * ADR 0012: the list for Hybrid AI picks. Asian handicap and Over/Under, only a pick the AI is at least MEDIUM sure of.
+ * Order is editorial, declared before any result: the big five leagues, fewer data gaps, earlier kick-off.
+ * Caps and excluded leagues are those of v1/v2. A new version, so its count starts again (ADR 0004).
+ */
+export const FEATURED_AI_V1: FeaturedConfig = {
+  ...FEATURED_V1,
+  version: 'featured-ai-v1',
+  allowOverUnder: true,
+  pool: 'AI',
+  priorityLeagues: [39, 140, 78, 135, 61],
+};
+
 /** The current pick of a match not locked yet. */
 export interface FeaturedCandidate {
   predictionId: number;
   fixtureId: number;
   leagueId: number;
   kickoffAt: Date;
-  supportScore: number;
-  distribution: OutcomeDistribution;
+  /** pool MODEL only */
+  supportScore: number | null;
+  /** pool MODEL only: the model's outcome distribution of the pick (an AI pick has none) */
+  distribution: OutcomeDistribution | null;
+  /** pool AI only */
+  engine?: string | null;
+  aiConfidence?: AiConfidence | null;
+  /** pool AI only: items the decision lists as missing data; fewer is better */
+  dataGaps?: number;
   /** the pick's market passes the league's tuning gate */
   gateEnabled: boolean;
   market?: string;
@@ -72,7 +101,13 @@ export function blendedProbability(c: Pick<FeaturedCandidate, 'modelProbability'
 }
 
 function rankScore(c: FeaturedCandidate, cfg: FeaturedConfig): number {
-  return cfg.rankBy === 'BLENDED' ? (blendedProbability(c, cfg.modelWeight) ?? -1) : c.supportScore;
+  return cfg.rankBy === 'BLENDED' ? (blendedProbability(c, cfg.modelWeight) ?? -1) : (c.supportScore ?? -1);
+}
+
+/** Pool AI order (ADR 0012): priority leagues, fewer data gaps, earlier kick-off, fixture id. */
+function compareAi(a: FeaturedCandidate, b: FeaturedCandidate, cfg: FeaturedConfig): number {
+  const pri = (c: FeaturedCandidate) => (cfg.priorityLeagues.includes(c.leagueId) ? 0 : 1);
+  return pri(a) - pri(b) || (a.dataGaps ?? 0) - (b.dataGaps ?? 0) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId;
 }
 
 export interface LockedSlot {
@@ -82,7 +117,9 @@ export interface LockedSlot {
 
 export function isFeaturedEligible(c: FeaturedCandidate, cfg: FeaturedConfig = FEATURED_V1): boolean {
   if (!cfg.allowOverUnder && c.market === 'OVER_UNDER') return false;
-  return c.gateEnabled && !cfg.excludedLeagues.includes(c.leagueId) && fairProbability(c.distribution) >= cfg.minFairWin;
+  if (cfg.excludedLeagues.includes(c.leagueId)) return false;
+  if (cfg.pool === 'AI') return c.engine === 'hybrid-ai-v1' && (c.aiConfidence === 'MEDIUM' || c.aiConfidence === 'HIGH');
+  return c.gateEnabled && c.distribution != null && fairProbability(c.distribution) >= cfg.minFairWin;
 }
 
 /**
@@ -96,7 +133,7 @@ export function reserveFeatured(candidates: FeaturedCandidate[], confirmed: Lock
 
   const ranked = candidates
     .filter((c) => !taken.has(c.fixtureId) && isFeaturedEligible(c, cfg))
-    .sort((a, b) => rankScore(b, cfg) - rankScore(a, cfg) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId);
+    .sort((a, b) => (cfg.pool === 'AI' ? compareAi(a, b, cfg) : rankScore(b, cfg) - rankScore(a, cfg) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId));
 
   const out: FeaturedCandidate[] = [];
   for (const c of ranked) {
