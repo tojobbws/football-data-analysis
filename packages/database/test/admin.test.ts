@@ -125,6 +125,30 @@ describe('admin RLS', () => {
     expect(v.days).toMatchObject([{ version: 'featured-v2', day: '2026-10-10', picks: 2, won: 1, lost: 1 }]);
   });
 
+  it('featured-ai-v1 (ADR 0012): visitors read only the matches in the list, and review compares them with all Hybrid AI picks', async () => {
+    await db.exec(`
+      insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short)
+        values (913, 39, 2026, now() + interval '1 day', 1, 2, 'NS'), (914, 39, 2026, now() + interval '1 day', 2, 1, 'NS');
+      insert into analysis_predictions (fixture_id, publish_round, kind, market, selection, line, market_probability, signal_strength, decision_rule_version) values
+        (913, 'EARLY', 'SIGNAL', 'ASIAN_HANDICAP', 'HOME', 0, 0.50, 'MEDIUM', 'hybrid-ai-v1'),
+        (914, 'EARLY', 'SIGNAL', 'OVER_UNDER', 'OVER', 2.5, 0.50, 'MEDIUM', 'hybrid-ai-v1');
+      update fixtures set kickoff_at = now() - interval '1 day', status_short = 'FT', ft_home = 1, ft_away = 0 where id in (913, 914);
+      update analysis_predictions set status = 'WIN', clv = 0.01 where fixture_id = 913;
+      update analysis_predictions set status = 'LOSS', clv = -0.01 where fixture_id = 914;
+      insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, prediction_id, locked_at)
+        select '2026-11-03', 'featured-ai-v1', p.fixture_id, 39, case when p.fixture_id = 913 then 'CONFIRMED' else 'DROPPED' end, case when p.fixture_id = 913 then 1 end, p.id, now()
+          from analysis_predictions p where p.fixture_id in (913, 914);
+    `);
+    // the list a visitor can read: the confirmed match only (the dropped one stays admin-only)
+    const seen = await as('anon', null, (q) => q(`select fixture_id, rank from featured_selections where version = 'featured-ai-v1'`));
+    expect(seen.map((r) => [Number(r.fixture_id), Number(r.rank)])).toEqual([[913, 1]]);
+    const [r] = await as('authenticated', ADMIN, (q) => q('select fp_admin_review() as r'));
+    const v = r!.r as { sides: Record<string, { picks: number; settled: number; fair_hit: number }>; days: Array<{ version: string; day: string; picks: number; won: number }> };
+    expect(v.sides['featured-ai-v1']).toMatchObject({ picks: 1, settled: 1, fair_hit: 1 });
+    expect(v.sides['all:featured-ai-v1']).toMatchObject({ picks: 2, settled: 2, fair_hit: 0.5 });
+    expect(v.days).toEqual(expect.arrayContaining([expect.objectContaining({ version: 'featured-ai-v1', day: '2026-11-03', picks: 1, won: 1 })]));
+  });
+
   it('benchmark scores the last pre-kickoff forecasts of both sides on the same matches', async () => {
     // fixture 1 (home win), fixture 2 (draw) — fixtures from the coverage test
     await db.exec(`

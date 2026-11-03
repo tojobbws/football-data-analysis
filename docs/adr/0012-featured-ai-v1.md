@@ -12,7 +12,8 @@ Since the Hybrid AI publishes the pick (ADR 0010, 2026-10-27) the list has been 
 
 **Pool.** The latest pick of a match that is a SIGNAL of `hybrid-ai-v1`: Asian handicap and Over/Under (the owner's choice; Over/Under had been left out of v2 for lack of a second signal, which does not apply to a pick the AI reads from verified data). Only a pick whose confidence is **MEDIUM or HIGH** (the AI has not stated HIGH yet). The AI states LOW when its evidence is weak, so LOW is left out on the AI's own word, not on results.
 
-**Order.** An editorial rule, declared before any result:
+**Order.** The owner asked for the picks with the highest confidence first (2026-11-03). The AI states only two levels in practice (125 picks: MEDIUM 92, LOW 33, never HIGH), so on a normal day every candidate ties on confidence and the rest of the rule, an editorial one declared before any result, decides:
+0. the AI's confidence (HIGH before MEDIUM);
 1. the five big leagues first (Premier League 39, La Liga 140, Bundesliga 78, Serie A 135, Ligue 1 61): the readers know these teams best, and the list is also what leads readers into the match articles;
 2. fewer gaps in `data_quality.missing` of the decision;
 3. earlier kick-off.

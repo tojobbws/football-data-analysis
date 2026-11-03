@@ -105,6 +105,11 @@ describe('featured-ai-v1 (ADR 0012)', () => {
     expect(ids(r)).toEqual([4, 3, 2, 5, 1]);
   });
 
+  it('the AI confidence comes first: a HIGH pick outside the big five goes before a MEDIUM one inside', () => {
+    const r = reserveFeatured([ai(1, 39), ai(2, 88, { aiConfidence: 'HIGH' }), ai(3, 140)], [], FEATURED_AI_V1);
+    expect(ids(r)).toEqual([2, 1, 3]);
+  });
+
   it('keeps the caps (2 per league, 5 per day) and never fills by relaxing the rules', () => {
     const r = reserveFeatured([ai(1, 39), ai(2, 39), ai(3, 39), ai(4, 140), ai(5, 135), ai(6, 78), ai(7, 61)], [], FEATURED_AI_V1);
     expect(ids(r)).toEqual([1, 2, 4, 5, 6]);

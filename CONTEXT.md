@@ -83,9 +83,17 @@ _Avoid_: calling it a pick on fan pages
 A fixed-length comparison of shadow pick rules against the real ones, judged on criteria set before any result is seen; the shadow rules are frozen for its length, and only its verdict can change the rules behind the published picks.
 _Avoid_: tweaking shadow rules mid-trial (that starts a new trial)
 
-**Daily featured list (คู่เด่นประจำวัน)**:
-Up to 5 of a football day's picks, chosen from real picks only (never a separate opinion), ranked by the model blended with the market (featured-v2, ADR 0006; v1 ranked by support score) with at most one per match and two per league; a slot is reserved from the EARLY pick and confirmed or dropped by the LINEUP pick. On the site since ADR 0006; fan-facing name: "เข็มทิศเกมประจำวัน". A day with no qualifying pick has no list.
-_Avoid_: best bets, sure picks, ฟันธง (as fan-facing copy); filling the list by relaxing thresholds
+**Daily featured list (เข็มทิศเกมประจำวัน)**:
+Up to 5 of a football day's picks, chosen from real picks only (never a separate opinion), with at most one per match and two per league. For rules picks (featured-v2, ADR 0006; v1 ranked by support score) it is ranked by the model blended with the market, a slot is reserved from the EARLY pick and confirmed or dropped by the LINEUP pick. For Hybrid AI picks (featured-ai-v1, ADR 0012) it is ordered by the AI's confidence, then big five leagues, fewer data gaps, earlier kick-off, and a slot is confirmed or dropped at the LINEUP round or at kick-off. A day with no qualifying pick has no list. Fan-facing name: "เข็มทิศเกมประจำวัน".
+_Avoid_: คู่เด่นประจำวัน (old name), best bets, sure picks, ฟันธง (as fan-facing copy); filling the list by relaxing thresholds
+
+**Watched match (คู่น่าจับตา)**:
+A match that held a confirmed slot in a football day's list when it was locked. Kept for good with its rank and the pick it was locked on, and listed with its result on /performance. Matches that held a slot and lost it before the lock (dropped), and days without a list, have none.
+_Avoid_: calling a pick with no slot a watched match
+
+**Gold frame (กรอบทอง)**:
+How the site shows a watched match, or a match still holding a slot in today's list. A display only: it is not stored, and it is drawn from the list rows alone, never from the pick.
+_Avoid_: giving it to every pick of a day with no list
 
 **Closing market**:
 The market's view of a match at kickoff — the 1X2 and the main Asian handicap and over/under line (sides closest to 50/50), with the model's probability beside each side; kept for good, so the model can be measured against the market over time.

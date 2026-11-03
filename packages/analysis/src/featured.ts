@@ -104,10 +104,11 @@ function rankScore(c: FeaturedCandidate, cfg: FeaturedConfig): number {
   return cfg.rankBy === 'BLENDED' ? (blendedProbability(c, cfg.modelWeight) ?? -1) : (c.supportScore ?? -1);
 }
 
-/** Pool AI order (ADR 0012): priority leagues, fewer data gaps, earlier kick-off, fixture id. */
+/** Pool AI order (ADR 0012): the AI's confidence, then on a tie priority leagues, fewer data gaps, earlier kick-off, fixture id. */
 function compareAi(a: FeaturedCandidate, b: FeaturedCandidate, cfg: FeaturedConfig): number {
+  const conf = (c: FeaturedCandidate) => (c.aiConfidence === 'HIGH' ? 0 : 1);
   const pri = (c: FeaturedCandidate) => (cfg.priorityLeagues.includes(c.leagueId) ? 0 : 1);
-  return pri(a) - pri(b) || (a.dataGaps ?? 0) - (b.dataGaps ?? 0) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId;
+  return conf(a) - conf(b) || pri(a) - pri(b) || (a.dataGaps ?? 0) - (b.dataGaps ?? 0) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId;
 }
 
 export interface LockedSlot {
