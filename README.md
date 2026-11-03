@@ -204,7 +204,7 @@ select * from analysis_performance;   -- win_rate, avg_clv, beat_closing_rate �
 
 ```bash
 npm run model:publish
-npm run model:ai-shadow     # ต้องมี ANTHROPIC_API_KEY (ไม่มี = ข้าม)
+npm run model:ai-shadow     # ต้องมี OPENAI_API_KEY + OPENAI_MODEL หรือ ANTHROPIC_API_KEY (ไม่มี = ข้าม); pick ของ Hybrid AI ไม่มี shadow (ADR 0010)
 ```
 ```sql
 select * from ai_shadow_comparison;   -- กฎ vs AI บนคู่เดียวกัน: win_rate, avg_clv, agreement_rate
@@ -221,7 +221,7 @@ select * from ai_shadow_comparison;   -- กฎ vs AI บนคู่เดี�
 
 ```bash
 npm run model:probabilities -- --days 2
-npm run model:preview -- --hours 48      # มี ANTHROPIC_API_KEY = AI เรียบเรียง, ไม่มี = ข้อความจากตัวเลขล้วน
+npm run model:preview -- --hours 48      # มี OPENAI_API_KEY + OPENAI_MODEL หรือ ANTHROPIC_API_KEY = AI เรียบเรียง, ไม่มี = ข้อความจากตัวเลขล้วน
 ```
 ```sql
 select fixture_id, stage, text_source, ai_status, data_support, predicted_home, predicted_away from match_previews order by kickoff_at;

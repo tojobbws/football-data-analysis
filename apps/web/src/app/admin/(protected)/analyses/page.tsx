@@ -61,7 +61,7 @@ export default async function AdminAnalyses() {
     sb
       .from('analysis_predictions')
       .select(
-        `id, public_id, publish_round, kind, market, selection, line, odds_at_publish, model_probability, signal_strength, status, result_score, published_at,
+        `id, public_id, publish_round, kind, market, selection, line, odds_at_publish, decision_rule_version, model_probability, signal_strength, status, result_score, published_at,
          fixture:fixtures!analysis_predictions_fixture_id_fkey(slug, kickoff_at, home:teams!fixtures_home_team_id_fkey(name), away:teams!fixtures_away_team_id_fkey(name)),
          ai:ai_shadow_rankings(status, model, no_clear_signal, pick_market, pick_selection, pick_line, agrees_with_rules, explanation_th, guard_violations, ai_status)`,
       )
@@ -82,6 +82,8 @@ export default async function AdminAnalyses() {
     line: number | null;
     model_probability: number | null;
     signal_strength: string | null;
+    /** hybrid-* = the pick came from the Hybrid AI engine, which has no shadow ranking (ADR 0010) */
+    decision_rule_version: string | null;
     status: Status;
     result_score: string | null;
     published_at: string;
@@ -202,7 +204,11 @@ export default async function AdminAnalyses() {
                         <p className="mt-1 text-[10px] text-slate-400">{ai.model}</p>
                       </>
                     ) : (
-                      <span className="text-xs text-slate-400">ยังไม่มี AI shadow (ต้องมี ANTHROPIC_API_KEY และรันก่อนเตะ)</span>
+                      <span className="text-xs text-slate-400">
+                        {r.decision_rule_version?.startsWith('hybrid-')
+                          ? 'pick นี้มาจาก Hybrid AI จึงไม่มี AI shadow (ADR 0010)'
+                          : 'ยังไม่มี AI shadow (job ต้องมี OPENAI_API_KEY + OPENAI_MODEL หรือ ANTHROPIC_API_KEY และรันก่อนเตะ)'}
+                      </span>
                     )}
                   </div>
                 </li>

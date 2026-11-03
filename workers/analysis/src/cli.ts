@@ -31,7 +31,7 @@ jobs:
   report [--hours N]           🔎 Markdown report of upcoming matches (default next 18h) -> reports/
   publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
   hybrid [--budget-minutes M]  Hybrid AI decides each due publish round (PICK_ENGINE=shadow|hybrid; stored, published only in hybrid mode)
-  ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs ANTHROPIC_API_KEY
+  ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs OPENAI_API_KEY + OPENAI_MODEL or ANTHROPIC_API_KEY; skips Hybrid AI picks
   preview [--hours N] [--until ISO] [--refresh] [--budget-minutes M]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48), only those kicking off before --until when given; AI text with an AI key, template text without; --refresh rewrites previews from an older version
   pick-notes [--refresh]      Game Compass note (pick_th) for every published pick not yet explained; AI text with an AI key, template text without; --refresh rewrites notes from an older prompt
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
