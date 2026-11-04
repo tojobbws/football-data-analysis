@@ -1035,7 +1035,8 @@ export class Repository {
   /**
    * The Hybrid AI's form data (ADR 0010): a team's last n finished matches before `before`, any competition,
    * from its side: score, xG and shots, and the opponent's position in that competition's table (the table as
-   * synced now; null when the competition has none).
+   * synced now; null when the competition has none). Also the inputs of the expected-goals metrics: the full-match
+   * score, in-play penalties, own goals and goals prevented.
    */
   async teamRecentMatches(teamId: number, before: Date, n = 10) {
     const res = await this.db.query<Record<string, unknown>>(
@@ -1049,6 +1050,17 @@ export class Repository {
               max(s.value_num) filter (where s.type = 'shots_on_goal' and s.team_id = f.away_team_id) as sot_a,
               max(s.value_num) filter (where s.type = 'total_shots' and s.team_id = f.home_team_id) as sh_h,
               max(s.value_num) filter (where s.type = 'total_shots' and s.team_id = f.away_team_id) as sh_a,
+              max(s.value_num) filter (where s.type = 'goals_prevented' and s.team_id = f.home_team_id) as gp_h,
+              max(s.value_num) filter (where s.type = 'goals_prevented' and s.team_id = f.away_team_id) as gp_a,
+              f.status_short, f.goals_home as full_h, f.goals_away as full_a,
+              -- penalties taken in play (scored or missed, never the shootout) and own goals; an own goal is filed under
+              -- the team it counts for (checked on the stored data, 2026-11-04). Null when the match has no events stored.
+              (select json_build_object(
+                        'pen_h', count(*) filter (where e.type = 'Goal' and e.detail in ('Penalty', 'Missed Penalty') and coalesce(e.comments, '') <> 'Penalty Shootout' and e.team_id = f.home_team_id),
+                        'pen_a', count(*) filter (where e.type = 'Goal' and e.detail in ('Penalty', 'Missed Penalty') and coalesce(e.comments, '') <> 'Penalty Shootout' and e.team_id = f.away_team_id),
+                        'og_h', count(*) filter (where e.type = 'Goal' and e.detail = 'Own Goal' and e.team_id = f.home_team_id),
+                        'og_a', count(*) filter (where e.type = 'Goal' and e.detail = 'Own Goal' and e.team_id = f.away_team_id))
+                 from fixture_events e where e.fixture_id = f.id having count(*) > 0) as ev,
               (select st.rank from standings st where st.league_id = f.league_id and st.season = f.season
                   and st.team_id = case when f.home_team_id = $1 then f.away_team_id else f.home_team_id end limit 1) as opp_rank,
               (select count(*) from standings st where st.league_id = f.league_id and st.season = f.season
@@ -1058,7 +1070,7 @@ export class Repository {
          join leagues l on l.id = f.league_id
          join teams th on th.id = f.home_team_id
          join teams ta on ta.id = f.away_team_id
-         left join fixture_statistics s on s.fixture_id = f.id and s.type in ('expected_goals', 'shots_on_goal', 'total_shots')
+         left join fixture_statistics s on s.fixture_id = f.id and s.type in ('expected_goals', 'shots_on_goal', 'total_shots', 'goals_prevented')
         where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $2
           and coalesce(f.ft_home, f.goals_home) is not null
         group by f.id, l.name, l.type, th.name, ta.name
@@ -1069,6 +1081,7 @@ export class Repository {
     return res.rows.map((r) => {
       const home = Number(r.home_team_id) === teamId;
       const rank = num(r.opp_rank);
+      const ev = (typeof r.ev === 'string' ? JSON.parse(r.ev) : r.ev) as Record<string, unknown> | null;
       return {
         kickoffAt: new Date(r.kickoff_at as string).toISOString(),
         competition: String(r.competition),
@@ -1089,6 +1102,14 @@ export class Repository {
         shotsOnTargetAgainst: num(home ? r.sot_a : r.sot_h),
         shotsFor: num(home ? r.sh_h : r.sh_a),
         shotsAgainst: num(home ? r.sh_a : r.sh_h),
+        // for the expected-goals metrics (hybrid prompt v1.5)
+        status: String(r.status_short) as 'FT' | 'AET' | 'PEN',
+        fullGoalsFor: num(home ? r.full_h : r.full_a),
+        fullGoalsAgainst: num(home ? r.full_a : r.full_h),
+        penaltiesFor: ev ? Number(home ? ev.pen_h : ev.pen_a) : null,
+        penaltiesAgainst: ev ? Number(home ? ev.pen_a : ev.pen_h) : null,
+        ownGoalsFor: ev ? Number(home ? ev.og_h : ev.og_a) : null,
+        goalsPreventedFor: num(home ? r.gp_h : r.gp_a),
       };
     });
   }

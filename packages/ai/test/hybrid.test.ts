@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hybridMarket, hybridOptions, type OddsQuote } from '@fp/analysis';
-import { allowedNumbers, buildHybridInput, HYBRID_PROMPT_VERSION, HYBRID_SYSTEM_PROMPT, validateHybridOutput, type HybridSource, type TeamMatch } from '../src/index.js';
+import { allowedNumbers, buildHybridInput, expectedMetrics, expectedPoints, HYBRID_PROMPT_VERSION, HYBRID_SYSTEM_PROMPT, PENALTY_XG, validateHybridOutput, type HybridSource, type TeamMatch } from '../src/index.js';
 
 const NOW = new Date('2026-10-24T08:00:00Z');
 const quotes: OddsQuote[] = [1, 2, 3].flatMap((b) => [
@@ -195,10 +195,9 @@ describe('next_match (since prompt hybrid-ai-v1.2): the next fixture of each tea
     expect(validateHybridOutput(quote, input, options).ok).toBe(false); // without the field, 3.2 would be an invented number
   });
 
-  it('names the field in the system prompt and the prompt version is v1.4 (no confidence level in the Thai text)', () => {
+  it('names the field in the system prompt (no confidence level in the Thai text)', () => {
     expect(HYBRID_SYSTEM_PROMPT).toContain('next_match');
     expect(HYBRID_SYSTEM_PROMPT).toContain('Never state how confident you are');
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.4');
   });
 });
 
@@ -217,5 +216,81 @@ describe('opponent positions as of the match date (input v2): what the AI is tol
     expect((buildHybridInput({ ...src, recent: full, opponentRankBasis: 'as_of_results' }) as Built).data_quality.missing.some((x) => x.includes('opponent table position'))).toBe(false);
     const holes = { home: Array.from({ length: 10 }, (_, i) => match(i, { opponentRank: null, opponentTableSize: null })), away: full.away };
     expect((buildHybridInput({ ...src, recent: holes }) as Built).data_quality.missing.some((x) => x.includes('opponent table position'))).toBe(false); // v1: no basis given, no note
+  });
+});
+
+describe('expected-goals metrics (prompt v1.5): computed here from stored statistics and events, never by the AI', () => {
+  const full = (i: number, over: Partial<TeamMatch> = {}) =>
+    match(i, { status: 'FT', fullGoalsFor: 2, fullGoalsAgainst: i % 3 === 0 ? 1 : 0, penaltiesFor: 0, penaltiesAgainst: 0, ownGoalsFor: 0, goalsPreventedFor: 0.2, ...over });
+  type Window = Record<string, number | null>;
+  type Built = {
+    home_team: { recent_matches: Array<Record<string, unknown>>; last_10: Window; last_5: Window; home_matches_in_last_10: Window };
+    away_team: { last_10: Window };
+    data_quality: { missing: string[]; expected_goals_metrics?: { penalty_xg: number } };
+  };
+  const withMetrics = (recent = { home: Array.from({ length: 10 }, (_, i) => full(i)), away: Array.from({ length: 10 }, (_, i) => full(i)) }) =>
+    buildHybridInput({ ...src, recent, xgMetrics: true }) as unknown as Built;
+
+  it('xPTS: 1 point for a sure 0-0, 3 for a sure win, and the two sides of a match share 3 minus the draw chance', () => {
+    expect(expectedPoints(0, 0)).toBeCloseTo(1, 9);
+    expect(expectedPoints(8, 0)).toBeGreaterThan(2.99);
+    const draw = expectedPoints(0, 0) - 1 + (3 - expectedPoints(1.4, 1.1) - expectedPoints(1.1, 1.4)); // = P(draw) of 1.4 v 1.1
+    expect(draw).toBeGreaterThan(0.2);
+    expect(draw).toBeLessThan(0.35);
+    expect(expectedPoints(1.8, 0.7)).toBeGreaterThan(expectedPoints(0.7, 1.8));
+  });
+
+  it('one match: npxG takes the provider penalty xG off per penalty, shooting performance leaves the opponent own goals out', () => {
+    expect(PENALTY_XG).toBe(0.79);
+    const x = expectedMetrics(match(0, { status: 'FT', xgFor: 1.8, xgAgainst: 0.7, fullGoalsFor: 2, penaltiesFor: 1, penaltiesAgainst: 0, ownGoalsFor: 1, goalsPreventedFor: -0.4 }));
+    expect(x).toEqual({ xg_difference: 1.1, npxg_for: 1.01, npxg_against: 0.7, shooting_performance: -0.8, xpts: Math.round(expectedPoints(1.8, 0.7) * 100) / 100, goals_prevented: -0.4 });
+  });
+
+  it('a metric is null when its input is missing: no xG, no events, extra time (xG covers 120 minutes), no goals prevented', () => {
+    expect(expectedMetrics(full(0, { xgFor: null }))).toEqual({ xg_difference: null, npxg_for: null, npxg_against: 0.7, shooting_performance: null, xpts: null, goals_prevented: 0.2 });
+    // the v1 source shape (no event fields at all) gives only the xG difference
+    expect(expectedMetrics(match(0))).toEqual({ xg_difference: 1.1, npxg_for: null, npxg_against: null, shooting_performance: null, xpts: null, goals_prevented: null });
+    expect(expectedMetrics(full(0, { status: 'AET' })).xpts).toBeNull();
+    expect(expectedMetrics(full(0, { penaltiesFor: 3, xgFor: 2 })).npxg_for).toBe(0); // never below 0
+  });
+
+  it('adds the metrics to each recent match and window, each window with the matches it rests on', () => {
+    const recent = { home: Array.from({ length: 10 }, (_, i) => full(i, i < 2 ? { goalsPreventedFor: null } : {})), away: Array.from({ length: 10 }, (_, i) => full(i)) };
+    const b = withMetrics(recent);
+    expect(b.home_team.recent_matches[0]).toMatchObject({ xg_difference: 1.1, npxg_for: 1.8, npxg_against: 0.7, shooting_performance: 0.2, goals_prevented: null });
+    // goals 2 from xG 1.8 in each of 10 matches: +0.2 per match, +2 in all
+    expect(b.home_team.last_10).toMatchObject({ xg_difference_avg: 1.1, npxg_for_avg: 1.8, npxg_matches: 10, shooting_performance_total: 2, shooting_performance_matches: 10, xpts_matches: 10, goals_prevented_total: 1.6, goals_prevented_matches: 8 });
+    expect(b.home_team.last_10.points_avg_same_matches).toBe(3); // won all ten
+    expect(b.home_team.last_5.xpts_matches).toBe(5);
+    expect(b.home_team.home_matches_in_last_10.npxg_matches).toBe(5);
+    expect(b.data_quality.missing).toContain('no goals prevented for 2 recent matches');
+    expect(b.data_quality.expected_goals_metrics?.penalty_xg).toBe(0.79);
+  });
+
+  it('says which matches lack events or went to extra time', () => {
+    const recent = { home: Array.from({ length: 10 }, (_, i) => full(i, i === 0 ? { penaltiesFor: null, penaltiesAgainst: null, ownGoalsFor: null } : i === 1 ? { status: 'AET' } : {})), away: Array.from({ length: 10 }, (_, i) => full(i)) };
+    const b = withMetrics(recent);
+    expect(b.data_quality.missing).toContain('no npxG for 1 recent matches that have xG (no match events stored)');
+    expect(b.data_quality.missing).toContain('no xPTS for 1 recent matches that went to extra time');
+    expect(b.home_team.last_10.xpts_matches).toBe(9);
+  });
+
+  it('off by default: without the flag the input is unchanged, even when the matches carry the new fields', () => {
+    const recent = { home: Array.from({ length: 10 }, (_, i) => match(i)), away: src.recent.away };
+    const rich = { home: recent.home.map((m, i) => ({ ...m, ...full(i), xgFor: m.xgFor })), away: src.recent.away };
+    expect(JSON.stringify(buildHybridInput({ ...src, recent: rich }))).toBe(JSON.stringify(buildHybridInput({ ...src, recent })));
+    expect(JSON.stringify(input)).not.toContain('npxg');
+  });
+
+  it('the AI may quote a computed metric, and still cannot invent one', () => {
+    const b = withMetrics() as unknown as Record<string, unknown>;
+    const xpts = (b as unknown as Built).home_team.last_10.xpts_avg!;
+    expect(validateHybridOutput(answer({ supporting_evidence: [`Arsenal มี xPTS เฉลี่ย ${xpts} และ npxG เฉลี่ย 1.8`] }), b, options).ok).toBe(true);
+    expect(validateHybridOutput(answer({ supporting_evidence: ['Arsenal มี xPTS เฉลี่ย 2.47'] }), b, options).violations).toContain('number not in input: 2.47');
+  });
+
+  it('names the metrics in the system prompt; the prompt version is v1.5', () => {
+    for (const k of ['expected_goals_metrics', 'npxg_for', 'shooting_performance', 'xpts', 'points_avg_same_matches', 'goals_prevented']) expect(HYBRID_SYSTEM_PROMPT).toContain(k);
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.5');
   });
 });

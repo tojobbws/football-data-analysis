@@ -8,6 +8,7 @@
  *
  *   npx tsx scripts/hybrid-backtest.ts [--n 30] [--seed s1] [--skip 0] [--out reports/hybrid-backtest.json]
  *   (--skip N: leave out the first N fixtures of the seeded order, to run the next batch)
+ *   (--xg-metrics: add the prompt v1.5 expected-goals metrics to the input; run with and without on one seed to compare)
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -17,7 +18,7 @@ import { closingLineValue, hybridMarket, hybridOptions, settle, type HybridSide 
 import { createPgDb, Repository } from '@fp/database';
 import { loadDotEnvFile, loadEnv } from '@fp/shared';
 
-const { values } = parseArgs({ options: { n: { type: 'string', default: '30' }, seed: { type: 'string', default: 's1' }, skip: { type: 'string', default: '0' }, out: { type: 'string', default: 'reports/hybrid-backtest.json' } } });
+const { values } = parseArgs({ options: { n: { type: 'string', default: '30' }, seed: { type: 'string', default: 's1' }, skip: { type: 'string', default: '0' }, out: { type: 'string', default: 'reports/hybrid-backtest.json' }, 'xg-metrics': { type: 'boolean', default: false } } });
 loadDotEnvFile();
 const env = loadEnv();
 if (!env.OPENAI_API_KEY || !env.OPENAI_MODEL) throw new Error('OPENAI_API_KEY and OPENAI_MODEL are needed (the live engine uses them)');
@@ -71,6 +72,7 @@ async function run(r: Record<string, unknown>): Promise<Result> {
     lineup: null,
     market,
     legacy: dcRows.length ? { options: legacyOptions, x12: h !== undefined && d !== undefined && a !== undefined ? { home: h, draw: d, away: a } : null } : null,
+    xgMetrics: values['xg-metrics'],
   };
   const input = buildHybridInput(src);
 

@@ -212,6 +212,8 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     standings: { home: standing(f.homeTeamId), away: standing(f.awayTeamId) },
     injuries: injuries.map((i) => ({ team: side(i.team_id), player: i.player_name == null ? null : String(i.player_name), type: i.type == null ? null : String(i.type), reason: i.reason == null ? null : String(i.reason) })),
     nextMatch: { home: nextHome, away: nextAway },
+    // prompt v1.5: xG difference, npxG, shooting performance, xPTS and goals prevented beside every recent match and window
+    xgMetrics: true,
     ...(v2 ? { injuriesCoverage: v2.injuriesCoverage, opponentRankBasis: 'as_of_results' as const } : {}),
     lineup: starters('HOME').length >= 11 && starters('AWAY').length >= 11 ? { home: starters('HOME'), away: starters('AWAY') } : null,
     market,

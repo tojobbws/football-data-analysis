@@ -17,7 +17,14 @@ export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 // v1.3 (2026-10-30): input v2 on: each opponent's table position as of its match date (null for a cup or split league),
 //   and whether the league reports injuries at all (docs/research/hybrid-input-audit-2026-10-29.md, gaps G1 and G2)
 // v1.4 (2026-10-30): the Thai text no longer states the confidence level (it is the `confidence` field, shown in admin only)
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.4';
+// v1.5 (2026-11-04): expected-goals metrics per match and per window: xG difference, npxG, shooting performance,
+//   xPTS and goals prevented (input flag `xgMetrics`; computed here, see expectedMetrics())
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.5';
+/**
+ * The provider's xG of one penalty: API-Football's xG counts penalties at exactly this value (a team whose only shot
+ * was a penalty has xG 0.79; checked on the stored matches 2026-11-04). npxG takes it off once per penalty taken.
+ */
+export const PENALTY_XG = 0.79;
 /** The pick decision matters more than prose: Sonnet by default, HYBRID_AI_MODEL overrides it. */
 export const HYBRID_AI_MODEL = 'claude-sonnet-5-5';
 /** Answers that fail validation are asked again this many times in total before the decision fails safely. */
@@ -42,6 +49,18 @@ export interface TeamMatch {
   shotsOnTargetAgainst: number | null;
   shotsFor: number | null;
   shotsAgainst: number | null;
+  /** Inputs of the expected-goals metrics (prompt v1.5); undefined or null = unknown, the metric is then null. */
+  status?: 'FT' | 'AET' | 'PEN';
+  /** score including extra time (the period xG covers); goalsFor/goalsAgainst are the 90-minute score */
+  fullGoalsFor?: number | null;
+  fullGoalsAgainst?: number | null;
+  /** penalties taken in play, scored or missed; null when the match has no events stored */
+  penaltiesFor?: number | null;
+  penaltiesAgainst?: number | null;
+  /** goals the opponent put into its own net, counted for this team */
+  ownGoalsFor?: number | null;
+  /** the provider's goals prevented of this team's goalkeepers */
+  goalsPreventedFor?: number | null;
 }
 
 export interface TeamStanding {
@@ -81,6 +100,11 @@ export interface HybridSource {
   injuriesCoverage?: 'available' | 'unavailable_for_league';
   /** Input v2 only. How each recent match's opponent position was obtained: today's table, or rebuilt as of that match's date. */
   opponentRankBasis?: 'current_table' | 'as_of_results';
+  /**
+   * Prompt v1.5: add the expected-goals metrics (xG difference, npxG, shooting performance, xPTS, goals prevented)
+   * to each recent match and each window. Undefined/false = the input is unchanged.
+   */
+  xgMetrics?: boolean;
   /** legacy Dixon-Coles probability of each option's selection and line, and its 1X2; context only */
   legacy: { options: Partial<Record<HybridSide, number>>; x12: { home: number; draw: number; away: number } | null } | null;
 }
@@ -88,8 +112,84 @@ export interface HybridSource {
 const r = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 const avg = (xs: number[]) => (xs.length ? r(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
 
+const sum = (xs: number[]) => (xs.length ? r(xs.reduce((a, b) => a + b, 0)) : null);
+
+function poissonPmf(lambda: number, maxGoals: number): number[] {
+  const out: number[] = [];
+  let p = Math.exp(-lambda);
+  for (let k = 0; k <= maxGoals; k++) {
+    out.push(p);
+    p = (p * lambda) / (k + 1);
+  }
+  return out;
+}
+
+/**
+ * Expected points of a team from one match's xG: its goals and the opponent's as independent Poisson counts with
+ * means xgFor and xgAgainst, 3 points per win and 1 per draw. A model of ours (not a provider figure).
+ */
+export function expectedPoints(xgFor: number, xgAgainst: number, maxGoals = 20): number {
+  const f = poissonPmf(Math.max(0, xgFor), maxGoals);
+  const a = poissonPmf(Math.max(0, xgAgainst), maxGoals);
+  let win = 0;
+  let draw = 0;
+  for (let i = 0; i <= maxGoals; i++)
+    for (let j = 0; j <= maxGoals; j++) {
+      if (i > j) win += f[i]! * a[j]!;
+      else if (i === j) draw += f[i]! * a[j]!;
+    }
+  return 3 * win + draw;
+}
+
+/**
+ * The expected-goals metrics of one match from the team's side (prompt v1.5), each null when an input is missing:
+ *  - xg_difference: xG for minus xG against
+ *  - npxg_for / npxg_against: xG minus PENALTY_XG per penalty taken in play
+ *  - shooting_performance: goals from the team's own shots (full match, the opponent's own goals taken off) minus xG
+ *  - xpts: expectedPoints() of the match, 90-minute (FT) matches only (xG of an extra-time match covers 120 minutes)
+ *  - goals_prevented: the provider's figure for the team's goalkeepers
+ */
+export function expectedMetrics(m: TeamMatch) {
+  const both = m.xgFor !== null && m.xgAgainst !== null;
+  const np = (xg: number | null, pens: number | null | undefined) => (xg === null || pens == null ? null : r(Math.max(0, xg - PENALTY_XG * pens)));
+  const ownShotGoals = m.fullGoalsFor != null && m.ownGoalsFor != null ? m.fullGoalsFor - m.ownGoalsFor : null;
+  return {
+    xg_difference: both ? r(m.xgFor! - m.xgAgainst!) : null,
+    npxg_for: np(m.xgFor, m.penaltiesFor),
+    npxg_against: np(m.xgAgainst, m.penaltiesAgainst),
+    shooting_performance: m.xgFor !== null && ownShotGoals !== null ? r(ownShotGoals - m.xgFor) : null,
+    xpts: both && m.status === 'FT' ? r(expectedPoints(m.xgFor!, m.xgAgainst!)) : null,
+    goals_prevented: m.goalsPreventedFor ?? null,
+  };
+}
+
+const points = (m: TeamMatch) => (m.goalsFor > m.goalsAgainst ? 3 : m.goalsFor === m.goalsAgainst ? 1 : 0);
+
+/** The window figures of the expected-goals metrics, each with the number of matches it rests on. */
+function metricsSummary(ms: readonly TeamMatch[]) {
+  const rows = ms.map((m) => ({ m, x: expectedMetrics(m) }));
+  const pick = (f: (x: ReturnType<typeof expectedMetrics>) => number | null) => rows.map((r) => f(r.x)).filter((v): v is number => v !== null);
+  const withXpts = rows.filter((r) => r.x.xpts !== null);
+  const npF = pick((x) => x.npxg_for);
+  const sp = pick((x) => x.shooting_performance);
+  const gp = pick((x) => x.goals_prevented);
+  return {
+    xg_difference_avg: avg(pick((x) => x.xg_difference)),
+    npxg_for_avg: avg(npF),
+    npxg_against_avg: avg(pick((x) => x.npxg_against)),
+    npxg_matches: npF.length,
+    shooting_performance_total: sum(sp),
+    shooting_performance_matches: sp.length,
+    xpts_avg: avg(withXpts.map((r) => r.x.xpts!)),
+    points_avg_same_matches: avg(withXpts.map((r) => points(r.m))),
+    xpts_matches: withXpts.length,
+    goals_prevented_total: sum(gp),
+    goals_prevented_matches: gp.length,
+  };
+}
+
 /** Averages over the matches that have the value, with how many had it. */
-function summary(ms: readonly TeamMatch[]) {
+function summary(ms: readonly TeamMatch[], xgMetrics = false) {
   const pick = (f: (m: TeamMatch) => number | null) => ms.map(f).filter((x): x is number => x !== null);
   const xgF = pick((m) => m.xgFor);
   const xgA = pick((m) => m.xgAgainst);
@@ -110,10 +210,11 @@ function summary(ms: readonly TeamMatch[]) {
     shots_on_target_for_avg: avg(sotF),
     shots_on_target_against_avg: avg(sotA),
     shots_matches: sotF.length,
+    ...(xgMetrics ? metricsSummary(ms) : {}),
   };
 }
 
-function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, at: Date, next?: { match: NextMatch | null; from: Date }) {
+function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, at: Date, next?: { match: NextMatch | null; from: Date }, xgMetrics = false) {
   const last = ms[0];
   const days = (iso: string) => (at.getTime() - Date.parse(iso)) / 86_400_000;
   return {
@@ -129,10 +230,11 @@ function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', st
       xg_against: m.xgAgainst,
       shots_on_target_for: m.shotsOnTargetFor,
       shots_on_target_against: m.shotsOnTargetAgainst,
+      ...(xgMetrics ? expectedMetrics(m) : {}),
     })),
-    last_10: summary(ms.slice(0, 10)),
-    last_5: summary(ms.slice(0, 5)),
-    [venue === 'HOME' ? 'home_matches_in_last_10' : 'away_matches_in_last_10']: summary(ms.slice(0, 10).filter((m) => m.venue === venue)),
+    last_10: summary(ms.slice(0, 10), xgMetrics),
+    last_5: summary(ms.slice(0, 5), xgMetrics),
+    [venue === 'HOME' ? 'home_matches_in_last_10' : 'away_matches_in_last_10']: summary(ms.slice(0, 10).filter((m) => m.venue === venue), xgMetrics),
     rest_days_before_this_match: last ? r(days(last.kickoffAt), 1) : null,
     // the window is a value, not only part of a key: the AI may then quote it (number guard)
     recent_congestion: { days: 14, matches: ms.filter((m) => days(m.kickoffAt) <= 14).length },
@@ -174,6 +276,15 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
     const noRank = [...recentHome, ...recentAway].filter((x) => x.opponentRank === null).length;
     if (noRank) missing.push(`no opponent table position for ${noRank} recent matches (a cup, a split league, or the opponent had not played yet)`);
   }
+  if (src.xgMetrics) {
+    const recent = [...recentHome, ...recentAway];
+    const noGp = recent.filter((x) => x.goalsPreventedFor == null).length;
+    if (noGp) missing.push(`no goals prevented for ${noGp} recent matches`);
+    const noPen = recent.filter((x) => x.xgFor !== null && x.penaltiesFor == null).length;
+    if (noPen) missing.push(`no npxG for ${noPen} recent matches that have xG (no match events stored)`);
+    const extraTime = recent.filter((x) => x.xgFor !== null && x.status !== undefined && x.status !== 'FT').length;
+    if (extraTime) missing.push(`no xPTS for ${extraTime} recent matches that went to extra time`);
+  }
   if (src.nextMatch) {
     if (!src.nextMatch.home) missing.push(`${fx.home}: no next fixture in the competitions we track`);
     if (!src.nextMatch.away) missing.push(`${fx.away}: no next fixture in the competitions we track`);
@@ -187,8 +298,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   return {
     match: { home: fx.home, away: fx.away, competition: fx.league, kickoff_utc: fx.kickoffAt.toISOString(), publish_round: src.publishRound },
     prediction_timestamp_utc: src.predictionAt.toISOString(),
-    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }),
-    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }),
+    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }, src.xgMetrics),
+    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }, src.xgMetrics),
     injuries: src.injuries,
     confirmed_lineup: src.lineup,
     market: {
@@ -224,6 +335,18 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
       ...(src.nextMatch ? { next_match_scope: 'competitions we track only: a missing next_match does not mean the team has no fixture' } : {}),
       ...(src.injuriesCoverage ? { injuries_coverage: src.injuriesCoverage } : {}),
       ...(src.opponentRankBasis ? { opponent_rank_basis: src.opponentRankBasis } : {}),
+      ...(src.xgMetrics
+        ? {
+            expected_goals_metrics: {
+              source: 'computed by us from the stored match statistics and events; only xG and goals_prevented come from the data provider',
+              penalty_xg: PENALTY_XG,
+              npxg: 'xG minus penalty_xg for each penalty taken in play (scored or missed)',
+              shooting_performance: "goals from the team's own shots minus its xG, the opponent's own goals not counted; above 0 = scored more than its chances, below 0 = fewer",
+              xpts: 'expected points from the two xG values (independent Poisson goals); 90-minute matches only',
+              goals_prevented: "the provider's figure for the team's goalkeepers; above 0 = conceded fewer than the shots faced were expected to give",
+            },
+          }
+        : {}),
       missing,
     },
   };
@@ -234,6 +357,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
 export const HYBRID_SYSTEM_PROMPT = `You are a football match analyst for a Thai football analysis site. Analyze the match using only the supplied, verified pre-match data (JSON). Review each team's recent form (up to 10 matches, the last 5 separately), home/away performance, opponent quality (table position of each opponent), scoring patterns (goals, xG, shots on target), rest schedule, available player information (injuries, confirmed lineups), and the current main market lines.
 
 Each team may carry next_match: its next scheduled fixture after this one (days after this match, competition and venue), from the competitions we track only. A near fixture in a bigger competition can point to squad rotation or fatigue, but treat it as weak context: never state that a team will rotate or rest players, and a missing next_match only means we track no such fixture, not that none exists.
+
+When data_quality.expected_goals_metrics is present, each recent match and each window also carries expected-goals metrics, defined there: xg_difference, npxg_for / npxg_against (xG without penalties), shooting_performance (goals minus xG), xpts (expected points, beside points_avg_same_matches, the points actually won in the same matches) and goals_prevented (goalkeeping). Use them to judge how well a team played beyond its results: npxG shows chance creation without penalties; a team whose points run well ahead of its xPTS, or whose shooting_performance or goals_prevented is far above 0, got more from its matches than its chances suggest, and the reverse. Over a few matches shooting_performance and goals_prevented are noisy and the market already sees goals and xG, so treat a gap as one piece of evidence to weigh, not as a forecast that it will turn. Each window says how many matches each metric rests on; a figure from few matches is weak. Never compute a new metric yourself; quote only the values given.
 
 Compare the available choices: Over, Under, Asian Handicap Favorite, and Asian Handicap Underdog. Only the options listed under market.asian_handicap.options and market.over_under.options exist; a market with no options cannot be chosen.
 
