@@ -1,6 +1,7 @@
 // Frame-by-frame render of a clip page through window.seek(t) (Playwright + system Edge, deterministic).
 // usage: node render.cjs probe <date> <clip> t1 t2 ...  -> days/<date>/out/<clip>/sheet.png (stills side by side)
 //        node render.cjs full  <date> <clip>            -> days/<date>/out/<clip>/video.mp4 (silent, 30 fps)
+//        node render.cjs full  <date> <clip> <f0> <f1>  -> days/<date>/out/<clip>/part_<f0>.mp4 (frames f0..f1-1, for parallel chunks)
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -44,7 +45,7 @@ function serve() {
     return page.screenshot({ type: 'png' });
   };
   if (mode === 'probe') {
-    const times = rest.length ? rest.map(Number) : TL.type === 'opening' ? TL.subs.filter((_, i) => i % 2 === 0 || i === TL.subs.length - 1).map((x) => Math.min(x.t1, TL.T - 0.5)) : [1.6, TL.scenes[1] + 1.2, TL.scenes[1] + 3.5, Math.min(TL.reveal, TL.T) - 0.4, Math.min(TL.reveal + 0.9, TL.T - 0.5), TL.T - 0.3].filter((t) => t > 0 && t < TL.T);
+    const times = rest.length ? rest.map(Number) : TL.probe ? TL.probe : TL.type === 'opening' ? TL.subs.filter((_, i) => i % 2 === 0 || i === TL.subs.length - 1).map((x) => Math.min(x.t1, TL.T - 0.5)) : [1.6, TL.scenes[1] + 1.2, TL.scenes[1] + 3.5, Math.min(TL.reveal, TL.T) - 0.4, Math.min(TL.reveal + 0.9, TL.T - 0.5), TL.T - 0.3].filter((t) => t > 0 && t < TL.T);
     const files = [];
     for (const t of times) { const f = path.join(dir, `probe_${t.toFixed(2)}.png`); fs.writeFileSync(f, await shot(t)); files.push(f); }
     const args = ['-v', 'error', '-y'];
@@ -53,13 +54,14 @@ function serve() {
     if (files.length > 1) execFileSync('ffmpeg', args); else fs.copyFileSync(files[0], path.join(dir, 'sheet.png'));
     console.log(key, 'stills', times.map((t) => t.toFixed(2)).join(' '), '->', path.join(dir, 'sheet.png'));
   } else if (mode === 'full') {
-    const out = path.join(dir, 'video.mp4');
+    const [f0, f1] = rest.length === 2 ? rest.map(Number) : [0, TL.frames];
+    const out = path.join(dir, rest.length === 2 ? `part_${String(f0).padStart(5, '0')}.mp4` : 'video.mp4');
     const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-framerate', '30', '-c:v', 'png', '-i', '-', '-c:v', 'libx264', '-preset', 'slow', '-crf', '15', '-pix_fmt', 'yuv420p', '-r', '30', out], { stdio: ['pipe', 'inherit', 'inherit'] });
     const t0 = Date.now();
-    for (let f = 0; f < TL.frames; f++) {
+    for (let f = f0; f < Math.min(f1, TL.frames); f++) {
       const buf = await shot(f / 30);
       if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r));
-      if (f % 90 === 0) console.log(key, 'frame', f, '/', TL.frames, ((Date.now() - t0) / 1000).toFixed(0) + 's');
+      if ((f - f0) % 90 === 0) console.log(key, 'frame', f, '/', TL.frames, ((Date.now() - t0) / 1000).toFixed(0) + 's');
     }
     ff.stdin.end();
     await new Promise((r) => ff.on('close', r));

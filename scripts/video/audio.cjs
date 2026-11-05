@@ -17,8 +17,8 @@ function writeWav(file, L, R) {
   fs.writeFileSync(file, buf);
 }
 
-function build(TL) {
-  const T = TL.T + (TL.exitAt != null ? 0 : 0.8); // let the audio logo ring a little past the last frame (trimmed at mux)
+/** Two stereo buses (music, sfx) of length T seconds and the synthesized instruments that write into them. */
+function kit(T) {
   const N = Math.ceil(T * SR);
   const mus = [new Float32Array(N), new Float32Array(N)];
   const sfx = [new Float32Array(N), new Float32Array(N)];
@@ -42,12 +42,10 @@ function build(TL) {
   const boom = (bus, t0, g = 1) => { let ph = 0; add(bus, t0, (t) => { ph += 2 * Math.PI * (32 + 60 * Math.exp(-t * 6)) / SR; return Math.sin(ph) * Math.exp(-t * 2.2) * Math.min(1, t / 0.003); }, 1.8, g); noiseHit(bus, t0, 0.8, 7, 2500, 60, g * 0.5); kick(bus, t0, g * 0.8); };
   const crowd = (bus, t0, dur, g, swell) => { for (let k = 0; k < 4; k++) { let lp = 0, lp2 = 0; const fc = 900 + k * 500; const a = 1 - Math.exp(-2 * Math.PI * fc / SR), b = 1 - Math.exp(-2 * Math.PI * (fc * 0.35) / SR); const fm = 0.7 + k * 0.37, ph = rnd() * 6; add(bus, t0, (t) => { lp += a * ((rnd() * 2 - 1) - lp); lp2 += b * (lp - lp2); const e = swell(t) * (0.75 + 0.25 * Math.sin(2 * Math.PI * fm * t + ph)); return (lp - lp2) * e; }, dur, g * 0.6, k % 2 ? 0.5 : -0.5); } };
   const bell = (bus, t0, note, g = 1, pan = 0) => { const f = midi(note); add(bus, t0, (t) => (Math.sin(2 * Math.PI * f * t) * Math.exp(-t * 2.5) + 0.4 * Math.sin(2 * Math.PI * f * 2.76 * t) * Math.exp(-t * 6) + 0.2 * Math.sin(2 * Math.PI * f * 5.4 * t) * Math.exp(-t * 10)) * Math.min(1, t / 0.002), 2.5, g * 0.35, pan); };
-
-  const [S0, S1, S2, S3] = TL.scenes; const Rv = TL.reveal;
   const BPM = 128, beat = 60 / BPM, bar = beat * 4;
   const prog = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]; // Am F C G
   const roots = [33, 29, 36, 31];
-  const grooveDef = (tStart, tEnd, energy) => { tEnd = Math.min(tEnd, T);
+  const groove = (tStart, tEnd, energy) => { tEnd = Math.min(tEnd, T);
     for (let b = 0; ; b++) {
       const tb = tStart + b * beat; if (tb >= tEnd - 0.02) break;
       const barIx = Math.floor(b / 4) % 4, inBar = b % 4;
@@ -58,7 +56,23 @@ function build(TL) {
       if (inBar === 0) chord(mus, tb, Math.min(bar, tEnd - tb), prog[barIx], energy, 1400 + 1200 * energy);
     }
   };
-  let groove = grooveDef;
+  // the channel's signature: boom + three rising bells over an A major chord
+  const audioLogo = (L0, tEnd) => {
+    boom(sfx, L0, 0.6);
+    bell(sfx, L0, 81, 0.9, -0.3); bell(sfx, L0 + 0.16, 85, 0.9, 0.3); bell(sfx, L0 + 0.32, 88, 1.0, 0); bell(sfx, L0 + 0.32, 76, 0.6, 0);
+    chord(mus, L0, tEnd - L0, [57, 61, 64, 69], 0.8, 2200);
+    bassNote(mus, L0, Math.min(2.5, tEnd - L0), 33, 0.5);
+    noiseHit(sfx, L0, 2.5, 1.4, 14000, 4000, 0.22);
+  };
+  // fade both buses out over the last 0.6 s
+  const fadeTail = () => { for (const bus of [mus, sfx]) for (const ch of bus) { const f0 = Math.floor((T - 0.6) * SR); for (let i = f0; i < N; i++) ch[i] *= Math.max(0, 1 - (i - f0) / (0.6 * SR)); } };
+  return { N, mus, sfx, rnd, add, kick, noiseHit, clap, hat, snare, saw, bassNote, chord, riser, whoosh, boom, crowd, bell, groove, audioLogo, fadeTail, beat, bar };
+}
+
+function build(TL) {
+  const T = TL.T + (TL.exitAt != null ? 0 : 0.8); // let the audio logo ring a little past the last frame (trimmed at mux)
+  const { mus, sfx, kick, noiseHit, snare, bassNote, chord, riser, whoosh, boom, crowd, groove, audioLogo, fadeTail } = kit(T);
+  const [, , S2, S3] = TL.scenes; const Rv = TL.reveal;
   if (TL.type === 'opening') {
     const T0 = TL.subs[0].t0 + 0.05;
     riser(sfx, 0, T0, 0.35); boom(sfx, T0, 0.55); noiseHit(sfx, T0, 1.6, 2.2, 12000, 3000, 0.25);
@@ -92,43 +106,35 @@ function build(TL) {
   if (S3 < T) {
   // ---- outro: audio logo ----
   whoosh(sfx, S3 - 0.15, 0.55, 0.45, 0);
-  const L0 = S3 + 0.35;
-  boom(sfx, L0, 0.6);
-  bell(sfx, L0, 81, 0.9, -0.3); bell(sfx, L0 + 0.16, 85, 0.9, 0.3); bell(sfx, L0 + 0.32, 88, 1.0, 0); bell(sfx, L0 + 0.32, 76, 0.6, 0);
-  chord(mus, L0, T - L0, [57, 61, 64, 69], 0.8, 2200);
-  bassNote(mus, L0, Math.min(2.5, T - L0), 33, 0.5);
-  noiseHit(sfx, L0, 2.5, 1.4, 14000, 4000, 0.22);
+  audioLogo(S3 + 0.35, T);
   }
   }
   if (TL.exitAt != null) whoosh(sfx, TL.exitAt - 0.2, 0.55, 0.45, 0);
-  // fade tails
-  for (const bus of [mus, sfx]) for (const ch of bus) { const f0 = Math.floor((T - 0.6) * SR); for (let i = f0; i < N; i++) ch[i] *= Math.max(0, 1 - (i - f0) / (0.6 * SR)); }
+  fadeTail();
   return { mus, sfx, T };
 }
 
-const { dateArg, dayDir } = require('./lib.cjs');
-const DAY = dayDir(dateArg());
-const wantClips = process.argv.slice(2).filter((a) => /^c\d+$/.test(a));
-const allClips = fs.readdirSync(path.join(DAY, 'out')).filter((k) => /^c\d+$/.test(k));
-for (const key of wantClips.length ? wantClips : allClips) {
-  const dir = path.join(DAY, 'out', key);
-  const TL = JSON.parse(fs.readFileSync(path.join(dir, 'timeline.json'), 'utf8'));
-  const { mus, sfx } = build(TL);
+/**
+ * Write music.wav + sfx.wav, place the VO segments (each split at its cuts, with the extra silence of each cut),
+ * duck the music under the voice, and master to -14 LUFS / TP -1.3 -> <dir>/mix.wav.
+ * TL.segs[i] = { file (relative to DAY), at (film time of the take's start), cuts?: [{ at, pause }] } (cut times on the take's clock).
+ */
+function mixdown(DAY, dir, TL, mus, sfx, key = TL.key) {
   writeWav(path.join(dir, 'music.wav'), mus[0], mus[1]);
   writeWav(path.join(dir, 'sfx.wav'), sfx[0], sfx[1]);
-  // VO track: place each segment; segment 2 is split at the reveal cut with an extra pause
   const inputs = [], parts = [];
   TL.segs.forEach((s) => {
     const f = path.join(DAY, s.file);
-    if (s.cut != null) {
-      inputs.push('-i', f, '-i', f);
-      const a = inputs.length / 2 - 2, b = a + 1;
-      parts.push(`[${a}:a]atrim=0:${s.cut},adelay=${Math.round(s.at * 1000)}|${Math.round(s.at * 1000)}[p${a}]`);
-      parts.push(`[${b}:a]atrim=${s.cut},asetpts=PTS-STARTPTS,adelay=${Math.round((s.at + s.cut + s.pause) * 1000)}|${Math.round((s.at + s.cut + s.pause) * 1000)}[p${b}]`);
-    } else {
+    const cuts = s.cuts || (s.cut != null ? [{ at: s.cut, pause: s.pause }] : []);
+    let from = 0, shift = 0;
+    for (let k = 0; k <= cuts.length; k++) {
+      const to = k < cuts.length ? cuts[k].at : null;
       inputs.push('-i', f);
       const a = inputs.length / 2 - 1;
-      parts.push(`[${a}:a]adelay=${Math.round(s.at * 1000)}|${Math.round(s.at * 1000)}[p${a}]`);
+      const d = Math.round((s.at + from + shift) * 1000);
+      const trim = k === 0 ? (to == null ? '' : `atrim=0:${to},`) : `atrim=${from}${to == null ? '' : ':' + to},asetpts=PTS-STARTPTS,`;
+      parts.push(`[${a}:a]${trim}adelay=${d}|${d}[p${a}]`);
+      if (to != null) { shift += cuts[k].pause; from = to; }
     }
   });
   const n = inputs.length / 2;
@@ -147,4 +153,19 @@ for (const key of wantClips.length ? wantClips : allClips) {
   const mix = path.join(dir, 'mix.wav');
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', pre, '-af', `loudnorm=I=-14:TP=-1.3:LRA=11:measured_I=${j.input_i}:measured_TP=${j.input_tp}:measured_LRA=${j.input_lra}:measured_thresh=${j.input_thresh}:offset=${j.target_offset}:linear=true,aresample=48000`, '-ar', '48000', mix]);
   console.log(key, 'mix', mix, 'input_i', j.input_i);
+}
+
+module.exports = { SR, kit, mixdown, writeWav };
+
+if (require.main === module) {
+  const { dateArg, dayDir } = require('./lib.cjs');
+  const DAY = dayDir(dateArg());
+  const wantClips = process.argv.slice(2).filter((a) => /^c\d+$/.test(a));
+  const allClips = fs.readdirSync(path.join(DAY, 'out')).filter((k) => /^c\d+$/.test(k));
+  for (const key of wantClips.length ? wantClips : allClips) {
+    const dir = path.join(DAY, 'out', key);
+    const TL = JSON.parse(fs.readFileSync(path.join(dir, 'timeline.json'), 'utf8'));
+    const { mus, sfx } = build(TL);
+    mixdown(DAY, dir, TL, mus, sfx, key);
+  }
 }

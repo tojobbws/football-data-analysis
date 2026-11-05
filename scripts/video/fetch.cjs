@@ -2,32 +2,12 @@
 // real club / league logos. Order = league importance (desc), then the list's rank, which is the order the
 // opening shows the leagues and the order the matches are narrated.
 // usage: node fetch.cjs [YYYY-MM-DD]   (default: the current football day, 06:00-06:00 Thai)
-const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
-const { ROOT, dateArg, dayDir, writeJson } = require('./lib.cjs');
+const { dateArg, dayDir, writeJson, MONTHS_FULL, kickoffTh, logo } = require('./lib.cjs');
 
 const VERSIONS = ['featured-v2', 'featured-ai-v1'];          // same rule as apps/web/src/lib/queries.ts listVersion
 const listVersion = (vs) => (vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
-const MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-const MONTHS_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-
-function kickoffTh(utc) {
-  const d = new Date(new Date(utc).getTime() + 7 * 3600e3);
-  const hh = String(d.getUTCHours()).padStart(2, '0'), mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `เตะ ${hh}:${mm} น. · ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
-}
-
-async function logo(url, file) {
-  const f = path.join(ROOT, 'assets', 'logos', file);
-  if (!fs.existsSync(f)) {
-    fs.mkdirSync(path.dirname(f), { recursive: true });
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`logo ${url}: ${r.status}`);
-    fs.writeFileSync(f, Buffer.from(await r.arrayBuffer()));
-  }
-  return `assets/logos/${file}`;
-}
 
 (async () => {
   const date = dateArg();
