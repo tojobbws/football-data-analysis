@@ -52,7 +52,7 @@ So one film per football day: opening (title, date, every featured match grouped
 - โลโก้ทีมที่ระบบเลือกขยายขนาด 130–150%
 - ใช้ Spotlight, Golden Glow, Cinematic Particle และ 3D Impact
 - โลโก้ทีมตรงข้ามลดความสว่างและขนาดลง
-- แสดง Pick และราคาตามข้อมูลจริงจากระบบ
+- แสดง Pick (ทีมและเส้น) ตามข้อมูลจริงจากระบบ ไม่แสดงราคาต่อรอง (ราคากลาง)
 - Camera Orbit หรือ Zoom เข้าหาทีมที่ได้รับเลือก
 
 ### กรณี Pick เป็น Over / Under
@@ -103,7 +103,7 @@ So one film per football day: opening (title, date, every featured match grouped
 - ห้ามแต่งสถิติ ข่าว อาการบาดเจ็บ หรือข้อมูลนักเตะขึ้นเอง
 - ห้ามเปลี่ยน Pick ที่ระบบเลือก
 - ห้ามสร้างหรือดัดแปลงโลโก้สโมสรและโลโก้ลีก
-- ชื่อทีม ชื่อลีก ตลาด และราคาต้องตรงกับ Input
+- ชื่อทีม ชื่อลีก ตลาด และเส้นต้องตรงกับ Input (ไม่แสดงและไม่พูดราคาต่อรอง)
 - ห้ามกล่าวอ้างว่าผลการแข่งขันแน่นอน
 
 ## FINAL CREATIVE GOAL

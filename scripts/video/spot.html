@@ -64,9 +64,7 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#030817}
 #pick .k{display:inline-flex;align-items:center;gap:14px;font-weight:700;font-size:40px;color:var(--gold);letter-spacing:.5px}
 #pick .k img{width:62px;height:62px}
 #pick .main{margin-top:6px;font-family:Barlow;font-weight:900;font-size:128px;line-height:1.02;letter-spacing:1px;text-transform:uppercase;background:linear-gradient(180deg,#fff7d6,#fbbf24 55%,#f08a12);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 6px 0 #6b3303) drop-shadow(0 16px 30px rgba(0,0,0,.6));white-space:nowrap}
-#pick .odds{display:table;margin:18px auto 0;padding:12px 34px;border-radius:999px;background:rgba(8,20,54,.85);box-shadow:inset 0 0 0 3px rgba(251,191,36,.8);font-weight:700;font-size:42px}
-#pick .odds b{font-family:Barlow;font-weight:800;font-size:54px;color:var(--gold);margin-left:10px;vertical-align:-2px}
-#pick .note{margin-top:16px;font-weight:600;font-size:30px;color:#9fb3e0}
+#pick .note{margin-top:22px;font-weight:600;font-size:30px;color:#9fb3e0}
 #compass{position:absolute;left:540px;top:820px;width:230px;height:230px;margin:-115px 0 0 -115px;z-index:8}
 #compass img{width:100%;height:100%}
 #compass .ring{position:absolute;inset:-40px;border-radius:50%;box-shadow:0 0 0 6px rgba(251,191,36,.9),0 0 60px rgba(251,191,36,.7)}
@@ -220,7 +218,7 @@ const phraseT=i=>seg1[Math.min(i,seg1.length-1)].t0;
 const pk=$('pick');
 pk.innerHTML=`<div class="k"><img src="brand/compass-mark.webp">เข็มทิศเกม</div>`+
   (isOU?'':`<div class="main">${M.pick.label}</div>`)+
-  `<div class="odds">ราคากลาง<b>${M.pick.odds}</b></div><div class="note">มุมมองจากข้อมูล ไม่ใช่ผลที่แน่นอน</div>`;
+  `<div class="note">มุมมองจากข้อมูล ไม่ใช่ผลที่แน่นอน</div>`;
 if(isOU){
   const word=pickSide==='over'?'OVER':'UNDER';
   const w=document.querySelector('#ou .w');

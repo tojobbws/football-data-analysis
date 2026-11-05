@@ -41,7 +41,8 @@ Run from `scripts/video/` (first time on a machine: `npm install`; needs `ffmpeg
 
 ## Rules (from the brief and the project)
 
-- The pick, market, line, odds (`ราคากลาง`, 2 decimals) and names come from `facts.json` unchanged. Never change the pick or invent a statistic, injury, lineup or player fact.
+- The pick, market, line and names come from `facts.json` unchanged. Never change the pick or invent a statistic, injury, lineup or player fact.
+- No odds in the film: the pick card shows the pick and its line only, never `ราคากลาง` or the price, and the voice never says it (owner, 2026-11-04).
 - An AI pick has no model probability: never show or say a percentage for it.
 - A lean, never a certainty; the pick card carries "มุมมองจากข้อมูล ไม่ใช่ผลที่แน่นอน". No gambling words (ทีเด็ด, แทง, กำไร, ตามคู่นี้, การันตี, ชัวร์); prepare.cjs blocks the common ones.
 - Real logo files only (API-Football club/league logos, the site's `apps/web/public/brand` images). No emoji 🧭🔎📊.
