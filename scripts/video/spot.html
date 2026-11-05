@@ -59,6 +59,14 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#030817}
 .slot{width:86px;height:86px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Barlow;font-weight:900;font-size:46px}
 .srow .num{width:150px;text-align:right;font-family:Barlow;font-weight:900;font-size:86px;line-height:1}
 .srow .num small{font-size:44px;color:#9fb3e0}
+/* reasons card: why the pick, one fact per row as it is spoken */
+.rrow{display:flex;align-items:center;gap:22px;min-height:104px;padding:6px 0}
+.rrow+.rrow{border-top:2px solid rgba(120,160,255,.16)}
+.rrow img{flex:none;width:76px;height:76px;object-fit:contain;background:#eef3fb;border-radius:50%;padding:9px;box-shadow:0 0 0 4px #f6b72a}
+.rrow .mk{flex:none;width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#ffd166,#f59e0b);box-shadow:0 0 24px rgba(251,191,36,.55),inset 0 -6px 0 rgba(122,58,4,.45)}
+.rrow .tx{flex:1;font-weight:700;font-size:42px;line-height:1.22;color:#e8eefc}
+.rrow .tx b{color:var(--gold);font-weight:700}
+.rrow.why .tx{color:#fff}
 /* pick */
 #pick{position:absolute;left:540px;top:992px;width:960px;margin-left:-480px;z-index:9;text-align:center}
 #pick .k{display:inline-flex;align-items:center;gap:14px;font-weight:700;font-size:40px;color:var(--gold);letter-spacing:.5px}
@@ -206,6 +214,11 @@ if(st.kind==='compare'){
   card.innerHTML=`<div class="title" style="display:flex;justify-content:space-between;align-items:center;padding:0 10px"><img src="${M.home.logo}" style="width:84px;height:84px;object-fit:contain;background:#eef3fb;border-radius:50%;padding:10px"><span>ฟอร์มและตาราง</span><img src="${M.away.logo}" style="width:84px;height:84px;object-fit:contain;background:#eef3fb;border-radius:50%;padding:10px"></div>`+
   st.rows.map(r=>{const homeBetter=r.lowerBetter?r.home<r.away:r.home>r.away;const tot=r.home+r.away;return `<div class="row"><div class="v" style="color:${homeBetter?'#ffc53d':'#e8eefc'}">${r.home}</div><div class="lab">${r.label}</div><div class="v" style="color:${homeBetter?'#e8eefc':'#ffc53d'}">${r.away}</div>${r.bar?`<div class="bar"><i class="bh" style="left:0;width:${r.home/tot*100}%;background:#7cc4ff"></i><i class="ba" style="right:0;width:${r.away/tot*100}%;background:#fbbf24"></i></div>`:''}</div>`}).join('');
   rowEls=[...card.querySelectorAll('.row')];
+}else if(st.kind==='reasons'){
+  const hl=(t,h)=>h?t.split(h).join('<b>'+h+'</b>'):t;
+  const mark='<div class="mk"><svg viewBox="0 0 40 40" width="44" height="44"><path d="M9 21 L17 29 L32 12" fill="none" stroke="#2a1400" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
+  card.innerHTML=`<div class="title">${st.title||'เหตุผลจากข้อมูล'}</div>`+st.rows.map(r=>`<div class="rrow${r.team?'':' why'}">${r.team?`<img src="${teamLogo(r.team)}">`:mark}<div class="tx">${hl(r.text,r.hi)}</div></div>`).join('');
+  rowEls=[...card.querySelectorAll('.rrow')];
 }else{
   const icon=(on)=>st.icon==='ball'?`<svg viewBox="0 0 40 40" width="62" height="62"><circle cx="20" cy="20" r="18" fill="${on?'#fff':'none'}" stroke="${on?'#fff':'rgba(255,255,255,.35)'}" stroke-width="3"/>${on?'<polygon points="20,11 28,17 25,27 15,27 12,17" fill="#0b1324"/>':''}</svg>`:(on?'ชนะ':'');
   card.innerHTML=`<div class="title">${st.title}</div>`+st.rows.map(r=>`<div class="srow"><img src="${teamLogo(r.team)}"><div class="slots">${Array.from({length:r.of},(_,i)=>`<div class="slot" data-on="${i<r.value?1:0}">${icon(i<r.value)}</div>`).join('')}</div><div class="num">${r.value}<small>/${r.of}</small></div></div>`).join('');
