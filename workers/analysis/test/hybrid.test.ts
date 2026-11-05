@@ -9,7 +9,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { HYBRID_PROMPT_VERSION, type HybridDecider, type RankerResult } from '@fp/ai';
+import { HYBRID_PROMPT_VERSION, HYBRID_VOTES, type HybridDecider, type RankerResult } from '@fp/ai';
 import { Repository, type JobContext } from '@fp/database';
 import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
@@ -138,19 +138,24 @@ describe('hybridJob', () => {
   it('shadow: stores every decision as the AI saw and answered it, and publishes nothing from it', async () => {
     const d = fakeDecider(answers);
     expect(await hybridJob(ctx, { sameFootballDay: false, engine: 'shadow', decider: d })).toBe(5);
-    // no market for 302: no AI call; 303 asked twice
-    expect(d.calls.sort()).toEqual(['Down FC', 'Fog FC', 'Good FC', 'Invalid FC', 'Invalid FC']);
-    const rows = await q<{ fixture_id: string; status: string; side: string | null; selection: string | null; line: string | null; odds: string | null; attempts: number; engine_mode: string; violations: string[] }>(
-      `select fixture_id, status, side, selection, line, odds, attempts, engine_mode, violations from hybrid_decisions order by fixture_id`,
+    // no market for 302: no AI call; three answers for every other fixture, each of 303's asked twice
+    const times = (name: string, n: number) => Array<string>(n).fill(name);
+    expect(d.calls.sort()).toEqual([...times('Down FC', 3), ...times('Fog FC', 3), ...times('Good FC', 3), ...times('Invalid FC', 6)]);
+    const rows = await q<{ fixture_id: string; status: string; side: string | null; selection: string | null; line: string | null; odds: string | null; attempts: number; engine_mode: string; violations: string[]; votes: Array<Record<string, unknown>> | null; usage: Record<string, number> | null }>(
+      `select fixture_id, status, side, selection, line, odds, attempts, engine_mode, violations, votes, usage from hybrid_decisions order by fixture_id`,
     );
     const by = Object.fromEntries(rows.map((r) => [Number(r.fixture_id), r]));
-    expect(by[301]).toMatchObject({ status: 'OK', side: 'UNDERDOG', selection: 'AWAY', engine_mode: 'shadow', attempts: 1 });
+    expect(by[301]).toMatchObject({ status: 'OK', side: 'UNDERDOG', selection: 'AWAY', engine_mode: 'shadow', attempts: 3 });
+    // every answer's choice is kept, and the tokens of all three are counted
+    expect(by[301]!.votes).toEqual(Array(3).fill({ status: 'OK', side: 'UNDERDOG', confidence: 'MEDIUM', attempts: 1 }));
+    expect(by[301]!.usage).toEqual({ input_tokens: 6000, output_tokens: 1500 });
     expect(Number(by[301]!.line)).toBe(0.75);
     expect(Number(by[301]!.odds)).toBe(1.93);
-    expect(by[302]).toMatchObject({ status: 'OK', side: 'NO_PICK', attempts: 0 });
-    expect(by[303]).toMatchObject({ status: 'INVALID', attempts: 2 });
+    expect(by[302]).toMatchObject({ status: 'OK', side: 'NO_PICK', attempts: 0, votes: null });
+    expect(by[303]).toMatchObject({ status: 'INVALID', attempts: 6 });
     expect(by[303]!.violations.join(' ')).toMatch(/main_line 1.5 is not the UNDERDOG line 0.75.*banned word/);
     expect(by[304]).toMatchObject({ status: 'ERROR' });
+    expect(by[304]!.votes!.map((v) => v.status)).toEqual(['ERROR', 'ERROR', 'ERROR']);
     expect(by[305]).toMatchObject({ status: 'OK', side: 'NO_PICK' });
 
     // the input: Good FC's six played matches (newest first), the main lines, nothing after the decision time
@@ -171,6 +176,8 @@ describe('hybridJob', () => {
     expect(row!.input.data_quality.missing.some((x: string) => x.startsWith('no opponent table position for'))).toBe(true);
     expect(row!.input.home_team.recent_matches.every((m: { opponent_table_position: string | null }) => m.opponent_table_position === null)).toBe(true);
     expect(row!.input_hash).toMatch(/^[0-9a-f]{64}$/);
+    // prompt v1.6: no Dixon-Coles price in what the AI sees
+    expect(row!.input).not.toHaveProperty('legacy_statistical_model');
 
     // shadow mode: the rules engine still owns publishing (no rules run here, so nothing at all)
     await publishJob(ctx, { sameFootballDay: false, engine: 'shadow' });
@@ -223,7 +230,9 @@ describe('hybridJob', () => {
       },
     };
     await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: broke });
-    expect(calls).toHaveLength(1);
+    // the three answers of the first fixture go out together; no fixture after it is tried
+    expect(calls).toHaveLength(HYBRID_VOTES);
+    expect(new Set(calls).size).toBe(1);
     expect(await count('select count(*) n from hybrid_decisions')).toBe(before + 1);
   });
 });

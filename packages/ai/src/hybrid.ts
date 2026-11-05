@@ -19,7 +19,10 @@ export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 // v1.4 (2026-10-30): the Thai text no longer states the confidence level (it is the `confidence` field, shown in admin only)
 // v1.5 (2026-11-04): expected-goals metrics per match and per window: xG difference, npxG, shooting performance,
 //   xPTS and goals prevented (input flag `xgMetrics`; computed here, see expectedMetrics())
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.5';
+// v1.6 (2026-11-05): legacy_statistical_model (Dixon-Coles) is gone from the input and the prompt: it leaned about 5 points
+//   to the underdog and the under, and beside the market it added nothing; and the AI answers HYBRID_VOTES times on the
+//   same input, a choice being used only when HYBRID_MAJORITY answers agree (docs/adr/0013-hybrid-majority-of-three.md)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.6';
 /**
  * The provider's xG of one penalty: API-Football's xG counts penalties at exactly this value (a team whose only shot
  * was a penalty has xG 0.79; checked on the stored matches 2026-11-04). npxG takes it off once per penalty taken.
@@ -29,6 +32,25 @@ export const PENALTY_XG = 0.79;
 export const HYBRID_AI_MODEL = 'claude-sonnet-5-5';
 /** Answers that fail validation are asked again this many times in total before the decision fails safely. */
 export const HYBRID_MAX_ATTEMPTS = 2;
+/**
+ * v1.6: the AI answers this many times on the same input (independent calls). Asked twice on the same live input, the
+ * model gave the same answer only 118 times in 201 (replay of 2026-11-05): a single answer is partly chance.
+ */
+export const HYBRID_VOTES = 3;
+/** A choice (an option or NO_PICK) is used only when at least this many valid answers gave it. */
+export const HYBRID_MAJORITY = 2;
+
+/**
+ * The choice that at least `majority` of the answers gave (null = an answer that is not valid) and the index of the
+ * first answer that gave it; null when no choice reaches the majority.
+ */
+export function majorityVote<S extends string>(sides: ReadonlyArray<S | null>, majority = HYBRID_MAJORITY): { side: S; votes: number; first: number } | null {
+  const counts = new Map<S, number>();
+  for (const s of sides) if (s !== null) counts.set(s, (counts.get(s) ?? 0) + 1);
+  let best: { side: S; votes: number; first: number } | null = null;
+  for (const [side, votes] of counts) if (votes >= majority && (!best || votes > best.votes)) best = { side, votes, first: sides.indexOf(side) };
+  return best;
+}
 
 // ---------------------------------------------------------------- input
 
@@ -105,8 +127,6 @@ export interface HybridSource {
    * to each recent match and each window. Undefined/false = the input is unchanged.
    */
   xgMetrics?: boolean;
-  /** legacy Dixon-Coles probability of each option's selection and line, and its 1X2; context only */
-  legacy: { options: Partial<Record<HybridSide, number>>; x12: { home: number; draw: number; away: number } | null } | null;
 }
 
 const r = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
@@ -320,13 +340,6 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
       },
       match_odds_1x2_no_vig: m.x12,
     },
-    legacy_statistical_model: src.legacy
-      ? {
-          note: 'Dixon-Coles goal model. Measured on past seasons it rates underdogs and unders higher than both the market and the results; one weak voice, not a verdict.',
-          option_probabilities: src.legacy.options,
-          match_odds_1x2: src.legacy.x12,
-        }
-      : null,
     data_quality: {
       home_recent_matches: recentHome.length,
       away_recent_matches: recentAway.length,
@@ -364,7 +377,7 @@ Compare the available choices: Over, Under, Asian Handicap Favorite, and Asian H
 
 For the match, assess: the strength of both teams; the tendency to win, draw or lose; the likely goal margin; the likely total goals; home advantage and current form; the quality of the opponents each team has faced; where the team data agrees or conflicts with the market prices; and the risks and evidence against each choice.
 
-Treat the market as a benchmark, not as an automatic answer: the market price already contains much public information, so a choice needs evidence the price may not reflect. Do not automatically favor the underdog, the favorite, Over, or Under. legacy_statistical_model is one weak voice with a known lean; do not follow it by default. Do not invent statistics, odds, injuries, lineups, or historical results, and do not use outside knowledge about these teams or players.
+Treat the market as a benchmark, not as an automatic answer: the market price already contains much public information, so a choice needs evidence the price may not reflect. Do not automatically favor the underdog, the favorite, Over, or Under. Do not invent statistics, odds, injuries, lineups, or historical results, and do not use outside knowledge about these teams or players.
 
 Explain the strongest supporting evidence, counter-evidence, key risks, and missing data for each serious candidate. Select the one market and main line with the strongest evidence. If the information is insufficient or no candidate can be justified, return NO_PICK. No pick is a correct, common answer; never force one.
 

@@ -77,7 +77,6 @@ describe('teamRecentMatches: the inputs of the expected-goals metrics', () => {
       injuries: [],
       lineup: null,
       market: { ah: { status: 'NO_QUOTES', line: null, favourite: null, nBookmakers: 0, ageHours: null, options: [] }, ou: { status: 'NO_QUOTES', line: null, nBookmakers: 0, ageHours: null, options: [] }, x12: null } as never,
-      legacy: null,
       xgMetrics: true,
     }) as { home_team: { last_10: Record<string, number | null> }; data_quality: { missing: string[] } };
     expect(input.home_team.last_10).toMatchObject({ npxg_matches: 2, shooting_performance_matches: 2, xpts_matches: 2, goals_prevented_matches: 1, goals_prevented_total: 0.35 });

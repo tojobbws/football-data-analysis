@@ -8,8 +8,14 @@
  * `hybrid` — the publish job publishes the round's valid decision. The rules (candidates job) run in every mode
  * and their decision of the moment is stored beside each AI decision.
  *
- * Fail-safe: an answer that fails validation is asked again up to HYBRID_MAX_ATTEMPTS times, then stored as
- * INVALID and nothing is published for it; the next hourly run tries again while the round is open.
+ * Majority of three (prompt v1.6, docs/adr/0013-hybrid-majority-of-three.md): the AI answers HYBRID_VOTES times on the
+ * same input, in parallel. The decision is the choice at least HYBRID_MAJORITY valid answers gave (an option or
+ * NO_PICK), with the text of the first answer that gave it. All answers valid and no majority: NO_PICK. Every answer's
+ * choice is kept in `votes`.
+ *
+ * Fail-safe: an answer that fails validation is asked again up to HYBRID_MAX_ATTEMPTS times. Too few valid answers to
+ * reach or rule out a majority: stored as INVALID / REFUSED / ERROR and nothing is published for it; the next hourly
+ * run tries again while the round is open.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -19,13 +25,15 @@ import {
   HYBRID_ENGINE_VERSION,
   HYBRID_MAX_ATTEMPTS,
   HYBRID_PROMPT_VERSION,
+  HYBRID_VOTES,
   isPersistentApiError,
+  majorityVote,
   validateHybridOutput,
   type HybridDecider,
   type HybridSource,
   type RankerResult,
 } from '@fp/ai';
-import { DEFAULT_RULES, hybridMarket, hybridOptions, type HybridSide } from '@fp/analysis';
+import { DEFAULT_RULES, hybridMarket, hybridOptions, type HybridOption } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours, footballDayHorizon } from '@fp/shared';
 import { injuriesCoverage, withOpponentRanksAsOf } from './hybrid-input-v2.js';
@@ -91,56 +99,13 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
         // nothing to choose from: no main AH or O/U line the market trades now; no AI call
         row = { ...base, model: null, status: 'OK', attempts: 0, side: 'NO_PICK', summary_th: 'ยังไม่มีเส้นหลักของตลาดที่เชื่อถือได้ ณ เวลาที่วิเคราะห์', output: null };
       } else {
-        let res: RankerResult | null = null;
-        let violations: string[] = [];
-        let attempts = 0;
-        let result: ReturnType<typeof validateHybridOutput> | null = null;
-        let failure: string | null = null;
-        let stop = false;
-        while (attempts < HYBRID_MAX_ATTEMPTS) {
-          attempts++;
-          try {
-            res = await decider.decide(input);
-          } catch (err) {
-            failure = String(err).slice(0, 300);
-            if (isPersistentApiError(err)) stop = true;
-            break;
-          }
-          if (res.refusal) break;
-          if (res.output === null) {
-            violations.push(`attempt ${attempts}: unparseable output (stop_reason ${res.stopReason})`);
-            continue;
-          }
-          result = validateHybridOutput(res.output, input, options);
-          if (result.ok) break;
-          violations.push(...result.violations.map((v) => `attempt ${attempts}: ${v}`));
-        }
-        if (failure) row = { ...base, model: null, status: 'ERROR', attempts, violations: [failure], output: null };
-        else if (res?.refusal) row = { ...base, model: res.model, status: 'REFUSED', attempts, violations: [`refusal: ${res.refusal.category ?? 'unknown'}`], output: null, usage: res.usage };
-        else if (result?.ok && result.decision) {
-          const o = result.decision.option;
-          row = {
-            ...base,
-            model: res!.model,
-            status: 'OK',
-            attempts,
-            violations,
-            output: res!.output,
-            usage: res!.usage,
-            side: result.decision.side,
-            market: o?.market ?? null,
-            selection: o?.selection ?? null,
-            line: o?.line ?? null,
-            odds: o?.odds ?? null,
-            market_probability: o?.marketProbability ?? null,
-            confidence: result.decision.confidence,
-            summary_th: result.decision.summaryTh,
-          };
-        } else row = { ...base, model: res?.model ?? null, status: 'INVALID', attempts, violations, output: res?.output ?? null, usage: res?.usage ?? null };
-        if (stop) {
+        const answers = await Promise.all(Array.from({ length: HYBRID_VOTES }, () => askOnce(decider, input, options)));
+        row = { ...base, ...combineVotes(answers) };
+        const stopOn = answers.find((a) => a.persistent);
+        if (stopOn) {
           await ctx.repo.insertHybridDecision(row).catch(() => undefined);
-          ctx.log.error('Hybrid AI stopped for this run', { fixtureId: f.id, error: failure });
-          report.push({ match, result: 'ERROR', note: (failure ?? '').slice(0, 80) });
+          ctx.log.error('Hybrid AI stopped for this run', { fixtureId: f.id, error: stopOn.failure });
+          report.push({ match, result: 'ERROR', note: (stopOn.failure ?? '').slice(0, 80) });
           break;
         }
       }
@@ -149,7 +114,8 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
         await ctx.repo.insertHybridDecision(row);
         stored++;
         const chosen = options.find((o) => o.side === row.side);
-        report.push({ match, result: row.status, decision: row.side ?? '-', line: chosen ? chosen.line : '-', legacy: legacy?.outcome ?? '-', attempts: row.attempts });
+        const votes = (row.votes as Vote[] | undefined)?.map((v) => v.side ?? v.status).join(',') ?? '-';
+        report.push({ match, result: row.status, decision: row.side ?? '-', line: chosen ? chosen.line : '-', votes, legacy: legacy?.outcome ?? '-', attempts: row.attempts });
       } catch (err) {
         // e.g. kickoff passed while waiting for the API: the DB refuses late rows by design
         ctx.log.warn('hybrid decision not stored', { fixtureId: f.id, error: String(err) });
@@ -162,9 +128,102 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
 
 type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[number];
 
+/** One answer of the AI on the input: asked again up to HYBRID_MAX_ATTEMPTS times while it is not valid. */
+export interface Answer {
+  res: RankerResult | null;
+  result: ReturnType<typeof validateHybridOutput> | null;
+  violations: string[];
+  attempts: number;
+  /** the API call failed (not an answer) */
+  failure: string | null;
+  /** the failure would hit the next call too (no credit, bad key): stop the run */
+  persistent: boolean;
+}
+
+/** One answer's choice as stored in hybrid_decisions.votes */
+export interface Vote {
+  status: 'OK' | 'INVALID' | 'REFUSED' | 'ERROR';
+  side: string | null;
+  confidence: string | null;
+  attempts: number;
+}
+
+async function askOnce(decider: HybridDecider, input: Record<string, unknown>, options: readonly HybridOption[]): Promise<Answer> {
+  const a: Answer = { res: null, result: null, violations: [], attempts: 0, failure: null, persistent: false };
+  while (a.attempts < HYBRID_MAX_ATTEMPTS) {
+    a.attempts++;
+    try {
+      a.res = await decider.decide(input);
+    } catch (err) {
+      a.failure = String(err).slice(0, 300);
+      a.persistent = isPersistentApiError(err);
+      break;
+    }
+    if (a.res.refusal) break;
+    if (a.res.output === null) {
+      a.violations.push(`attempt ${a.attempts}: unparseable output (stop_reason ${a.res.stopReason})`);
+      continue;
+    }
+    a.result = validateHybridOutput(a.res.output, input, options);
+    if (a.result.ok) break;
+    a.violations.push(...a.result.violations.map((v) => `attempt ${a.attempts}: ${v}`));
+  }
+  return a;
+}
+
+const statusOf = (a: Answer): Vote['status'] => (a.failure ? 'ERROR' : a.res?.refusal ? 'REFUSED' : a.result?.ok && a.result.decision ? 'OK' : 'INVALID');
+
+/** token counts summed over every call of every answer (each numeric usage field added up) */
+function sumUsage(answers: readonly Answer[]): Record<string, number> | null {
+  const out: Record<string, number> = {};
+  for (const a of answers) for (const [k, v] of Object.entries(a.res?.usage ?? {})) if (typeof v === 'number') out[k] = (out[k] ?? 0) + v;
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The stored decision from the answers: the choice at least HYBRID_MAJORITY valid answers gave, with the first such
+ * answer's output and text. Every answer valid and no majority: NO_PICK. Fewer valid answers than that: the decision
+ * fails (INVALID, else REFUSED, else ERROR) and the round is tried again on the next run.
+ */
+export function combineVotes(answers: readonly Answer[]): Record<string, unknown> {
+  const decisions = answers.map((a) => (statusOf(a) === 'OK' ? a.result!.decision! : null));
+  const votes: Vote[] = answers.map((a, i) => ({ status: statusOf(a), side: decisions[i]?.side ?? null, confidence: decisions[i]?.confidence ?? null, attempts: a.attempts }));
+  const violations = answers.flatMap((a, i) => [...a.violations, ...(a.failure ? [a.failure] : []), ...(a.res?.refusal ? [`refusal: ${a.res.refusal.category ?? 'unknown'}`] : [])].map((v) => `answer ${i + 1}: ${v}`));
+  const common = { attempts: answers.reduce((s, a) => s + a.attempts, 0), violations, votes, usage: sumUsage(answers) };
+  const tally = majorityVote(decisions.map((d) => d?.side ?? null));
+
+  if (tally) {
+    const a = answers[tally.first]!;
+    const d = decisions[tally.first]!;
+    const o = d.option;
+    return {
+      ...common,
+      model: a.res!.model,
+      status: 'OK',
+      output: a.res!.output,
+      side: d.side,
+      market: o?.market ?? null,
+      selection: o?.selection ?? null,
+      line: o?.line ?? null,
+      odds: o?.odds ?? null,
+      market_probability: o?.marketProbability ?? null,
+      confidence: d.confidence,
+      summary_th: d.summaryTh,
+    };
+  }
+  const firstValid = answers.find((_, i) => decisions[i]);
+  if (decisions.every((d) => d)) {
+    // three valid answers, three different choices: the evidence does not point one way
+    return { ...common, model: firstValid!.res!.model, status: 'OK', output: null, side: 'NO_PICK', summary_th: 'การวิเคราะห์แต่ละรอบเลือกไม่ตรงกัน จึงยังไม่เลือกตัวเลือกใด' };
+  }
+  const status = votes.some((v) => v.status === 'INVALID') ? 'INVALID' : votes.some((v) => v.status === 'REFUSED') ? 'REFUSED' : 'ERROR';
+  const last = [...answers].reverse().find((a) => a.res);
+  return { ...common, model: last?.res?.model ?? null, status, output: last?.res?.output ?? null };
+}
+
 /**
  * Everything the Hybrid AI sees for one fixture at `now` (read-only): its recent matches and table, injuries,
- * lineups, the market's main lines from quotes known at `now`, and the legacy model's prices as context;
+ * lineups and the market's main lines from quotes known at `now` (since prompt v1.6 no Dixon-Coles prices);
  * plus the rules' decision of the moment, which is stored beside the AI's for comparison and never shown to it.
  */
 export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date, opts: { inputV2?: boolean } = {}) {
@@ -172,13 +231,12 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
   const quotes = await ctx.repo.latestQuotes(f.id, now);
   const market = hybridMarket(quotes, now);
   const options = hybridOptions(market);
-  const [recentHome, recentAway, standings, injuries, lineupPlayers, dcRows, legacyRun] = await Promise.all([
+  const [recentHome, recentAway, standings, injuries, lineupPlayers, legacyRun] = await Promise.all([
     ctx.repo.teamRecentMatches(f.homeTeamId, now, 10),
     ctx.repo.teamRecentMatches(f.awayTeamId, now, 10),
     ctx.repo.standingsForTeams(f.leagueId, header.season, [f.homeTeamId, f.awayTeamId]),
     ctx.repo.injuriesDetailed(f.id),
     ctx.repo.lineupPlayers(f.id),
-    ctx.repo.latestProbabilities(f.id, 'dixon-coles-v0.2', now),
     ctx.repo.latestRun(f.id, DEFAULT_RULES.version),
   ]);
   // input v2 (off by default): opponent positions as of each match date, and whether the league reports injuries at all
@@ -197,13 +255,6 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     const s = standings.get(teamId);
     return s ? { rank: s.rank, tableSize: s.teams ?? null, played: s.played, points: s.points, goalDiff: s.goalDiff } : null;
   };
-  const dcOf = (market: string, selection: string, line: number | null) => dcRows.find((p) => p.market === market && p.selection === selection && (line === null ? p.line === null : p.line !== null && Math.abs(p.line - line) < 1e-9))?.probability;
-  const legacyOptions: Partial<Record<HybridSide, number>> = {};
-  for (const o of options) {
-    const p = dcOf(o.market, o.selection, o.line);
-    if (p !== undefined) legacyOptions[o.side] = p;
-  }
-  const [h, d, a] = (['HOME', 'DRAW', 'AWAY'] as const).map((s) => dcOf('MATCH_WINNER', s, null));
   const src: HybridSource = {
     fixture: { id: f.id, home: header.home, away: header.away, league: header.league, kickoffAt: f.kickoffAt },
     predictionAt: now,
@@ -217,7 +268,6 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     ...(v2 ? { injuriesCoverage: v2.injuriesCoverage, opponentRankBasis: 'as_of_results' as const } : {}),
     lineup: starters('HOME').length >= 11 && starters('AWAY').length >= 11 ? { home: starters('HOME'), away: starters('AWAY') } : null,
     market,
-    legacy: dcRows.length ? { options: legacyOptions, x12: h !== undefined && d !== undefined && a !== undefined ? { home: h, draw: d, away: a } : null } : null,
   };
   const input = buildHybridInput(src);
   const inputHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');

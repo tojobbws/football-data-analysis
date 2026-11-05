@@ -14,7 +14,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
 import { buildHybridInput, createOpenAIHybridDecider, HYBRID_MAX_ATTEMPTS, validateHybridOutput, type HybridSource } from '@fp/ai';
-import { closingLineValue, hybridMarket, hybridOptions, settle, type HybridSide } from '@fp/analysis';
+import { closingLineValue, hybridMarket, hybridOptions, settle } from '@fp/analysis';
 import { createPgDb, Repository } from '@fp/database';
 import { loadDotEnvFile, loadEnv } from '@fp/shared';
 
@@ -53,15 +53,8 @@ async function run(r: Record<string, unknown>): Promise<Result> {
   const rules = r.kind === 'SIGNAL' ? { market: r.market, selection: r.selection, line: Number(r.line), odds: Number(r.odds_at_publish), status: r.rules_status, clv: r.rules_clv == null ? null : Number(r.rules_clv) } : null;
   if (!options.length) return { ...base, status: 'NO_OPTIONS', rules };
 
-  const [recentHome, recentAway, dcRows] = await Promise.all([repo.teamRecentMatches(f.homeTeamId, now, 10), repo.teamRecentMatches(f.awayTeamId, now, 10), repo.latestProbabilities(fixtureId, 'dixon-coles-v0.2', now)]);
+  const [recentHome, recentAway] = await Promise.all([repo.teamRecentMatches(f.homeTeamId, now, 10), repo.teamRecentMatches(f.awayTeamId, now, 10)]);
   const noRank = (ms: typeof recentHome) => ms.map((m) => ({ ...m, opponentRank: null, opponentTableSize: null }));
-  const dcOf = (m: string, s: string, line: number | null) => dcRows.find((p) => p.market === m && p.selection === s && (line === null ? p.line === null : p.line !== null && Math.abs(p.line - line) < 1e-9))?.probability;
-  const legacyOptions: Partial<Record<HybridSide, number>> = {};
-  for (const o of options) {
-    const p = dcOf(o.market, o.selection, o.line);
-    if (p !== undefined) legacyOptions[o.side] = p;
-  }
-  const [h, d, a] = (['HOME', 'DRAW', 'AWAY'] as const).map((s) => dcOf('MATCH_WINNER', s, null));
   const src: HybridSource = {
     fixture: { id: fixtureId, home: header.home, away: header.away, league: header.league, kickoffAt: f.kickoffAt },
     predictionAt: now,
@@ -71,7 +64,6 @@ async function run(r: Record<string, unknown>): Promise<Result> {
     injuries: [],
     lineup: null,
     market,
-    legacy: dcRows.length ? { options: legacyOptions, x12: h !== undefined && d !== undefined && a !== undefined ? { home: h, draw: d, away: a } : null } : null,
     xgMetrics: values['xg-metrics'],
   };
   const input = buildHybridInput(src);

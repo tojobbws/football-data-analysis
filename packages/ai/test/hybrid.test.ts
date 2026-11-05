@@ -4,7 +4,21 @@
  */
 import { describe, expect, it } from 'vitest';
 import { hybridMarket, hybridOptions, type OddsQuote } from '@fp/analysis';
-import { allowedNumbers, buildHybridInput, expectedMetrics, expectedPoints, HYBRID_PROMPT_VERSION, HYBRID_SYSTEM_PROMPT, PENALTY_XG, validateHybridOutput, type HybridSource, type TeamMatch } from '../src/index.js';
+import {
+  allowedNumbers,
+  buildHybridInput,
+  expectedMetrics,
+  expectedPoints,
+  HYBRID_MAJORITY,
+  HYBRID_PROMPT_VERSION,
+  HYBRID_SYSTEM_PROMPT,
+  HYBRID_VOTES,
+  majorityVote,
+  PENALTY_XG,
+  validateHybridOutput,
+  type HybridSource,
+  type TeamMatch,
+} from '../src/index.js';
 
 const NOW = new Date('2026-10-24T08:00:00Z');
 const quotes: OddsQuote[] = [1, 2, 3].flatMap((b) => [
@@ -42,7 +56,6 @@ const src: HybridSource = {
   injuries: [{ team: 'AWAY', player: 'J. Doe', type: 'Missing Fixture', reason: 'Knee Injury' }],
   lineup: null,
   market,
-  legacy: { options: { FAVORITE: 0.4414, UNDERDOG: 0.5586, OVER: 0.4458, UNDER: 0.5542 }, x12: { home: 0.645, draw: 0.2392, away: 0.1158 } },
 };
 const input = buildHybridInput(src);
 
@@ -289,8 +302,39 @@ describe('expected-goals metrics (prompt v1.5): computed here from stored statis
     expect(validateHybridOutput(answer({ supporting_evidence: ['Arsenal มี xPTS เฉลี่ย 2.47'] }), b, options).violations).toContain('number not in input: 2.47');
   });
 
-  it('names the metrics in the system prompt; the prompt version is v1.5', () => {
+  it('names the metrics in the system prompt', () => {
     for (const k of ['expected_goals_metrics', 'npxg_for', 'shooting_performance', 'xpts', 'points_avg_same_matches', 'goals_prevented']) expect(HYBRID_SYSTEM_PROMPT).toContain(k);
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.5');
+  });
+});
+
+describe('prompt v1.6 (ADR 0013): no Dixon-Coles voice, majority of three answers', () => {
+  it('the prompt version is v1.6', () => {
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.6');
+  });
+
+  it('shows the AI no Dixon-Coles price, in the input or the prompt', () => {
+    expect(input).not.toHaveProperty('legacy_statistical_model');
+    expect(JSON.stringify(input)).not.toMatch(/dixon|legacy/i);
+    expect(HYBRID_SYSTEM_PROMPT).not.toMatch(/legacy_statistical_model|dixon/i);
+  });
+
+  it('asks three times and needs two that agree', () => {
+    expect(HYBRID_VOTES).toBe(3);
+    expect(HYBRID_MAJORITY).toBe(2);
+  });
+
+  it('takes the choice two or three answers gave, with the first answer that gave it', () => {
+    expect(majorityVote(['OVER', 'UNDERDOG', 'UNDERDOG'])).toEqual({ side: 'UNDERDOG', votes: 2, first: 1 });
+    expect(majorityVote(['FAVORITE', 'FAVORITE', 'FAVORITE'])).toEqual({ side: 'FAVORITE', votes: 3, first: 0 });
+    // NO_PICK is a choice like any other
+    expect(majorityVote(['NO_PICK', 'OVER', 'NO_PICK'])).toEqual({ side: 'NO_PICK', votes: 2, first: 0 });
+    // an answer that is not valid (null) is not a vote
+    expect(majorityVote([null, 'UNDER', 'UNDER'])).toEqual({ side: 'UNDER', votes: 2, first: 1 });
+  });
+
+  it('has no majority when the answers all differ or too few are valid', () => {
+    expect(majorityVote(['OVER', 'UNDER', 'NO_PICK'])).toBeNull();
+    expect(majorityVote([null, 'OVER', null])).toBeNull();
+    expect(majorityVote([null, null, null])).toBeNull();
   });
 });
