@@ -122,6 +122,22 @@ describe('prematchCause: EARLY published under replaced pick rules (ADR 0009)', 
     expect(prematchCause(retune)).toBe('GATES_RETUNED');
   });
 
+  it('PROMPT_CHANGED (ADR 0013): a Hybrid AI EARLY round of an earlier prompt version, same engine', () => {
+    const ai = { ...base, early: { ...base.early, rulesVersion: 'hybrid-ai-v1', promptVersion: 'hybrid-ai-v1.5' }, rulesVersion: 'hybrid-ai-v1', promptVersion: 'hybrid-ai-v1.6' };
+    expect(prematchCause(ai)).toBe('PROMPT_CHANGED');
+    expect(prematchCause({ ...ai, early: { ...ai.early, kind: 'NO_CLEAR_SIGNAL' } })).toBe('PROMPT_CHANGED');
+    // same prompt, unknown prompt, or no prompt in force (the rules engine): no cause
+    expect(prematchCause({ ...ai, early: { ...ai.early, promptVersion: 'hybrid-ai-v1.6' } })).toBeNull();
+    expect(prematchCause({ ...ai, early: { ...ai.early, promptVersion: null } })).toBeNull();
+    expect(prematchCause({ ...ai, promptVersion: undefined })).toBeNull();
+    // once only, never after LINEUP, never inside the last 15 minutes
+    expect(prematchCause({ ...ai, prematchPublished: true })).toBeNull();
+    expect(prematchCause({ ...ai, lineupPublished: true })).toBeNull();
+    expect(prematchCause({ ...ai, now: new Date('2026-10-20T18:46:00Z') })).toBeNull();
+    // an engine change still reads as RULES_CHANGED
+    expect(prematchCause({ ...ai, early: { ...ai.early, rulesVersion: 'rules-v0.6' } })).toBe('RULES_CHANGED');
+  });
+
   it('the published reason names the cause', () => {
     const text = (cause: 'RULES_CHANGED' | 'GATES_RETUNED') =>
       buildReason({ kind: 'NO_CLEAR_SIGNAL', round: 'PREMATCH', prematchCause: cause, home: 'Liverpool', away: 'Villarreal', fogReasons: [{ market: 'ASIAN_HANDICAP', reason: 'EDGE_TOO_LARGE' }] });

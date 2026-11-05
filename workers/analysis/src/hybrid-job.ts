@@ -82,7 +82,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
         ctx.log.warn('Hybrid AI time budget used up; the rest wait for the next run', { budgetMinutes: opts.budgetMinutes ?? 12, stored });
         break;
       }
-      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid' });
+      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined });
       if (!due) continue;
       const { round } = due;
       // a published round is final: nothing left to decide

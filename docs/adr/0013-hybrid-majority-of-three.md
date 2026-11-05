@@ -28,3 +28,9 @@ What was not shown: that a majority of three, or the input without DC, picks bet
 - Fewer picks: in the replay, the majority of three gave a pick on 74 of 204 fixtures where one answer gave 91 to 105.
 - `/performance` counts v1.6 picks under the same engine version; the prompt version on each pick tells them apart, and v1.6 is compared against the v1.x picks before it with the stated sample.
 - Not measured yet, to revisit with the live v1.6 record: whether the majority picks better than one answer, with a stated sample (about 1,000 picks are needed to see a difference of the size the replay showed).
+
+## Matches already published under an earlier prompt (owner, 2026-11-05)
+
+The owner asked that the day's upcoming matches, already published at EARLY under v1.5, be decided again under v1.6. ADR 0009's rule is applied to the Hybrid AI: a prompt version is the AI's pick rules. A new PREMATCH cause, **PROMPT_CHANGED**, is due when the EARLY round came from the same engine version under another prompt version; the other conditions are those of RULES_CHANGED (once, no LINEUP or PREMATCH published yet, at least 15 minutes before kickoff, a fresh decision of the prompt in force). It is published whatever the new decision is, pick or no pick, and its reason opens with "ก่อนเตะ หลังปรับปรุงระบบวิเคราะห์ Hybrid AI". The EARLY rows stay in the record and are settled and counted on `/performance`; PREMATCH is reported as its own round, and the pages and lists show a match's latest round. Every later prompt version re-publishes the day's upcoming matches the same way.
+
+On 2026-11-05 at 17:00 Thai: 41 upcoming matches in the football day, 38 published at EARLY under v1.5 (26 picks, 12 without). About three AI calls each.

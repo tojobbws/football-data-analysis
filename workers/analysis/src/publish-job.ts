@@ -14,7 +14,7 @@
  * 🌫️ NO_CLEAR_SIGNAL is published too: coverage and honesty count as much as hits.
  */
 import { buildHybridReason, buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
-import { HYBRID_ENGINE_VERSION } from '@fp/ai';
+import { HYBRID_ENGINE_VERSION, HYBRID_PROMPT_VERSION } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours, footballDayHorizon } from '@fp/shared';
 
@@ -40,10 +40,11 @@ type Fx = { id: number; leagueId: number; kickoffAt: Date; homeTeamId: number; a
 
 /**
  * The round this fixture is due to publish now, or null. `engineVersion` is the pick engine in force: an EARLY
- * round published under another one earns a PREMATCH round (ADR 0009). The league re-tune cause (ADR 0005)
+ * round published under another one earns a PREMATCH round (ADR 0009); so does, for the Hybrid AI, an EARLY round
+ * published under another prompt version (`promptVersion`, ADR 0013). The league re-tune cause (ADR 0005)
  * applies to the rules only; the Hybrid AI does not use the league gates.
  */
-export async function dueRound(ctx: JobContext, f: Fx, now: Date, opts: { engineVersion: string; gateRetune: boolean }) {
+export async function dueRound(ctx: JobContext, f: Fx, now: Date, opts: { engineVersion: string; gateRetune: boolean; promptVersion?: string }) {
   const lineups = await ctx.repo.lineupsForFixture(f.id);
   const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
   let round: PublishRound | null = publishRoundFor(f.kickoffAt, now, hasLineups);
@@ -62,6 +63,7 @@ export async function dueRound(ctx: JobContext, f: Fx, now: Date, opts: { engine
         lineupPublished: await ctx.repo.isPublished(f.id, 'LINEUP'),
         prematchPublished: await ctx.repo.isPublished(f.id, 'PREMATCH'),
         rulesVersion: opts.engineVersion,
+        promptVersion: opts.promptVersion,
       });
       if (cause) round = 'PREMATCH';
     }
@@ -94,7 +96,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
     if (engine === 'hybrid') await ctx.repo.ensureModelVersion(HYBRID_ENGINE_VERSION, 'Hybrid AI decision engine: verified pre-match data + market main lines (ADR 0010)', {});
 
     for (const f of fixtures) {
-      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid' });
+      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined });
       if (!due) continue;
       const { round, cause, gateTunedAt } = due;
 
@@ -131,6 +133,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
           kind: isPick ? 'SIGNAL' : 'NO_CLEAR_SIGNAL',
           round,
           engineChanged: cause === 'RULES_CHANGED',
+          promptChanged: cause === 'PROMPT_CHANGED',
           label,
           summaryTh: d.summaryTh ?? '',
           supporting: out.supporting_evidence ?? [],

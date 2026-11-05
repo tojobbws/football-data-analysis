@@ -141,6 +141,8 @@ export interface HybridReasonInput {
   round: PublishRound;
   /** a PREMATCH round published because the EARLY one came from the rules engine */
   engineChanged: boolean;
+  /** a PREMATCH round published because the EARLY one came from an earlier Hybrid AI prompt version (PROMPT_CHANGED) */
+  promptChanged?: boolean;
   label: string | null;
   /** the AI's text, already checked: no banned word, no number that is not in its input */
   summaryTh: string;
@@ -187,7 +189,7 @@ export function hybridSummaryFromReason(reason: string | null | undefined): stri
  */
 export function buildHybridReason(r: HybridReasonInput): string {
   const when =
-    r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : r.round === 'PREMATCH' ? (r.engineChanged ? 'ก่อนเตะ หลังเปลี่ยนเป็นระบบวิเคราะห์ Hybrid AI' : 'ก่อนเตะ') : 'ล่วงหน้าก่อนเกม';
+    r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : r.round === 'PREMATCH' ? (r.engineChanged ? 'ก่อนเตะ หลังเปลี่ยนเป็นระบบวิเคราะห์ Hybrid AI' : r.promptChanged ? 'ก่อนเตะ หลังปรับปรุงระบบวิเคราะห์ Hybrid AI' : 'ก่อนเตะ') : 'ล่วงหน้าก่อนเกม';
   const lines: string[] = [];
   if (r.kind === 'SIGNAL' && r.label) {
     lines.push(`${BRAND.SIGNAL}: ${r.label} (${when})`);
@@ -210,18 +212,20 @@ export function buildHybridReason(r: HybridReasonInput): string {
  * EARLY  : kickoff within (earlyMinHours, earlyHours]
  * LINEUP : lineups of both teams known and kickoff within [lineupMinMinutes, lineupMaxMinutes]
  */
-export type PrematchCause = 'GATES_RETUNED' | 'RULES_CHANGED';
+export type PrematchCause = 'GATES_RETUNED' | 'RULES_CHANGED' | 'PROMPT_CHANGED';
 
 export interface PrematchInput {
   kickoffAt: Date;
   now: Date;
   /** `rulesVersion`: the pick rules the EARLY round was published under */
-  early: { kind: string; publishedAt: Date; rulesVersion?: string | null } | null;
+  early: { kind: string; publishedAt: Date; rulesVersion?: string | null; promptVersion?: string | null } | null;
   gateTunedAt: Date | null;
   lineupPublished: boolean;
   prematchPublished: boolean;
   /** the pick rules in force now; omitted = only the re-tune cause applies */
   rulesVersion?: string;
+  /** the Hybrid AI prompt version in force now (hybrid engine only); omitted = no PROMPT_CHANGED */
+  promptVersion?: string;
   minMinutes?: number;
 }
 
@@ -230,11 +234,14 @@ export interface PrematchInput {
  * before kickoff and before any LINEUP round. It adds a row to the record; nothing published is changed.
  *  - GATES_RETUNED (ADR 0005): the EARLY round was fog published before the league's gates were re-tuned.
  *  - RULES_CHANGED (ADR 0009): the EARLY round was published under pick rules that have since been replaced.
+ *  - PROMPT_CHANGED (ADR 0013): the same, for the Hybrid AI: the EARLY round came from an earlier prompt version
+ *    under the same engine version (a prompt version is the AI's pick rules).
  */
 export function prematchCause(p: PrematchInput): PrematchCause | null {
   if (p.prematchPublished || p.lineupPublished || !p.early) return null;
   if ((p.kickoffAt.getTime() - p.now.getTime()) / 60_000 < (p.minMinutes ?? 15)) return null;
   if (p.rulesVersion && p.early.rulesVersion && p.early.rulesVersion !== p.rulesVersion) return 'RULES_CHANGED';
+  if (p.promptVersion && p.early.promptVersion && p.early.promptVersion !== p.promptVersion) return 'PROMPT_CHANGED';
   if (p.early.kind === 'NO_CLEAR_SIGNAL' && p.gateTunedAt && p.gateTunedAt.getTime() > p.early.publishedAt.getTime()) return 'GATES_RETUNED';
   return null;
 }

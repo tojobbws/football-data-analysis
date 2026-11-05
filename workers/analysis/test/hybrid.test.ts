@@ -220,6 +220,36 @@ describe('hybridJob', () => {
     expect(await count('select count(*) n from analysis_predictions')).toBe(3);
   });
 
+  it('re-publishes once at PREMATCH a match whose EARLY came from an earlier prompt version (ADR 0013)', async () => {
+    await q(`insert into teams (id, name) values (306, 'Old Prompt FC')`);
+    await q(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values (306, 39, 2026, $1, 306, 999, 'NS')`, [KO.toISOString()]);
+    await odds(306);
+    await ctx.repo.publishPrediction(
+      { fixture_id: 306, publish_round: 'EARLY', kind: 'SIGNAL', market: 'OVER_UNDER', selection: 'OVER', line: 2.5, odds_at_publish: 1.9, model_probability: null, market_probability: 0.5, signal_strength: 'MEDIUM', reason: 'เข็มทิศเกม: สูง 2.5', model_version_id: 'hybrid-ai-v1', decision_rule_version: 'hybrid-ai-v1', prompt_version: 'hybrid-ai-v1.5' },
+      { candidates_snapshot: [] },
+    );
+    const d = fakeDecider({ ...answers, 'Old Prompt FC': () => ({ output: pick() }) });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d });
+    expect(d.calls.filter((c) => c === 'Old Prompt FC')).toHaveLength(HYBRID_VOTES);
+    expect(await count(`select count(*) n from hybrid_decisions where fixture_id = 306 and publish_round = 'PREMATCH' and status = 'OK'`)).toBe(1);
+
+    await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
+    const rows = await q<{ publish_round: string; prompt_version: string; selection: string | null; reason: string }>(
+      `select publish_round, prompt_version, selection, reason from analysis_predictions where fixture_id = 306 order by published_at`,
+    );
+    // the EARLY row stays; the PREMATCH row carries the v1.6 decision and says why it came
+    expect(rows.map((r) => [r.publish_round, r.prompt_version])).toEqual([['EARLY', 'hybrid-ai-v1.5'], ['PREMATCH', HYBRID_PROMPT_VERSION]]);
+    expect(rows[1]!.selection).toBe('AWAY');
+    expect(rows[1]!.reason).toContain('(ก่อนเตะ หลังปรับปรุงระบบวิเคราะห์ Hybrid AI)');
+
+    // once only
+    const again = fakeDecider({ ...answers, 'Old Prompt FC': () => ({ output: pick() }) });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: again });
+    await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
+    expect(again.calls).not.toContain('Old Prompt FC');
+    expect(await count(`select count(*) n from analysis_predictions where fixture_id = 306`)).toBe(2);
+  });
+
   it('stops calling the AI for the rest of the run on an error the next call would hit too', async () => {
     const before = await count('select count(*) n from hybrid_decisions');
     const calls: string[] = [];

@@ -31,3 +31,5 @@ The same rule applies to every later change of the pick rules: upcoming matches 
 - **Wait for LINEUP**: rejected by the owner. Far-line picks would stay on the pages for hours, and indefinitely where lineups never arrive.
 - **Edit or hide the EARLY rows**: rejected. It breaks the record's central promise.
 - **Re-publish only matches whose pick changes**: rejected. It makes publishing depend on the outcome.
+
+**2026-11-05: PROMPT_CHANGED.** A Hybrid AI EARLY round published under an earlier prompt version (same engine version) earns a PREMATCH round under the same conditions as RULES_CHANGED. See ADR 0013.
