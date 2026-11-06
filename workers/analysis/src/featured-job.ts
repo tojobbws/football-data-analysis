@@ -9,11 +9,16 @@
  */
 import { FEATURED_V1, fairProbability, lockFeatured, reserveFeatured, type FeaturedCandidate, type FeaturedConfig } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
-import { footballDay } from '@fp/shared';
+import { addHours, footballDay } from '@fp/shared';
 
 export interface FeaturedOptions {
   now?: Date;
   config?: FeaturedConfig;
+  /**
+   * PICK_SCHEDULE=daily (ADR 0014): the hourly list takes no new match. A match already holding a row is locked at
+   * kick-off as it stands: CONFIRMED with its slot, DROPPED without one. Ends the switch day's list.
+   */
+  freeze?: boolean;
 }
 
 export function featuredJob(ctx: JobContext, opts: FeaturedOptions = {}) {
@@ -22,6 +27,23 @@ export function featuredJob(ctx: JobContext, opts: FeaturedOptions = {}) {
   return runJob(ctx, 'featured', { version: cfg.version }, async () => {
     const now = opts.now ?? new Date();
     const day = footballDay(now);
+
+    if (opts.freeze) {
+      // today's and yesterday's rows: a match kicking off just before 06:00 is first seen after its day has ended
+      let locked = 0;
+      for (const d of [footballDay(addHours(now, -24)), day]) {
+        const [dayMatches, dayRows] = await Promise.all([ctx.repo.featuredDayMatches(leagues, d.from.toISOString(), d.to.toISOString()), ctx.repo.featuredRows(d.date, cfg.version)]);
+        const held = new Map(dayRows.filter((r) => !r.locked).map((r) => [r.fixtureId, r]));
+        for (const m of dayMatches) {
+          const r = held.get(m.fixtureId);
+          if (!r || m.kickoffAt > now) continue;
+          await ctx.repo.lockFeatured({ footballDate: d.date, version: cfg.version, fixtureId: m.fixtureId, leagueId: m.leagueId, predictionId: m.predictionId, supportScore: null, fairProbability: null, phase: r.rank != null ? 'CONFIRMED' : 'DROPPED', rank: r.rank });
+          locked++;
+        }
+      }
+      return locked;
+    }
+
     const [matches, rows] = await Promise.all([
       ctx.repo.featuredDayMatches(leagues, day.from.toISOString(), day.to.toISOString()),
       ctx.repo.featuredRows(day.date, cfg.version),

@@ -4,7 +4,11 @@
  * can never contain a claim the data does not support. (AI wording = Phase 6b.)
  */
 
-export type PublishRound = 'EARLY' | 'PREMATCH' | 'LINEUP';
+/**
+ * EARLY / PREMATCH / LINEUP: the hourly rounds before ADR 0014 (still the schedule when PICK_SCHEDULE=rounds).
+ * DAILY: the one final round of the daily pick run (ADR 0014).
+ */
+export type PublishRound = 'EARLY' | 'PREMATCH' | 'LINEUP' | 'DAILY';
 
 export const BRAND = {
   SIGNAL: '🧭 เข็มทิศเกม',
@@ -99,7 +103,9 @@ export function buildReason(r: ReasonInput): string {
         ? r.prematchCause === 'RULES_CHANGED'
           ? 'ก่อนเตะ หลังปรับกติกาให้วิเคราะห์เฉพาะเส้นหลักของตลาด'
           : 'ก่อนเตะ หลังปรับโมเดลของลีก'
-        : 'ล่วงหน้าก่อนเกม';
+        : r.round === 'DAILY'
+          ? 'วิเคราะห์ก่อนเกม'
+          : 'ล่วงหน้าก่อนเกม';
 
   if (r.kind === 'SIGNAL' && r.pick) {
     const p = r.pick;
@@ -189,7 +195,7 @@ export function hybridSummaryFromReason(reason: string | null | undefined): stri
  */
 export function buildHybridReason(r: HybridReasonInput): string {
   const when =
-    r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : r.round === 'PREMATCH' ? (r.engineChanged ? 'ก่อนเตะ หลังเปลี่ยนเป็นระบบวิเคราะห์ Hybrid AI' : r.promptChanged ? 'ก่อนเตะ หลังปรับปรุงระบบวิเคราะห์ Hybrid AI' : 'ก่อนเตะ') : 'ล่วงหน้าก่อนเกม';
+    r.round === 'LINEUP' ? 'หลังประกาศรายชื่อตัวจริง' : r.round === 'PREMATCH' ? (r.engineChanged ? 'ก่อนเตะ หลังเปลี่ยนเป็นระบบวิเคราะห์ Hybrid AI' : r.promptChanged ? 'ก่อนเตะ หลังปรับปรุงระบบวิเคราะห์ Hybrid AI' : 'ก่อนเตะ') : r.round === 'DAILY' ? 'วิเคราะห์ก่อนเกม' : 'ล่วงหน้าก่อนเกม';
   const lines: string[] = [];
   if (r.kind === 'SIGNAL' && r.label) {
     lines.push(`${BRAND.SIGNAL}: ${r.label} (${when})`);
@@ -260,4 +266,18 @@ export function publishRoundFor(
   if (hasLineups && minutes >= (opts.lineupMinMinutes ?? 15) && minutes <= (opts.lineupMaxMinutes ?? 80)) return 'LINEUP';
   if (minutes <= (opts.earlyHours ?? 24) * 60 && minutes > (opts.earlyMinHours ?? 3) * 60) return 'EARLY';
   return null;
+}
+
+/** The daily pick run publishes at least this many minutes before kick-off, as the other rounds do. */
+export const DAILY_MIN_MINUTES = 15;
+
+/**
+ * DAILY (ADR 0014): due while the daily pick run is open (`run` = pickRunAt(now) of @fp/shared), for a match of its
+ * pick day that kicks off at least DAILY_MIN_MINUTES later and has no published round yet. A pick is final: it is
+ * never redone, not on the switch day for a match already published at EARLY, nor when a match moves to a later day.
+ */
+export function dailyRoundFor(kickoffAt: Date, now: Date, run: { day: { from: Date; to: Date } } | null, alreadyPublished: boolean): 'DAILY' | null {
+  if (!run || alreadyPublished) return null;
+  if (kickoffAt < run.day.from || kickoffAt >= run.day.to) return null;
+  return (kickoffAt.getTime() - now.getTime()) / 60_000 >= DAILY_MIN_MINUTES ? 'DAILY' : null;
 }

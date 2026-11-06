@@ -48,8 +48,9 @@ export const MARKET: Record<string, string> = {
 };
 
 // publish rounds (CONTEXT.md "Publish round"): never "รอบแรก", a LINEUP round may never come
-export const ROUND: Record<string, string> = { EARLY: 'ก่อนประกาศตัวจริง', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ' };
-export const ROUND_SHORT: Record<string, string> = { EARLY: 'ก่อนตัวจริง', LINEUP: 'หลังตัวจริง', PREMATCH: 'ก่อนเตะ' };
+// DAILY: the one final round of the daily pick run (ADR 0014)
+export const ROUND: Record<string, string> = { EARLY: 'ก่อนประกาศตัวจริง', LINEUP: 'หลังประกาศตัวจริง', PREMATCH: 'ก่อนเตะ', DAILY: 'วิเคราะห์ก่อนเกม' };
+export const ROUND_SHORT: Record<string, string> = { EARLY: 'ก่อนตัวจริง', LINEUP: 'หลังตัวจริง', PREMATCH: 'ก่อนเตะ', DAILY: 'ก่อนเกม' };
 
 
 /**

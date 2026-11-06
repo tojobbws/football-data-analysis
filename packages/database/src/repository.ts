@@ -923,6 +923,12 @@ export class Repository {
     return res.rows.length > 0;
   }
 
+  /** Any round published for the match (ADR 0014: a match with a pick is never picked again). */
+  async hasAnyPublication(fixtureId: number): Promise<boolean> {
+    const res = await this.db.query('select 1 from analysis_predictions where fixture_id = $1 limit 1', [fixtureId]);
+    return res.rows.length > 0;
+  }
+
   async latestRun(fixtureId: number, rulesVersion: string) {
     const res = await this.db.query<Record<string, unknown>>(
       `select id, outcome, started_at, summary, inputs, model_version_id, decision_rule_version
@@ -1622,6 +1628,7 @@ export class Repository {
       fixtureId: Number(r.fixture_id),
       rulesVersion: String(r.rules_version),
       round: String(r.publish_round),
+      engine: r.decision_rule_version == null ? null : String(r.decision_rule_version),
       market: String(r.market),
       selection: String(r.selection),
       line: r.line == null ? null : Number(r.line),
@@ -1651,12 +1658,13 @@ export class Repository {
   /** Published picks of matches that kicked off since `since` (to set beside a shadow rules version). */
   async publishedPicksSince(since: Date) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select p.publish_round, p.market, p.selection, p.line, p.status, p.clv, f.league_id from analysis_predictions p join fixtures f on f.id = p.fixture_id
+      `select p.publish_round, p.market, p.selection, p.line, p.status, p.clv, p.decision_rule_version, f.league_id from analysis_predictions p join fixtures f on f.id = p.fixture_id
         where p.kind = 'SIGNAL' and f.kickoff_at >= $1 and f.kickoff_at < now()`,
       [since.toISOString()],
     );
     return res.rows.map((r) => ({
       round: String(r.publish_round),
+      engine: r.decision_rule_version == null ? null : String(r.decision_rule_version),
       market: String(r.market),
       selection: String(r.selection),
       line: r.line == null ? null : Number(r.line),
@@ -1779,6 +1787,24 @@ export class Repository {
              fair_probability = coalesce(excluded.fair_probability, featured_selections.fair_probability)`,
       [row.footballDate, row.version, row.fixtureId, row.leagueId, row.rank, row.predictionId, row.supportScore, row.fairProbability],
     );
+  }
+
+  /**
+   * A list chosen once (featured-ai-v2, ADR 0014): every row locked in one statement, so a list is never half
+   * written. `footballDate` is the pick day's date. False when the day already has rows of this version.
+   */
+  async insertFeaturedList(footballDate: string, version: string, rows: Array<{ fixtureId: number; leagueId: number; phase: 'CONFIRMED' | 'SKIPPED'; rank: number | null; predictionId: number | null }>): Promise<boolean> {
+    if (!rows.length) return false;
+    const res = await this.db.query<{ fixture_id: string | number }>(
+      `insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, prediction_id, first_reserved_at, first_rank, locked_at)
+       select $1::date, $2, r.fixture_id, r.league_id, r.phase, r.rank, r.prediction_id,
+              case when r.rank is null then null else now() end, r.rank, now()
+         from jsonb_to_recordset($3::jsonb) as r(fixture_id bigint, league_id int, phase text, rank int, prediction_id bigint)
+        where not exists (select 1 from featured_selections where football_date = $1::date and version = $2)
+       returning fixture_id`,
+      [footballDate, version, JSON.stringify(rows.map((r) => ({ fixture_id: r.fixtureId, league_id: r.leagueId, phase: r.phase, rank: r.rank, prediction_id: r.predictionId })))],
+    );
+    return res.rows.length > 0;
   }
 
   async lockFeatured(row: { footballDate: string; version: string; fixtureId: number; leagueId: number; phase: 'CONFIRMED' | 'DROPPED' | 'SKIPPED'; rank: number | null; predictionId: number | null; supportScore: number | null; fairProbability: number | null }) {

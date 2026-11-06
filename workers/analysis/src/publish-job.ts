@@ -12,13 +12,31 @@
  *              (docs/adr/0005-prematch-round.md), or EARLY was published under pick rules that
  *              have since been replaced (docs/adr/0009-prematch-after-rules-change.md)
  * 🌫️ NO_CLEAR_SIGNAL is published too: coverage and honesty count as much as hits.
+ *
+ * PICK_SCHEDULE=daily (docs/adr/0014-one-daily-pick-run.md) replaces the rounds above with one: DAILY, published
+ * by the runs from 14:00 to 16:00 Thai for every match of the pick day (14:00 → 14:00) that has no round yet.
+ * It is final: no LINEUP, no PREMATCH.
  */
-import { buildHybridReason, buildReason, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
+import { buildHybridReason, buildReason, dailyRoundFor, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
 import { HYBRID_ENGINE_VERSION, HYBRID_PROMPT_VERSION } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
-import { addHours, footballDayHorizon } from '@fp/shared';
+import { addHours, footballDayHorizon, pickRunAt } from '@fp/shared';
 
 export type PickEngine = 'legacy' | 'shadow' | 'hybrid';
+export type PickSchedule = 'rounds' | 'daily';
+
+/**
+ * The fixtures a pick job looks at now. Rounds: the next 24 hours, capped to the football day. Daily: the rest of the
+ * pick day while its run is open, nothing outside it.
+ */
+export async function pickFixtures(ctx: JobContext, now: Date, schedule: PickSchedule, sameFootballDay = true) {
+  const leagues = ctx.env.TRACKED_LEAGUES;
+  if (schedule === 'daily') {
+    const run = pickRunAt(now);
+    return run ? ctx.repo.fixturesForCandidates(leagues, now.toISOString(), run.day.to.toISOString()) : [];
+  }
+  return ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (sameFootballDay ? footballDayHorizon(now, 24) : addHours(now, 24)).toISOString());
+}
 
 export interface PublishOptions {
   now?: Date;
@@ -31,10 +49,12 @@ export interface PublishOptions {
   engine?: PickEngine;
   /** only matches of the current football day (06:00→06:00 Thai); false lifts the cap, for tests */
   sameFootballDay?: boolean;
+  /** when picks are made; default env PICK_SCHEDULE, unset = rounds (docs/adr/0014-one-daily-pick-run.md) */
+  schedule?: PickSchedule;
 }
 
-/** How old a decision may be when its round is published (minutes). */
-export const MAX_DECISION_AGE_MINUTES: Record<PublishRound, number> = { EARLY: 240, PREMATCH: 240, LINEUP: 75 };
+/** How old a decision may be when its round is published (minutes). DAILY: also not from before the day's run. */
+export const MAX_DECISION_AGE_MINUTES: Record<PublishRound, number> = { EARLY: 240, PREMATCH: 240, LINEUP: 75, DAILY: 120 };
 
 type Fx = { id: number; leagueId: number; kickoffAt: Date; homeTeamId: number; awayTeamId: number };
 
@@ -44,7 +64,11 @@ type Fx = { id: number; leagueId: number; kickoffAt: Date; homeTeamId: number; a
  * published under another prompt version (`promptVersion`, ADR 0013). The league re-tune cause (ADR 0005)
  * applies to the rules only; the Hybrid AI does not use the league gates.
  */
-export async function dueRound(ctx: JobContext, f: Fx, now: Date, opts: { engineVersion: string; gateRetune: boolean; promptVersion?: string }) {
+export async function dueRound(ctx: JobContext, f: Fx, now: Date, opts: { engineVersion: string; gateRetune: boolean; promptVersion?: string; schedule?: PickSchedule }) {
+  if (opts.schedule === 'daily') {
+    const round = dailyRoundFor(f.kickoffAt, now, pickRunAt(now), await ctx.repo.hasAnyPublication(f.id));
+    return round ? { round: round as PublishRound, cause: null as PrematchCause | null, gateTunedAt: null as Date | null } : null;
+  }
   const lineups = await ctx.repo.lineupsForFixture(f.id);
   const hasLineups = [f.homeTeamId, f.awayTeamId].every((t) => (lineups.get(`${f.id}:${t}`)?.starters.size ?? 0) >= 11);
   let round: PublishRound | null = publishRoundFor(f.kickoffAt, now, hasLineups);
@@ -74,6 +98,10 @@ export async function dueRound(ctx: JobContext, f: Fx, now: Date, opts: { engine
 /** A decision taken at `at` is still good for its round: recent enough, and for LINEUP after the confirmed lineup. */
 export async function decisionFresh(ctx: JobContext, fixtureId: number, round: PublishRound, at: Date, now: Date, maxAge: Record<PublishRound, number> = MAX_DECISION_AGE_MINUTES) {
   if (now.getTime() - at.getTime() > maxAge[round] * 60_000) return 'decision too old';
+  if (round === 'DAILY') {
+    const run = pickRunAt(now);
+    if (!run || at < run.startedAt) return 'decision from before the daily pick run';
+  }
   if (round === 'LINEUP') {
     const lineupAt = await ctx.repo.lineupSyncedAt(fixtureId);
     if (lineupAt && at < lineupAt) return 'decision older than the confirmed lineup';
@@ -88,15 +116,16 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
   const engineVersion = engine === 'hybrid' ? HYBRID_ENGINE_VERSION : rulesVersion;
   const maxAge = { ...MAX_DECISION_AGE_MINUTES, ...opts.maxRunAgeMinutes };
   const shadowVersion = opts.shadowRulesVersion === undefined ? SHADOW_RULES.version : opts.shadowRulesVersion;
-  return runJob(ctx, 'publish', { leagues, rulesVersion, engine, engineVersion }, async () => {
+  const schedule: PickSchedule = opts.schedule ?? ctx.env.PICK_SCHEDULE ?? 'rounds';
+  return runJob(ctx, 'publish', { leagues, rulesVersion, engine, engineVersion, schedule }, async () => {
     const now = opts.now ?? new Date();
-    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.sameFootballDay === false ? addHours(now, 24) : footballDayHorizon(now, 24)).toISOString());
+    const fixtures = await pickFixtures(ctx, now, schedule, opts.sameFootballDay !== false);
     const report: Array<Record<string, unknown>> = [];
     let published = 0;
     if (engine === 'hybrid') await ctx.repo.ensureModelVersion(HYBRID_ENGINE_VERSION, 'Hybrid AI decision engine: verified pre-match data + market main lines (ADR 0010)', {});
 
     for (const f of fixtures) {
-      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined });
+      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined, schedule });
       if (!due) continue;
       const { round, cause, gateTunedAt } = due;
 

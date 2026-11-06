@@ -29,6 +29,30 @@ export function footballDay(d: Date): { date: string; from: Date; to: Date } {
   return { date, from, to: addDays(from, 1) };
 }
 
+/** The daily pick run (ADR 0014): it starts at 14:00 Thai, and a match still without a decision is tried until 16:00. */
+export const PICK_RUN_HOUR = 14;
+export const PICK_RUN_CUTOFF_HOUR = 16;
+
+/**
+ * The pick day `d` falls in (ADR 0014): kick-offs from 14:00 Thai on day D to 14:00 on D+1, named D. The daily
+ * featured list, the videos and the track record's day groups follow it; the scoreboard keeps the football day.
+ */
+export function pickDay(d: Date): { date: string; from: Date; to: Date } {
+  const date = toDateString(new Date(d.getTime() + (7 - PICK_RUN_HOUR) * 3_600_000));
+  const from = new Date(`${date}T${String(PICK_RUN_HOUR).padStart(2, '0')}:00:00+07:00`);
+  return { date, from, to: addDays(from, 1) };
+}
+
+/**
+ * The daily pick run open at `now`, or null: from 14:00 to 16:00 Thai it covers the pick day that starts at 14:00
+ * that day. `startedAt` is 14:00: a decision taken before it belongs to no run of this day.
+ */
+export function pickRunAt(now: Date): { day: { date: string; from: Date; to: Date }; startedAt: Date; cutoff: Date } | null {
+  const day = pickDay(now);
+  const cutoff = addHours(day.from, PICK_RUN_CUTOFF_HOUR - PICK_RUN_HOUR);
+  return now >= day.from && now < cutoff ? { day, startedAt: day.from, cutoff } : null;
+}
+
 /**
  * How far ahead the pre-match jobs look: `hours`, but capped so a match is only analysed close to its day
  * and with fresh data. Before 12:00 Thai of the football day the cap is 12:00 + FOOTBALL_DAY_GRACE_HOURS

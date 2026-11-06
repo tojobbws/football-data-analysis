@@ -2,7 +2,7 @@
  * Shadow trial report (ADR 0003): the shadow rules' locked picks beside the real picks of the same
  * period — which side each picks, how they turned out (90-minute result, same settlement rules as
  * the track record), mean CLV, and the verdict against the criteria fixed before the trial.
- * Judged on the LINEUP round; EARLY is shown beside it. Read-only; nothing is published or stored.
+ * Judged on the DAILY round since the daily pick run (ADR 0014); LINEUP and EARLY are shown beside it. Read-only; nothing is published or stored.
  */
 import { decideSettlement, SHADOW_TRIAL, trialSide, trialVerdict, type TrialPick } from '@fp/analysis';
 import type { JobContext } from '@fp/database';
@@ -56,7 +56,7 @@ export async function shadowReport(ctx: JobContext, opts: { rulesVersion?: strin
   }));
 
   const inRound = (ps: Pick[], round: string) => ps.filter((p) => p.round === round);
-  const rounds = ['LINEUP', 'EARLY'].map((round) => {
+  const rounds = ['DAILY', 'LINEUP', 'EARLY'].map((round) => {
     const s = inRound(shadow, round);
     const r = inRound(real, round);
     return { round, shadow: { ...trialSide(s), sides: sides(s) }, real: { ...trialSide(r), sides: sides(r) } };

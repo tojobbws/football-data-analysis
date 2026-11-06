@@ -23,12 +23,24 @@ How far the model's fair probability for a pick sits above the market's, in perc
 _Avoid_: claiming the market got it wrong (ตลาดประเมินพลาด) — the record does not yet show the model beats the market
 
 **Pick**:
-A single published selection of the Game Compass for one match (market, side, line), made before kickoff. A later publish round replaces it on fan pages as a new record; it is not rewritten in place (ADR 0007 lifts the tamper-proof requirement, it does not ask for edits). Its market is Asian handicap or over/under; 1X2 is never picked (a few early 1X2 picks stay as published).
+A single published selection of the Game Compass for one match (market, side, line), made before kickoff. A later publish round replaces it on fan pages as a new record; it is not rewritten in place (ADR 0007 lifts the tamper-proof requirement, it does not ask for edits). Its market is Asian handicap or over/under; 1X2 is never picked (a few early 1X2 picks stay as published). Since the daily pick run, a match gets one pick and it is final.
 _Avoid_: tip, bet
 
 **Publish round (รอบเผยแพร่)**:
-A point in time at which a match's Game Compass is locked as a new record: EARLY (before lineups), LINEUP (after both confirmed XIs, only when they are known in time) or PREMATCH (rare, ADR 0005). A later round replaces the earlier one on fan pages; the earlier one stays in the record and is never edited. A match may get only its EARLY round. Fan-facing names: ก่อนประกาศตัวจริง, หลังประกาศตัวจริง, ก่อนเตะ.
+A point in time at which a match's Game Compass is locked as a new record. Now one round only: DAILY, made by the daily pick run and never followed by another. Before it: EARLY (before lineups), LINEUP (after both confirmed XIs, only when they are known in time) or PREMATCH (rare, ADR 0005), where a later round replaced the earlier one on fan pages; those rows stay in the record and are never edited. Fan-facing names: วิเคราะห์ก่อนเกม (DAILY); earlier ก่อนประกาศตัวจริง, หลังประกาศตัวจริง, ก่อนเตะ.
 _Avoid_: รอบแรก (promises a second round that may never come)
+
+**Daily pick run (รอบเลือกประจำวัน)**:
+The one moment each day, 14:00 Thai, when every match of the coming pick day is analysed and gets its final pick or no pick. A match whose decision fails is tried again until 16:00, then has no pick. A match kicking off before its pick could be published, or added to the schedule after the run, has no pick. A change to the pick engine or its prompt applies from the next run; published picks are never redone, and a match whose kick-off moves keeps its pick in its first pick day (ADR 0014).
+_Avoid_: calling it a round (it makes one round for many matches)
+
+**Pick day (วันเข็มทิศ)**:
+The matches one daily pick run covers: kick-off from 14:00 Thai on day D to 14:00 on day D+1, named by D. The daily featured list, the spotlight and recap videos and the day groups of the track record follow it.
+_Avoid_: football day, for this span
+
+**Football day (วันฟุตบอล)**:
+06:00 to 06:00 Thai: how the scoreboard and /today group matches for fans. Not the span of picks.
+_Avoid_: using it to group picks or the featured list
 
 **Unsettled pick**:
 A pick whose outcome has not yet been decided — regardless of whether the match is upcoming, live, or already finished.
@@ -84,11 +96,11 @@ A fixed-length comparison of shadow pick rules against the real ones, judged on 
 _Avoid_: tweaking shadow rules mid-trial (that starts a new trial)
 
 **Daily featured list (เข็มทิศเกมประจำวัน)**:
-Up to 5 of a football day's picks, chosen from real picks only (never a separate opinion), with at most one per match and two per league. For rules picks (featured-v2, ADR 0006; v1 ranked by support score) it is ranked by the model blended with the market, a slot is reserved from the EARLY pick and confirmed or dropped by the LINEUP pick. For Hybrid AI picks (featured-ai-v1, ADR 0012) it is ordered by the AI's confidence, then big five leagues, fewer data gaps, earlier kick-off, and a slot is confirmed or dropped at the LINEUP round or at kick-off. A day with no qualifying pick has no list. Fan-facing name: "เข็มทิศเกมประจำวัน".
+Up to 5 of a football day's picks, chosen from real picks only (never a separate opinion), with at most one per match and two per league. For rules picks (featured-v2, ADR 0006; v1 ranked by support score) it is ranked by the model blended with the market, a slot is reserved from the EARLY pick and confirmed or dropped by the LINEUP pick. For Hybrid AI picks (featured-ai-v1, ADR 0012) it is ordered by the AI's confidence, then big five leagues, fewer data gaps, earlier kick-off, and a slot is confirmed or dropped at the LINEUP round or at kick-off. Since the daily pick run (featured-ai-v2) the list belongs to a pick day, uses the featured-ai-v1 order and caps, and is chosen once, at the end of the run: every match in it is confirmed at once and none is dropped. A day with no qualifying pick has no list. Fan-facing name: "เข็มทิศเกมประจำวัน".
 _Avoid_: คู่เด่นประจำวัน (old name), best bets, sure picks, ฟันธง (as fan-facing copy); filling the list by relaxing thresholds
 
 **Watched match (คู่น่าจับตา)**:
-A match that held a confirmed slot in a football day's list when it was locked. Kept for good with its rank and the pick it was locked on, and listed with its result on /performance. Matches that held a slot and lost it before the lock (dropped), and days without a list, have none.
+A match that held a confirmed slot in a day's list when it was locked (a pick day's list since featured-ai-v2, a football day's before). Kept for good with its rank and the pick it was locked on, and listed with its result on /performance. Matches that held a slot and lost it before the lock (dropped), and days without a list, have none.
 _Avoid_: calling a pick with no slot a watched match
 
 **Gold frame (กรอบทอง)**:

@@ -16,6 +16,9 @@
  * Fail-safe: an answer that fails validation is asked again up to HYBRID_MAX_ATTEMPTS times. Too few valid answers to
  * reach or rule out a majority: stored as INVALID / REFUSED / ERROR and nothing is published for it; the next hourly
  * run tries again while the round is open.
+ *
+ * PICK_SCHEDULE=daily (docs/adr/0014-one-daily-pick-run.md): every match of the pick day is decided in the runs from
+ * 14:00 to 16:00 Thai, DAILY_CONCURRENCY matches at a time so a full day (up to ~100 matches) fits in one run.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -35,19 +38,25 @@ import {
 } from '@fp/ai';
 import { DEFAULT_RULES, hybridMarket, hybridOptions, type HybridOption } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
-import { addHours, footballDayHorizon } from '@fp/shared';
 import { injuriesCoverage, withOpponentRanksAsOf } from './hybrid-input-v2.js';
-import { decisionFresh, dueRound, type PickEngine } from './publish-job.js';
+import { decisionFresh, dueRound, pickFixtures, type PickEngine, type PickSchedule } from './publish-job.js';
+
+/** Daily pick run: matches decided at the same time (each asks the AI HYBRID_VOTES times in parallel). */
+export const DAILY_CONCURRENCY = 6;
 
 export interface HybridJobOptions {
   now?: Date;
   engine?: PickEngine;
-  /** stop starting new fixtures after this many minutes; the rest wait for the next hourly run (default 12) */
+  /** stop starting new fixtures after this many minutes; the rest wait for the next hourly run (default 12, daily 15) */
   budgetMinutes?: number;
   /** tests inject a fake; null = no AI available */
   decider?: HybridDecider | null;
   /** only matches of the current football day (06:00→06:00 Thai); false lifts the cap, for tests */
   sameFootballDay?: boolean;
+  /** when picks are made; default env PICK_SCHEDULE, unset = rounds */
+  schedule?: PickSchedule;
+  /** matches decided at the same time (default 1, daily DAILY_CONCURRENCY) */
+  concurrency?: number;
 }
 
 /** OpenAI when OPENAI_API_KEY and OPENAI_MODEL are set, else Claude when ANTHROPIC_API_KEY is, else none. */
@@ -59,7 +68,11 @@ function defaultDecider(ctx: JobContext): HybridDecider | null {
 
 export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
   const engine: PickEngine = opts.engine ?? ctx.env.PICK_ENGINE ?? 'legacy';
-  return runJob(ctx, 'hybrid', { engine, engineVersion: HYBRID_ENGINE_VERSION, promptVersion: HYBRID_PROMPT_VERSION }, async () => {
+  const schedule: PickSchedule = opts.schedule ?? ctx.env.PICK_SCHEDULE ?? 'rounds';
+  const daily = schedule === 'daily';
+  const budgetMinutes = opts.budgetMinutes ?? (daily ? 15 : 12);
+  const concurrency = Math.max(1, opts.concurrency ?? (daily ? DAILY_CONCURRENCY : 1));
+  return runJob(ctx, 'hybrid', { engine, engineVersion: HYBRID_ENGINE_VERSION, promptVersion: HYBRID_PROMPT_VERSION, schedule }, async () => {
     if (engine === 'legacy') {
       ctx.log.info('PICK_ENGINE=legacy: the Hybrid AI does not run');
       return 0;
@@ -70,25 +83,35 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
       return 0;
     }
     const now = opts.now ?? new Date();
-    const leagues = ctx.env.TRACKED_LEAGUES;
-    const fixtures = await ctx.repo.fixturesForCandidates(leagues, now.toISOString(), (opts.sameFootballDay === false ? addHours(now, 24) : footballDayHorizon(now, 24)).toISOString());
+    const fixtures = await pickFixtures(ctx, now, schedule, opts.sameFootballDay !== false);
     const engineVersion = engine === 'hybrid' ? HYBRID_ENGINE_VERSION : DEFAULT_RULES.version;
     const report: Array<Record<string, unknown>> = [];
     let stored = 0;
 
-    const deadline = Date.now() + (opts.budgetMinutes ?? 12) * 60_000;
-    for (const f of fixtures) {
-      if (Date.now() > deadline) {
-        ctx.log.warn('Hybrid AI time budget used up; the rest wait for the next run', { budgetMinutes: opts.budgetMinutes ?? 12, stored });
-        break;
+    const deadline = Date.now() + budgetMinutes * 60_000;
+    const queue = [...fixtures];
+    let stop = false;
+    // `concurrency` workers take the fixtures in kick-off order; one stops all on a persistent API error or the budget
+    const worker = async () => {
+      while (!stop) {
+        const f = queue.shift();
+        if (!f) return;
+        if (Date.now() > deadline) {
+          if (!stop) ctx.log.warn('Hybrid AI time budget used up; the rest wait for the next run', { budgetMinutes, stored });
+          stop = true;
+          return;
+        }
+        if ((await decideOne(f)) === 'STOP') stop = true;
       }
-      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined });
-      if (!due) continue;
+    };
+    const decideOne = async (f: Fixture): Promise<'STOP' | void> => {
+      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined, schedule });
+      if (!due) return;
       const { round } = due;
       // a published round is final: nothing left to decide
-      if (await ctx.repo.isPublished(f.id, round)) continue;
+      if (await ctx.repo.isPublished(f.id, round)) return;
       const existing = await ctx.repo.latestHybridDecision(f.id, round, HYBRID_ENGINE_VERSION);
-      if (existing && !(await decisionFresh(ctx, f.id, round, existing.decidedAt, now))) continue;
+      if (existing && !(await decisionFresh(ctx, f.id, round, existing.decidedAt, now))) return;
 
       const { header, input, inputHash, options, legacy } = await collectHybridInput(ctx, f, round, now, { inputV2: true });
       const base = { fixture_id: f.id, publish_round: round, engine_mode: engine, engine_version: HYBRID_ENGINE_VERSION, prompt_version: HYBRID_PROMPT_VERSION, input, input_hash: inputHash, legacy };
@@ -106,7 +129,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
           await ctx.repo.insertHybridDecision(row).catch(() => undefined);
           ctx.log.error('Hybrid AI stopped for this run', { fixtureId: f.id, error: stopOn.failure });
           report.push({ match, result: 'ERROR', note: (stopOn.failure ?? '').slice(0, 80) });
-          break;
+          return 'STOP';
         }
       }
 
@@ -120,7 +143,8 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
         // e.g. kickoff passed while waiting for the API: the DB refuses late rows by design
         ctx.log.warn('hybrid decision not stored', { fixtureId: f.id, error: String(err) });
       }
-    }
+    };
+    await Promise.all(Array.from({ length: concurrency }, worker));
     if (report.length) console.table(report);
     return stored;
   });

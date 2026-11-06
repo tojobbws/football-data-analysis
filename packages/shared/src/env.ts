@@ -53,6 +53,17 @@ export const envSchema = z.object({
     .optional()
     .transform((v) => v || undefined)
     .pipe(z.enum(['legacy', 'shadow', 'hybrid']).optional()),
+  /**
+   * When picks are made (docs/adr/0014-one-daily-pick-run.md):
+   *  rounds - hourly EARLY / PREMATCH / LINEUP rounds and the featured-ai-v1 list (before ADR 0014)
+   *  daily  - one final DAILY round at the 14:00 Thai run (retried until 16:00) and the featured-ai-v2 list
+   * Set per run (GitHub Actions variable PICK_SCHEDULE); unset = rounds.
+   */
+  PICK_SCHEDULE: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum(['rounds', 'daily']).optional()),
   /** Optional: the Hybrid AI model (Claude); default HYBRID_AI_MODEL in @fp/ai. OpenAI uses OPENAI_MODEL. */
   HYBRID_AI_MODEL: z.string().optional().transform((v) => v || undefined),
 });

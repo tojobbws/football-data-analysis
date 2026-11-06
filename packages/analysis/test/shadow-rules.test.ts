@@ -21,6 +21,6 @@ describe('shadow trial', () => {
     const worseHits = trialSide([...picks(130, 'WIN', 0.03), ...picks(170, 'LOSS', 0.07)]);
     expect(trialVerdict(worseHits, real).criteria.fairNotWorse).toBe(false);
     expect(trialVerdict(trialSide([...clv(0.001), ...clv(0.001)]), real).verdict).toBe('FAIL'); // 600 and still unclear
-    expect(SHADOW_TRIAL.round).toBe('LINEUP');
+    expect(SHADOW_TRIAL.round).toBe('DAILY'); // restarted on the daily pick run (ADR 0014)
   });
 });

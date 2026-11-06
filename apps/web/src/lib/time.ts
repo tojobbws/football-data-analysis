@@ -23,6 +23,17 @@ export function footballDayRange(date: string): { from: string; to: string } {
   return { from: from.toISOString(), to: new Date(from.getTime() + 86_400_000).toISOString() };
 }
 
+/**
+ * A pick day (ADR 0014) runs 14:00 → 14:00 Thai time: the matches one daily pick run covers, named by the day it
+ * starts. The featured list from featured-ai-v2 on belongs to it; the scoreboard keeps the football day.
+ */
+export const PICK_DAY_START_HOUR = 14;
+
+export function pickDayRange(date: string): { from: string; to: string } {
+  const from = new Date(`${date}T${PICK_DAY_START_HOUR}:00:00+07:00`);
+  return { from: from.toISOString(), to: new Date(from.getTime() + 86_400_000).toISOString() };
+}
+
 /** The football day `d` falls in (before 06:00 Thai time = still the previous day). */
 export function footballDate(d: Date = new Date()): string {
   return thaiDate(new Date(d.getTime() - FOOTBALL_DAY_START_HOUR * 3_600_000));

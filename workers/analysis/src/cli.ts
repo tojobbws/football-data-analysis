@@ -8,8 +8,9 @@ import { matchReport } from './report-job.js';
 import { settleJob } from './settle-job.js';
 import { closingJob } from './closing-job.js';
 import { shadowReport } from './shadow-report-job.js';
-import { FEATURED_AI_V1, FEATURED_V2 } from '@fp/analysis';
+import { FEATURED_AI_V1, FEATURED_AI_V2, FEATURED_V2 } from '@fp/analysis';
 import { featuredJob } from './featured-job.js';
+import { featuredOnceJob } from './featured-once-job.js';
 import { featuredReport } from './featured-report-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
 import { hybridJob } from './hybrid-job.js';
@@ -29,14 +30,14 @@ jobs:
   impact [--hours N]           Player Impact layer: re-price with missing players (lineups / injuries)
   candidates [--hours N]       evaluate all selections vs odds, store decision (default next 36h)
   report [--hours N]           🔎 Markdown report of upcoming matches (default next 18h) -> reports/
-  publish                      write the latest decision to the immutable track record (EARLY / LINEUP rounds)
+  publish                      write the latest decision to the track record (EARLY / LINEUP rounds; PICK_SCHEDULE=daily: one DAILY round from 14:00 to 16:00 Thai)
   hybrid [--budget-minutes M]  Hybrid AI decides each due publish round (PICK_ENGINE=shadow|hybrid; stored, published only in hybrid mode)
   ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs OPENAI_API_KEY + OPENAI_MODEL or ANTHROPIC_API_KEY; skips Hybrid AI picks
   preview [--hours N] [--until ISO] [--refresh] [--budget-minutes M]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48), only those kicking off before --until when given; AI text with an AI key, template text without; --refresh rewrites previews from an older version
   pick-notes [--refresh]      Game Compass note (pick_th) for every published pick not yet explained; AI text with an AI key, template text without; --refresh rewrites notes from an older prompt
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
   closing                     keep the closing market (1X2 + main AH/O/U line) of kicked-off matches for good
-  featured                    daily featured list (shadow, ADR 0004): reserve slots, lock matches at their LINEUP round
+  featured                    daily featured list (ADR 0004): reserve slots, lock matches at their LINEUP round; PICK_SCHEDULE=daily: the pick day's featured-ai-v2 list, chosen once (ADR 0014)
   featured-report             daily featured list vs all LINEUP picks, days by selections, verdict (ADR 0004)
   shadow-report               shadow pick rules vs the real ones on kicked-off matches: sides picked and results
   backtest [--warmup N]        walk-forward backtest on finished matches in the DB
@@ -77,10 +78,14 @@ async function main() {
     else if (job === 'featured') {
       await featuredJob(ctx);
       await featuredJob(ctx, { config: FEATURED_V2 });
-      await featuredJob(ctx, { config: FEATURED_AI_V1 });
+      if (ctx.env.PICK_SCHEDULE === 'daily') {
+        // ADR 0014: the pick day's list is chosen once; ai-v1 takes no new match and only locks the rows it holds
+        await featuredJob(ctx, { config: FEATURED_AI_V1, freeze: true });
+        await featuredOnceJob(ctx, { config: FEATURED_AI_V2 });
+      } else await featuredJob(ctx, { config: FEATURED_AI_V1 });
     }
     else if (job === 'featured-report') {
-      for (const version of ['featured-v1', 'featured-v2', 'featured-ai-v1']) {
+      for (const version of ['featured-v1', 'featured-v2', 'featured-ai-v1', 'featured-ai-v2']) {
       const r = await featuredReport(ctx, { version });
       const pct = (x: number | null) => (x === null ? '-' : `${(x * 100).toFixed(1)}%`);
       console.log(`featured list ${r.version} since ${r.since.toISOString().slice(0, 10)} — verdict: ${r.verdict} (needs ${r.trial.minPicks}, extends to ${r.trial.extendTo}; ADR 0003 must also have a verdict)`);

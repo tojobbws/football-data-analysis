@@ -30,6 +30,9 @@ jobs:
       OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
       # who makes the published pick: legacy (default) | shadow | hybrid (docs/adr/0010-hybrid-ai-picks.md)
       PICK_ENGINE: ${{ vars.PICK_ENGINE }}
+      # when picks are made: rounds (default, hourly EARLY/PREMATCH/LINEUP) | daily (one DAILY round at 14:00 Thai,
+      # docs/adr/0014-one-daily-pick-run.md)
+      PICK_SCHEDULE: ${{ vars.PICK_SCHEDULE }}
       HYBRID_AI_MODEL: ${{ vars.HYBRID_AI_MODEL }}
       API_FOOTBALL_RPM: ${{ vars.API_FOOTBALL_RPM || '10' }}
       TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
@@ -62,6 +65,9 @@ jobs:
           step() { echo "::group::$*"; if ! "$@"; then failed+=("$*"); echo "::error::step failed: $*"; fi; echo "::endgroup::"; }
           step npm run sync:lineups -- --minutes 75
           step npm run sync:odds
+          # daily pick run (ADR 0014): fresh injuries for the pick day in the run before 14:00, since no lineup round
+          # corrects the pick later (1 request per league and date: today and tomorrow)
+          if [ "$PICK_SCHEDULE" = "daily" ] && [ "$(TZ=Asia/Bangkok date +%H)" = "13" ]; then step npm run sync:injuries -- --days 1; fi
           step npm run sync:results
           step npm run model:settle
           step npm run model:closing

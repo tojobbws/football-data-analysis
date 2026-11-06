@@ -97,12 +97,13 @@ export const SHADOW_RULES: DecisionRules = {
 };
 
 /**
- * Shadow trial (ADR 0003): criteria fixed before any result was seen. Judged on LINEUP-round picks,
- * one per match; EARLY is reported beside it but never decides.
+ * Shadow trial (ADR 0003): criteria fixed before any result was seen. Judged on DAILY-round picks, one per match:
+ * the trial started again on the daily pick run (ADR 0014), which has no LINEUP round. LINEUP and EARLY, the rounds
+ * of the first trial, are reported beside it but never decide.
  */
 export const SHADOW_TRIAL = {
   rulesVersion: SHADOW_RULES.version,
-  round: 'LINEUP',
+  round: 'DAILY',
   minPicks: 300,
   extendTo: 600,
   /** shadow mean CLV must beat the real rules' by more than this many standard errors */

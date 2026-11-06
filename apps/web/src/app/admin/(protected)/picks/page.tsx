@@ -34,7 +34,7 @@ interface Bet {
   odds: number | null;
 }
 
-const ROUNDS = ['EARLY', 'PREMATCH', 'LINEUP'] as const;
+const ROUNDS = ['DAILY', 'EARLY', 'PREMATCH', 'LINEUP'] as const;
 const SIDE: Record<string, string> = { FAVORITE: 'เต็ง', UNDERDOG: 'ทีมรอง', OVER: 'สูง', UNDER: 'ต่ำ' };
 
 const aiBet = (r: Row): Bet | null => (r.ai_status === 'OK' && r.side && r.side !== 'NO_PICK' && r.market && r.selection ? { market: r.market, selection: r.selection, line: r.line == null ? null : Number(r.line), odds: r.odds == null ? null : Number(r.odds) } : null);
@@ -80,7 +80,7 @@ export default async function AdminPickCompare({ searchParams }: { searchParams:
   const q = await searchParams;
   const today = footballDate();
   const date = isValidDate(q.date) ? q.date : today;
-  const round = (ROUNDS as readonly string[]).includes(q.round ?? '') ? q.round! : 'EARLY';
+  const round = (ROUNDS as readonly string[]).includes(q.round ?? '') ? q.round! : 'DAILY';
   const { from, to } = footballDayRange(date);
 
   const sb = await authClient();

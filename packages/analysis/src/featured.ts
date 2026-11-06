@@ -29,6 +29,11 @@ export interface FeaturedConfig {
   pool: 'MODEL' | 'AI';
   /** AI pool: leagues listed first (the big five) */
   priorityLeagues: readonly number[];
+  /**
+   * HOURLY: slots are reserved every hour and locked match by match (v1, v2, ai-v1, per football day).
+   * ONCE: the list of a pick day is chosen once, after the daily pick run, and confirmed at once (ai-v2, ADR 0014).
+   */
+  choose?: 'HOURLY' | 'ONCE';
 }
 
 /** The AI's confidence in the evidence, as stored on its published pick (STRONG = HIGH, MEDIUM, LEAN = LOW). */
@@ -69,6 +74,16 @@ export const FEATURED_AI_V1: FeaturedConfig = {
   allowOverUnder: true,
   pool: 'AI',
   priorityLeagues: [39, 140, 78, 135, 61],
+};
+
+/**
+ * ADR 0014: the list of a pick day (14:00 → 14:00 Thai), chosen once after the daily pick run with the order, pool
+ * and caps of ai-v1, every listed match confirmed at once (no DROPPED). A new version, so its count starts again.
+ */
+export const FEATURED_AI_V2: FeaturedConfig = {
+  ...FEATURED_AI_V1,
+  version: 'featured-ai-v2',
+  choose: 'ONCE',
 };
 
 /** The current pick of a match not locked yet. */
