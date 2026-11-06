@@ -15,6 +15,7 @@ Everything is code in `scripts/video/` (HTML pages driven by a deterministic `wi
 Run from `scripts/video/` (first time on a machine: `npm install`; needs `ffmpeg` on PATH and Microsoft Edge).
 
 1. **Facts:** `node fetch.cjs [YYYY-MM-DD]` (default = the current football day, 06:00 to 06:00 Thai). It reads the newest featured list version, each match's newest published pick and its `reason` text, the league importance (sets the order), and caches the real logos. Read its printout: it is the only source for the script.
+   - Since the daily pick run (ADR 0014, `featured-ai-v2`) the list belongs to a **pick day** (14:00 → 14:00 Thai, named by its first day) and is chosen once after the 14:00 run, usually by 14:30 and at the latest after the 16:05 run when the AI had to retry. It never changes after that. Make the film from that point on. Before 14:00 the day has no list yet.
    - No list for the day → tell the owner, stop.
    - A match already finished (`fixture_status` FT/AET/PEN) → leave it out (owner, 2026-11-05). Already started → ask the owner.
 2. **Script:** write `days/<date>/spot.json`. Copy the shape of `examples/2026-11-03.spot.json` (details below).

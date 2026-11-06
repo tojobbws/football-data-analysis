@@ -22,12 +22,13 @@ Work files go to `scripts/video/days/<date>/recap/` and `days/<date>/out/recap/`
 
 Run every step from `scripts/video/`.
 
-1. **Facts:** run `node recap-fetch.cjs [YYYY-MM-DD]`. The default date is yesterday's football day.
+1. **Facts:** run `node recap-fetch.cjs [YYYY-MM-DD]`. The default date is yesterday's football day. From `featured-ai-v2` (ADR 0014) a list belongs to a pick day (14:00 → 14:00 Thai): its last matches (South American mornings) end around noon the next day, so make the recap of day D on D+1 from about 14:00.
    - It reads the same list the spotlight film used: the newest featured version, and each match's newest published round.
    - It also reads the final score, the settled `status`, and the summary computed exactly like /performance `daySummary`.
    - Its printout is the only source for the script.
    - If it warns that a match is not finished or not settled, stop and tell the owner. Never guess a result.
    - `--drop=m1[,m3]` leaves a pick out, only when the owner asks. The summary is then counted on the picks that stay, so it can differ from /performance for that day: tell the owner the new rate before rendering, and drop "ทุกผลตรวจสอบได้" from the summary.
+   - The featured list can be re-ranked, and a pick withdrawn in a later round, after the spotlight film was made (2026-11-05: St. Truiden and Palmeiras left the list, their PREMATCH round had no pick). When the owner names the film's matches, check the list against `days/<date>/spot.json`. If they differ, show the owner both counts and let them choose. `--spotlight` counts the film's own picks: its order, and each match's newest round published before the film's `facts.json` was fetched. It prints the picks the site later withdrew. Its rate can differ from /performance, so drop "ทุกผลตรวจสอบได้" there as well.
 2. **Script:** write `days/<date>/recap/spot.json`, copying `examples/2026-11-03.recap.json`.
    - `opening`, `matches[]`, `summary` and `closing` each carry a `segment` (the voice line), `subs[]` (`say` / `show` / `hi`, plus `onscreen: true` when the phrase is already written big on screen) and `marks`.
    - `marks` are verbatim pieces of the segment, and their first character times a visual. The required marks:

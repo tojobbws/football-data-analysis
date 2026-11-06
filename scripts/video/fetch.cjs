@@ -6,8 +6,9 @@ const path = require('path');
 const { Client } = require('pg');
 const { dateArg, dayDir, writeJson, MONTHS_FULL, kickoffTh, logo } = require('./lib.cjs');
 
-const VERSIONS = ['featured-v2', 'featured-ai-v1'];          // same rule as apps/web/src/lib/queries.ts listVersion
-const listVersion = (vs) => (vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
+const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2'];          // same rule as apps/web/src/lib/queries.ts listVersion
+// featured-ai-v2 (ADR 0014): a pick day's list (14:00 -> 14:00 Thai), dated by the pick day; it wins on the switch day
+const listVersion = (vs) => (vs.includes('featured-ai-v2') ? 'featured-ai-v2' : vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
 
 (async () => {
   const date = dateArg();
