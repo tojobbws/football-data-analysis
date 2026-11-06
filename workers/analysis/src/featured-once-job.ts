@@ -36,7 +36,8 @@ export function featuredOnceJob(ctx: JobContext, opts: FeaturedOnceOptions = {})
     ]);
     const published = new Map(matches.filter((m) => m.predictionId != null).map((m) => [m.fixtureId, m]));
     const soon = addHours(now, DAILY_MIN_MINUTES / 60);
-    const waiting = upcoming.filter((f) => f.kickoffAt >= soon && !published.has(f.id));
+    // the pick day is half open (dailyRoundFor): a 14:00 kick-off belongs to the next one and never waits here
+    const waiting = upcoming.filter((f) => f.kickoffAt >= soon && f.kickoffAt < day.to && !published.has(f.id));
     const cutoff = addHours(day.from, PICK_RUN_CUTOFF_HOUR - PICK_RUN_HOUR);
     if (waiting.length && now < cutoff) {
       ctx.log.info('featured: the daily pick run is not finished; the list waits', { date: day.date, version: cfg.version, waiting: waiting.length });

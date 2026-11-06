@@ -30,6 +30,7 @@ const MATCHES: Array<[number, number, string, string]> = [
   [604, 135, 'Soon FC', '2027-01-05T14:30'], // inside 15 minutes of the run
   [605, 78, 'Early FC', '2027-01-05T23:00'], // published at EARLY before the switch
   [606, 61, 'Fog FC', '2027-01-05T21:00'], // the AI finds no pick
+  [607, 39, 'Edge FC', '2027-01-06T14:00'], // 14:00 sharp: the next pick day, so the list does not wait for it
 ];
 
 const answer = (over: Record<string, unknown> = {}) => ({
