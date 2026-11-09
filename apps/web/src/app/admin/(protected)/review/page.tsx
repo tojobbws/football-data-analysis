@@ -61,7 +61,7 @@ function criteria(s: Side | undefined, all: Side | undefined) {
   ];
 }
 
-function Criteria({ version, review }: { version: 'featured-v1' | 'featured-v2' | 'featured-ai-v1' | 'featured-ai-v2'; review: Review }) {
+function Criteria({ version, review }: { version: 'featured-v1' | 'featured-v2' | 'featured-ai-v1' | 'featured-ai-v2' | 'featured-ai-v3'; review: Review }) {
   const s = review.sides[version];
   const rows = criteria(s, review.sides[`all:${version}`]);
   return (
@@ -110,6 +110,7 @@ export default async function AdminReview() {
             <Criteria version="featured-v1" review={review} />
             <Criteria version="featured-ai-v1" review={review} />
             <Criteria version="featured-ai-v2" review={review} />
+            <Criteria version="featured-ai-v3" review={review} />
           </div>
         ) : (
           <Empty>ยังไม่มีข้อมูล</Empty>

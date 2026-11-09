@@ -1,5 +1,7 @@
 /**
- * The featured list of a pick day, chosen once (featured-ai-v2, docs/adr/0014-one-daily-pick-run.md).
+ * The featured list of a pick day, chosen once (featured-ai-v2, docs/adr/0014-one-daily-pick-run.md; featured-ai-v3
+ * from docs/adr/0015-featured-ai-v3-nations-league.md). A pick day has one list: a day another chosen-once version
+ * already listed (the switch day) gets none from this one.
  *
  * Runs hourly after `model:publish`. For the current pick day (14:00 → 14:00 Thai) without a list yet, between
  * 14:00 and LIST_LATEST_HOUR: once every match still ahead has a published round, or once the run's cut-off (16:00)
@@ -7,7 +9,7 @@
  * statement: listed matches CONFIRMED with their rank, every other published match SKIPPED. It never changes after.
  * A day with no qualifying pick has no list (no rows) and is looked at again until LIST_LATEST_HOUR.
  */
-import { DAILY_MIN_MINUTES, FEATURED_AI_V2, reserveFeatured, type FeaturedCandidate, type FeaturedConfig } from '@fp/analysis';
+import { DAILY_MIN_MINUTES, FEATURED_AI_V3, FEATURED_CONFIGS, reserveFeatured, type FeaturedCandidate, type FeaturedConfig } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours, PICK_RUN_CUTOFF_HOUR, PICK_RUN_HOUR, pickDay } from '@fp/shared';
 
@@ -22,13 +24,15 @@ export interface FeaturedOnceOptions {
 const confidenceOf = (s: string | null) => (s === 'STRONG' ? 'HIGH' : s === 'MEDIUM' ? 'MEDIUM' : s === 'LEAN' ? 'LOW' : null);
 
 export function featuredOnceJob(ctx: JobContext, opts: FeaturedOnceOptions = {}) {
-  const cfg = opts.config ?? FEATURED_AI_V2;
+  const cfg = opts.config ?? FEATURED_AI_V3;
   const leagues = ctx.env.TRACKED_LEAGUES;
+  const onceVersions = Object.values(FEATURED_CONFIGS).filter((c) => c.choose === 'ONCE').map((c) => c.version);
+  if (!onceVersions.includes(cfg.version)) onceVersions.push(cfg.version);
   return runJob(ctx, 'featured', { version: cfg.version }, async () => {
     const now = opts.now ?? new Date();
     const day = pickDay(now);
     if (now >= addHours(day.from, LIST_LATEST_HOUR - PICK_RUN_HOUR)) return 0;
-    if ((await ctx.repo.featuredRows(day.date, cfg.version)).length) return 0;
+    for (const v of onceVersions) if ((await ctx.repo.featuredRows(day.date, v)).length) return 0;
 
     const [matches, upcoming] = await Promise.all([
       ctx.repo.featuredDayMatches(leagues, day.from.toISOString(), day.to.toISOString()),

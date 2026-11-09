@@ -14,6 +14,8 @@ export interface FeaturedConfig {
   /** minimum fair win chance of the pick (half outcomes as half, pushes left out) */
   minFairWin: number;
   maxPerLeague: number;
+  /** a league's own cap, in place of maxPerLeague (featured-ai-v3: the Nations League, one league of many groups) */
+  leagueCaps?: Readonly<Record<number, number>>;
   maxPerDay: number;
   /** wanted per day; never reached by relaxing the thresholds, only reported */
   target: number;
@@ -46,8 +48,8 @@ export const FEATURED_V1: FeaturedConfig = {
   maxPerLeague: 2,
   maxPerDay: 5,
   target: 3,
-  // national-team competitions (5 UNL, 536 CONCACAF NL, 36 AFCON qual., 7 Asian Cup) stay out of every version;
-  // 536/36/7 were added 2026-11-09 before they were tracked, so no version's pool changed
+  // national-team competitions (5 UNL, 536 CONCACAF NL, 36 AFCON qual., 7 Asian Cup) stay out of v1 to ai-v2;
+  // 536/36/7 were added 2026-11-09 before they were tracked, so no version's pool changed. ai-v3 takes UNL (ADR 0015).
   excludedLeagues: [296, 5, 1129, 536, 36, 7],
   rankBy: 'SUPPORT',
   modelWeight: 1,
@@ -87,6 +89,22 @@ export const FEATURED_AI_V2: FeaturedConfig = {
   version: 'featured-ai-v2',
   choose: 'ONCE',
 };
+
+/**
+ * ADR 0015: ai-v2 with the UEFA Nations League (5) in scope, up to 5 of its matches a day (it is one league of many
+ * groups). The other national-team competitions stay out. A new version, so its count starts again.
+ */
+export const FEATURED_AI_V3: FeaturedConfig = {
+  ...FEATURED_AI_V2,
+  version: 'featured-ai-v3',
+  excludedLeagues: [296, 1129, 536, 36, 7],
+  leagueCaps: { 5: 5 },
+};
+
+/** Every version by name, for the report and the job that chooses a pick day's list. */
+export const FEATURED_CONFIGS: Readonly<Record<string, FeaturedConfig>> = Object.fromEntries(
+  [FEATURED_V1, FEATURED_V2, FEATURED_AI_V1, FEATURED_AI_V2, FEATURED_AI_V3].map((c) => [c.version, c]),
+);
 
 /** The current pick of a match not locked yet. */
 export interface FeaturedCandidate {
@@ -158,7 +176,7 @@ export function reserveFeatured(candidates: FeaturedCandidate[], confirmed: Lock
     if (confirmed.length + out.length >= cfg.maxPerDay) break;
     if (out.some((o) => o.fixtureId === c.fixtureId)) continue;
     const n = perLeague.get(c.leagueId) ?? 0;
-    if (n >= cfg.maxPerLeague) continue;
+    if (n >= (cfg.leagueCaps?.[c.leagueId] ?? cfg.maxPerLeague)) continue;
     perLeague.set(c.leagueId, n + 1);
     out.push(c);
   }

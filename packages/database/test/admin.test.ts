@@ -149,6 +149,29 @@ describe('admin RLS', () => {
     expect(v.days).toEqual(expect.arrayContaining([expect.objectContaining({ version: 'featured-ai-v1', day: '2026-11-03', picks: 1, won: 1 })]));
   });
 
+  it('featured-ai-v3 (ADR 0015): visitors read its list; its comparison group keeps the Nations League and leaves AFCON qualifiers out', async () => {
+    // kick-offs 12 hours ago, later than the ai-v1 matches above, so the ai-v3 period holds only these two
+    await db.exec(`
+      insert into leagues (id, name) values (5, 'UEFA Nations League'), (36, 'Africa Cup of Nations - Qualification');
+      insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short)
+        values (915, 5, 2026, now() + interval '1 day', 1, 2, 'NS'), (916, 36, 2027, now() + interval '1 day', 2, 1, 'NS');
+      insert into analysis_predictions (fixture_id, publish_round, kind, market, selection, line, market_probability, signal_strength, decision_rule_version) values
+        (915, 'DAILY', 'SIGNAL', 'ASIAN_HANDICAP', 'HOME', -0.5, 0.50, 'MEDIUM', 'hybrid-ai-v1'),
+        (916, 'DAILY', 'SIGNAL', 'ASIAN_HANDICAP', 'AWAY', 0.5, 0.50, 'MEDIUM', 'hybrid-ai-v1');
+      update fixtures set kickoff_at = now() - interval '12 hours', status_short = 'FT', ft_home = 2, ft_away = 0 where id in (915, 916);
+      update analysis_predictions set status = 'WIN', clv = 0.02 where fixture_id = 915;
+      update analysis_predictions set status = 'LOSS', clv = -0.02 where fixture_id = 916;
+      insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, prediction_id, locked_at)
+        select '2026-11-12', 'featured-ai-v3', p.fixture_id, 5, 'CONFIRMED', 1, p.id, now() from analysis_predictions p where p.fixture_id = 915;
+    `);
+    const seen = await as('anon', null, (q) => q(`select fixture_id, rank from featured_selections where version = 'featured-ai-v3'`));
+    expect(seen.map((r) => [Number(r.fixture_id), Number(r.rank)])).toEqual([[915, 1]]);
+    const [r] = await as('authenticated', ADMIN, (q) => q('select fp_admin_review() as r'));
+    const v = r!.r as { sides: Record<string, { picks: number; settled: number; fair_hit: number }> };
+    expect(v.sides['featured-ai-v3']).toMatchObject({ picks: 1, settled: 1, fair_hit: 1 });
+    expect(v.sides['all:featured-ai-v3']).toMatchObject({ picks: 1, settled: 1, fair_hit: 1 }); // 916 (AFCON qualifier) left out
+  });
+
   it('benchmark scores the last pre-kickoff forecasts of both sides on the same matches', async () => {
     // fixture 1 (home win), fixture 2 (draw) — fixtures from the coverage test
     await db.exec(`

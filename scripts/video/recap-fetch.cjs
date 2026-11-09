@@ -6,9 +6,10 @@ const path = require('path');
 const { Client } = require('pg');
 const { dayDir, readJson, writeJson, currentFootballDay, MONTHS, MONTHS_FULL, kickoffTh, logo } = require('./lib.cjs');
 
-const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2'];
-// featured-ai-v2 (ADR 0014): a pick day's list (14:00 -> 14:00 Thai), dated by the pick day; it wins on the switch day
-const listVersion = (vs) => (vs.includes('featured-ai-v2') ? 'featured-ai-v2' : vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
+const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-ai-v3'];
+// featured-ai-v2 (ADR 0014) and ai-v3 (ADR 0015): a pick day's list (14:00 -> 14:00 Thai), dated by the pick day; it wins on
+// the switch day. A pick day has a list from one of the two only.
+const listVersion = (vs) => (vs.includes('featured-ai-v3') ? 'featured-ai-v3' : vs.includes('featured-ai-v2') ? 'featured-ai-v2' : vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
 const FINISHED = ['FT', 'AET', 'PEN'];
 // fan wording of a settled result (the site's badges say ถูก / ผิด / ถูกครึ่ง / ผิดครึ่ง / เสมอตัว)
 const RESULT = { WIN: 'ทายถูก', LOSS: 'ทายผิด', HALF_WIN: 'ทายถูกครึ่ง', HALF_LOSS: 'ทายผิดครึ่ง', PUSH: 'เสมอตัว', VOID: 'โมฆะ', PENDING: 'รอผล' };

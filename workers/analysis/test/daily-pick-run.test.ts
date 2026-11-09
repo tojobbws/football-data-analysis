@@ -2,7 +2,7 @@
  * E2E (PGlite, all migrations): the daily pick run (ADR 0014) with a fake Hybrid AI.
  *  - decisions and DAILY rounds only from 14:00 to 16:00 Thai, for the pick day (14:00 → 14:00) only
  *  - a match already published (an EARLY round of the switch day) is never picked again; nothing inside 15 minutes
- *  - the featured-ai-v2 list waits for the run, is chosen once, confirmed at once, and never changes after
+ *  - the featured-ai-v3 list (ADR 0015; ai-v2 before it) waits for the run, is chosen once, confirmed at once, and never changes after
  * The clock (and PGlite's now()) is faked: 2027-01-05 is the pick day.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -165,7 +165,7 @@ describe('daily pick run', () => {
     at('2027-01-05T15:25');
     expect(await featuredOnceJob(ctx)).toBeGreaterThan(0);
     const rows = await q<{ football_date: string; fixture_id: string; phase: string; rank: number | null; locked_at: string | null }>(
-      `select football_date::text, fixture_id, phase, rank, locked_at from featured_selections where version = 'featured-ai-v2' order by fixture_id`,
+      `select football_date::text, fixture_id, phase, rank, locked_at from featured_selections where version = 'featured-ai-v3' order by fixture_id`,
     );
     expect(rows.every((r) => r.football_date === '2027-01-05' && r.locked_at !== null)).toBe(true);
     const by = new Map(rows.map((r) => [Number(r.fixture_id), r]));
@@ -176,7 +176,7 @@ describe('daily pick run', () => {
 
     at('2027-01-05T17:05');
     expect(await featuredOnceJob(ctx)).toBe(0);
-    expect((await q(`select 1 from featured_selections where version = 'featured-ai-v2'`)).length).toBe(rows.length);
+    expect((await q(`select 1 from featured_selections where version = 'featured-ai-v3'`)).length).toBe(rows.length);
   });
 
   it('nothing after 16:00, and the next pick day starts at 14:00 the next day', async () => {
@@ -189,5 +189,24 @@ describe('daily pick run', () => {
     expect(await hybridJob(ctx, { ...daily, decider: d })).toBe(1);
     expect(await publishJob(ctx, daily)).toBe(1);
     expect((await published()).get(603)).toMatchObject({ publish_round: 'DAILY' });
+  });
+
+  it('the switch day: a pick day ai-v2 already listed gets no ai-v3 list (ADR 0015)', async () => {
+    at('2027-01-06T14:30');
+    // 603's DAILY decision was no pick (its odds are a day old by then): give it a newer listable pick
+    await q(
+      `insert into analysis_predictions (fixture_id, publish_round, kind, market, selection, line, odds_at_publish, market_probability, signal_strength, decision_rule_version)
+       values (603, 'PREMATCH', 'SIGNAL', 'ASIAN_HANDICAP', 'AWAY', 0.75, 1.93, 0.5, 'MEDIUM', 'hybrid-ai-v1')`,
+    );
+    // not locked, so the control below may remove it (a locked row cannot be deleted)
+    await q(`insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, first_reserved_at, first_rank)
+             values ('2027-01-06', 'featured-ai-v2', 603, 39, 'RESERVED', 1, now(), 1)`);
+    expect(await featuredOnceJob(ctx)).toBe(0);
+    expect(await q(`select 1 from featured_selections where version = 'featured-ai-v3' and football_date = '2027-01-06'`)).toEqual([]);
+
+    // control: without ai-v2's list, the same run lists 603 under ai-v3
+    await q(`delete from featured_selections where version = 'featured-ai-v2' and football_date = '2027-01-06'`);
+    expect(await featuredOnceJob(ctx)).toBeGreaterThan(0);
+    expect(await q(`select fixture_id::int from featured_selections where version = 'featured-ai-v3' and football_date = '2027-01-06' and rank = 1`)).toEqual([{ fixture_id: 603 }]);
   });
 });

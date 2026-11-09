@@ -654,7 +654,7 @@ async function loadWatchedPicks(from: string, days: number): Promise<Map<string,
   if (fx.error) fail('fixtures', fx.error);
   if (listed.error) fail('featured_selections', listed.error);
   // before ADR 0014 each football day reads one list: the newest version that has slots for it (ADR 0012)
-  const footballDayRows = (listed.data ?? []).filter((r) => r.version !== PICK_DAY_LIST);
+  const footballDayRows = (listed.data ?? []).filter((r) => !isPickDayList(r.version));
   const versionOfDay = new Map<string, string | null>();
   for (const d of dates) versionOfDay.set(d, listVersion(footballDayRows.filter((r) => String(r.football_date) === d).map((r) => String(r.version))));
   const ranks = new Map<number, number>();
@@ -662,7 +662,7 @@ async function loadWatchedPicks(from: string, days: number): Promise<Map<string,
   // from featured-ai-v2 on, a match belongs to the pick day whose list holds it (ADR 0014)
   const pickDayOf = new Map<number, string>();
   for (const r of listed.data ?? [])
-    if (r.version === PICK_DAY_LIST) {
+    if (isPickDayList(r.version)) {
       ranks.set(Number(r.fixture_id), Number(r.rank));
       pickDayOf.set(Number(r.fixture_id), String(r.football_date));
     }
@@ -1051,17 +1051,19 @@ export async function featuredRanks(date: string): Promise<Map<number, number>> 
   if (!webEnv().featuredList) return out;
   const { data, error } = await db().from('featured_selections').select('football_date, fixture_id, rank, version').in('football_date', [addDaysStr(date, -1), date]).in('version', FEATURED_VERSIONS).not('rank', 'is', null);
   if (error) fail('featured_selections', error);
-  const own = (data ?? []).filter((r) => r.version !== PICK_DAY_LIST && String(r.football_date) === date);
+  const own = (data ?? []).filter((r) => !isPickDayList(r.version) && String(r.football_date) === date);
   const version = listVersion(own.map((r) => String(r.version)));
   for (const r of own) if (r.version === version) out.set(Number(r.fixture_id), Number(r.rank));
-  for (const r of data ?? []) if (r.version === PICK_DAY_LIST) out.set(Number(r.fixture_id), Number(r.rank));
+  for (const r of data ?? []) if (isPickDayList(r.version)) out.set(Number(r.fixture_id), Number(r.rank));
   return out;
 }
 
 /**
  * The lists the site reads (ADR 0012). Before ADR 0014 a football day's list is the newest version that has slots for
- * that day; from featured-ai-v2 on, each pick day (14:00 → 14:00 Thai) has its own list, dated by the pick day.
+ * that day; from featured-ai-v2 on, each pick day (14:00 → 14:00 Thai) has its own list, dated by the pick day, from
+ * one version only (featured-ai-v3 takes over from the first pick day ai-v2 has not listed, ADR 0015).
  */
-const FEATURED_VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2'];
-const PICK_DAY_LIST = 'featured-ai-v2';
+const PICK_DAY_LISTS = ['featured-ai-v2', 'featured-ai-v3'];
+const FEATURED_VERSIONS = ['featured-v2', 'featured-ai-v1', ...PICK_DAY_LISTS];
+const isPickDayList = (version: unknown) => PICK_DAY_LISTS.includes(String(version));
 const listVersion = (versions: string[]) => (versions.includes('featured-ai-v1') ? 'featured-ai-v1' : versions.includes('featured-v2') ? 'featured-v2' : null);
