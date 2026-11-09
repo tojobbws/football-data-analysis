@@ -46,7 +46,9 @@ export const FEATURED_V1: FeaturedConfig = {
   maxPerLeague: 2,
   maxPerDay: 5,
   target: 3,
-  excludedLeagues: [296, 5, 1129],
+  // national-team competitions (5 UNL, 536 CONCACAF NL, 36 AFCON qual., 7 Asian Cup) stay out of every version;
+  // 536/36/7 were added 2026-11-09 before they were tracked, so no version's pool changed
+  excludedLeagues: [296, 5, 1129, 536, 36, 7],
   rankBy: 'SUPPORT',
   modelWeight: 1,
   allowOverUnder: true,

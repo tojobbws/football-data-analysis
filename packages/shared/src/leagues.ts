@@ -37,6 +37,10 @@ export const KNOWN_LEAGUES = {
   71: { name: 'Serie A', country: 'Brazil' },
   // added 2026-10-27: Carabao Cup (EFL Cup)
   48: { name: 'League Cup', country: 'England' },
+  // added 2026-11-09: national-team competitions outside Europe (fixtures, results, live; no featured picks)
+  536: { name: 'CONCACAF Nations League', country: 'World' },
+  36: { name: 'Africa Cup of Nations - Qualification', country: 'World' },
+  7: { name: 'Asian Cup', country: 'World' },
 } as const satisfies Record<number, { name: string; country: string }>;
 
 /**
@@ -70,7 +74,7 @@ export const CROSS_LEAGUE_CUPS: Readonly<Record<number, readonly number[]>> = {
  * friendlies, tournaments we do not track), so `sync:support` fetches each team's recent results
  * before a match; without them the form in previews is from the last window of this competition.
  */
-export const NATIONAL_TEAM_COMPETITIONS: readonly number[] = [5];
+export const NATIONAL_TEAM_COMPETITIONS: readonly number[] = [5, 536, 36, 7];
 
 /** Fixture status codes from API-Football */
 export const FIXTURE_STATUS = {
