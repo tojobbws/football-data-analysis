@@ -8,7 +8,7 @@
  * records the version that produced it.
  */
 import { z } from 'zod';
-import type { HybridMarket, HybridOption, HybridSide } from '@fp/analysis';
+import { STARTERS_WINDOW, type HybridMarket, type HybridOption, type HybridSide, type RegularStarters, type StartersCompetitionKind } from '@fp/analysis';
 import { BANNED_WORDS, allowedNumbers, inventedNumbers } from './guards.js';
 
 export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
@@ -22,7 +22,9 @@ export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 // v1.6 (2026-11-05): legacy_statistical_model (Dixon-Coles) is gone from the input and the prompt: it leaned about 5 points
 //   to the underdog and the under, and beside the market it added nothing; and the AI answers HYBRID_VOTES times on the
 //   same input, a choice being used only when HYBRID_MAJORITY answers agree (docs/adr/0013-hybrid-majority-of-three.md)
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.6';
+// v1.7 (2026-11-10): recent_starters, how many of each team's last stored lineups each player started (a domestic cup also
+//   marks the previous round's XI), and each injury's recent starts (docs/adr/0016-regular-starters.md)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.7';
 /**
  * The provider's xG of one penalty: API-Football's xG counts penalties at exactly this value (a team whose only shot
  * was a penalty has xG 0.79; checked on the stored matches 2026-11-04). npxG takes it off once per penalty taken.
@@ -107,9 +109,15 @@ export interface HybridSource {
   /** newest first, at most 10 each, all before the prediction time */
   recent: { home: TeamMatch[]; away: TeamMatch[] };
   standings: { home: TeamStanding | null; away: TeamStanding | null };
-  injuries: Array<{ team: 'HOME' | 'AWAY' | null; player: string | null; type: string | null; reason: string | null }>;
+  /** `playerId` joins an injury to recent_starters; it is not shown to the AI */
+  injuries: Array<{ team: 'HOME' | 'AWAY' | null; player: string | null; type: string | null; reason: string | null; playerId?: number | null }>;
   lineup: { home: string[]; away: string[] } | null;
   market: HybridMarket;
+  /**
+   * Prompt v1.7: each team's starts in its last stored lineups (regularStarters()), and the analysed match's competition
+   * kind. Undefined = the input has no recent_starters and the injuries carry no starts.
+   */
+  regularStarters?: { kind: StartersCompetitionKind; home: RegularStarters; away: RegularStarters };
   /**
    * Each team's next fixture after this one (null = none found in the tracked competitions). Undefined = not looked up,
    * the input then has no next_match at all.
@@ -283,6 +291,18 @@ const optionView = (o: HybridOption, home: string, away: string) => ({
   market_probability_no_vig: o.marketProbability,
 });
 
+/** One team's recent_starters (prompt v1.7): dates and counts computed here from the stored lineups. */
+function startersView(t: RegularStarters, kind: StartersCompetitionKind) {
+  const cup = kind === 'DOMESTIC_CUP';
+  return {
+    lineups: t.of,
+    from_date_utc: t.from ? t.from.toISOString().slice(0, 10) : null,
+    to_date_utc: t.to ? t.to.toISOString().slice(0, 10) : null,
+    ...(cup ? { previous_cup_round_date_utc: t.previousCupRound ? t.previousCupRound.kickoffAt.toISOString().slice(0, 10) : null } : {}),
+    players: t.players.map((p) => ({ player: p.name, starts: p.starts, ...(cup ? { started_previous_cup_round: p.startedPreviousCupRound } : {}) })),
+  };
+}
+
 export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   const { fixture: fx, market: m } = src;
   const missing: string[] = [];
@@ -310,6 +330,11 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
     if (!src.nextMatch.away) missing.push(`${fx.away}: no next fixture in the competitions we track`);
   }
   if (!src.lineup) missing.push('lineups not confirmed yet');
+  const rs = src.regularStarters;
+  if (rs) {
+    if (rs.home.of < 3) missing.push(`${fx.home}: only ${rs.home.of} stored lineups for recent_starters`);
+    if (rs.away.of < 3) missing.push(`${fx.away}: only ${rs.away.of} stored lineups for recent_starters`);
+  }
   if (!src.standings.home || !src.standings.away) missing.push('league table not available for both teams');
   if (src.injuriesCoverage === 'unavailable_for_league') missing.push('this league provides no injury data: an empty injuries list does not mean nobody is out');
   if (m.ah.status !== 'OK') missing.push(`no usable main Asian handicap line (${m.ah.status})`);
@@ -320,8 +345,27 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
     prediction_timestamp_utc: src.predictionAt.toISOString(),
     home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }, src.xgMetrics),
     away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }, src.xgMetrics),
-    injuries: src.injuries,
+    injuries: src.injuries.map(({ playerId, ...i }) => {
+      if (!rs) return i;
+      const starters = i.team === 'HOME' ? rs.home : i.team === 'AWAY' ? rs.away : null;
+      const p = starters && playerId != null ? starters.players.find((x) => x.playerId === playerId) : undefined;
+      return { ...i, recent_starts: starters ? (p?.starts ?? 0) : null, recent_lineups: starters ? starters.of : null };
+    }),
     confirmed_lineup: src.lineup,
+    ...(rs
+      ? {
+          recent_starters: {
+            // the window is a value, not only part of the text: the AI may then quote it (number guard)
+            window_lineups: STARTERS_WINDOW,
+            basis: "starts in each team's last window_lineups stored lineups before this match, any competition: a count of past matches, not the coming lineup",
+            ...(rs.kind === 'DOMESTIC_CUP'
+              ? { domestic_cup: 'this is a domestic cup, where teams often rotate: started_previous_cup_round marks who started the previous round of this cup this season (null when there was none stored)' }
+              : {}),
+            home: startersView(rs.home, rs.kind),
+            away: startersView(rs.away, rs.kind),
+          },
+        }
+      : {}),
     market: {
       asian_handicap: {
         status: m.ah.status,
@@ -370,6 +414,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
 export const HYBRID_SYSTEM_PROMPT = `You are a football match analyst for a Thai football analysis site. Analyze the match using only the supplied, verified pre-match data (JSON). Review each team's recent form (up to 10 matches, the last 5 separately), home/away performance, opponent quality (table position of each opponent), scoring patterns (goals, xG, shots on target), rest schedule, available player information (injuries, confirmed lineups), and the current main market lines.
 
 Each team may carry next_match: its next scheduled fixture after this one (days after this match, competition and venue), from the competitions we track only. A near fixture in a bigger competition can point to squad rotation or fatigue, but treat it as weak context: never state that a team will rotate or rest players, and a missing next_match only means we track no such fixture, not that none exists.
+
+recent_starters lists, for each team, how many of its last stored lineups (window_lineups, any competition) each player started, and each injury carries recent_starts out of recent_lineups. Use it to judge how much an absence matters: a missing player who started most recent matches is a bigger loss than one who rarely started. It is a count of past matches, not the coming lineup: never state or guess who will start. In a domestic cup teams often rotate; started_previous_cup_round shows who started the previous round of the same cup this season. A team with few stored lineups gives a weak count.
 
 When data_quality.expected_goals_metrics is present, each recent match and each window also carries expected-goals metrics, defined there: xg_difference, npxg_for / npxg_against (xG without penalties), shooting_performance (goals minus xG), xpts (expected points, beside points_avg_same_matches, the points actually won in the same matches) and goals_prevented (goalkeeping). Use them to judge how well a team played beyond its results: npxG shows chance creation without penalties; a team whose points run well ahead of its xPTS, or whose shooting_performance or goals_prevented is far above 0, got more from its matches than its chances suggest, and the reverse. Over a few matches shooting_performance and goals_prevented are noisy and the market already sees goals and xG, so treat a gap as one piece of evidence to weigh, not as a forecast that it will turn. Each window says how many matches each metric rests on; a figure from few matches is weak. Never compute a new metric yourself; quote only the values given.
 

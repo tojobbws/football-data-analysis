@@ -76,6 +76,17 @@ export const CROSS_LEAGUE_CUPS: Readonly<Record<number, readonly number[]>> = {
  */
 export const NATIONAL_TEAM_COMPETITIONS: readonly number[] = [5, 536, 36, 7];
 
+/**
+ * What kind of competition a league id is: a national-team competition, a cup between clubs of many countries
+ * (API-Football type Cup, country World), a cup inside one country, or a league. From `leagues.type` / `leagues.country`.
+ */
+export type CompetitionKind = 'LEAGUE' | 'DOMESTIC_CUP' | 'CONTINENTAL_CUP' | 'NATIONAL_TEAM';
+export function competitionKind(leagueId: number, type: string | null | undefined, country: string | null | undefined): CompetitionKind {
+  if (NATIONAL_TEAM_COMPETITIONS.includes(leagueId)) return 'NATIONAL_TEAM';
+  if (type === 'Cup') return country === 'World' ? 'CONTINENTAL_CUP' : 'DOMESTIC_CUP';
+  return 'LEAGUE';
+}
+
 /** Fixture status codes from API-Football */
 export const FIXTURE_STATUS = {
   NOT_STARTED: ['TBD', 'NS'],

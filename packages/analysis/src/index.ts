@@ -21,3 +21,4 @@ export * from './market-anchor.js';
 export * from './evaluation.js';
 export * from './hybrid-market.js';
 export * from './table.js';
+export * from './regular-starters.js';

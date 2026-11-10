@@ -19,6 +19,7 @@ import {
   type HybridSource,
   type TeamMatch,
 } from '../src/index.js';
+import type { RegularStarters, StartersCompetitionKind } from '@fp/analysis';
 
 const NOW = new Date('2026-10-24T08:00:00Z');
 const quotes: OddsQuote[] = [1, 2, 3].flatMap((b) => [
@@ -308,10 +309,6 @@ describe('expected-goals metrics (prompt v1.5): computed here from stored statis
 });
 
 describe('prompt v1.6 (ADR 0013): no Dixon-Coles voice, majority of three answers', () => {
-  it('the prompt version is v1.6', () => {
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.6');
-  });
-
   it('shows the AI no Dixon-Coles price, in the input or the prompt', () => {
     expect(input).not.toHaveProperty('legacy_statistical_model');
     expect(JSON.stringify(input)).not.toMatch(/dixon|legacy/i);
@@ -336,5 +333,62 @@ describe('prompt v1.6 (ADR 0013): no Dixon-Coles voice, majority of three answer
     expect(majorityVote(['OVER', 'UNDER', 'NO_PICK'])).toBeNull();
     expect(majorityVote([null, 'OVER', null])).toBeNull();
     expect(majorityVote([null, null, null])).toBeNull();
+  });
+});
+
+describe('prompt v1.7 (ADR 0016): recent starters before the lineup', () => {
+  const day = (d: number) => new Date(Date.UTC(2026, 9, d, 15));
+  const starters = (of: number, players: Array<[number, string, number, boolean | null]>, cup: { fixtureId: number; kickoffAt: Date } | null = null): RegularStarters => ({
+    of,
+    from: of ? day(1) : null,
+    to: of ? day(20) : null,
+    previousCupRound: cup,
+    players: players.map(([playerId, name, starts, startedPreviousCupRound]) => ({ playerId, name, starts, startedPreviousCupRound, lastStartAt: starts ? day(20) : null })),
+  });
+  type Built = {
+    injuries: Array<Record<string, unknown>>;
+    recent_starters: { window_lineups: number; basis: string; domestic_cup?: string; home: Record<string, unknown>; away: { players: Array<Record<string, unknown>> } };
+    data_quality: { missing: string[] };
+  };
+  const withStarters = (kind: StartersCompetitionKind, home: RegularStarters, away: RegularStarters) =>
+    buildHybridInput({ ...src, injuries: [{ team: 'AWAY', player: 'J. Doe', type: 'Missing Fixture', reason: 'Knee Injury', playerId: 77 }], regularStarters: { kind, home, away } }) as unknown as Built;
+
+  it('the prompt version is v1.7, and the prompt explains the block and that it is not the coming lineup', () => {
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.7');
+    for (const k of ['recent_starters', 'recent_starts', 'started_previous_cup_round', 'never state or guess who will start']) expect(HYBRID_SYSTEM_PROMPT).toContain(k);
+  });
+
+  it("lists each team's starts with the window as a value, and gives each injury its starts (the player id stays out)", () => {
+    const b = withStarters('LEAGUE', starters(5, [[10, 'A. Home', 5, null]]), starters(5, [[77, 'J. Doe', 4, null], [78, 'K. Sub', 1, null]]));
+    expect(b.recent_starters.window_lineups).toBe(5);
+    expect(b.recent_starters.domestic_cup).toBeUndefined();
+    expect(b.recent_starters.home).toEqual({ lineups: 5, from_date_utc: '2026-10-01', to_date_utc: '2026-10-20', players: [{ player: 'A. Home', starts: 5 }] });
+    expect(b.recent_starters.away.players).toEqual([{ player: 'J. Doe', starts: 4 }, { player: 'K. Sub', starts: 1 }]);
+    expect(b.injuries).toEqual([{ team: 'AWAY', player: 'J. Doe', type: 'Missing Fixture', reason: 'Knee Injury', recent_starts: 4, recent_lineups: 5 }]);
+    // the AI may then write "started 4 of 5" (number guard)
+    expect(allowedNumbers(b)).toEqual(expect.arrayContaining([4, 5]));
+  });
+
+  it('an injured player who did not start in the window has 0 starts', () => {
+    const b = withStarters('LEAGUE', starters(5, []), starters(5, [[78, 'K. Sub', 1, null]]));
+    expect(b.injuries[0]).toMatchObject({ recent_starts: 0, recent_lineups: 5 });
+  });
+
+  it("a domestic cup marks the previous round's XI and says why", () => {
+    const b = withStarters('DOMESTIC_CUP', starters(5, [[10, 'A. Home', 0, true]], { fixtureId: 9, kickoffAt: day(5) }), starters(5, [[77, 'J. Doe', 5, false]]));
+    expect(b.recent_starters.domestic_cup).toContain('rotate');
+    expect(b.recent_starters.home).toMatchObject({ previous_cup_round_date_utc: '2026-10-05', players: [{ player: 'A. Home', starts: 0, started_previous_cup_round: true }] });
+    expect(b.recent_starters.away).toMatchObject({ previous_cup_round_date_utc: null, players: [{ player: 'J. Doe', starts: 5, started_previous_cup_round: false }] });
+  });
+
+  it('few stored lineups are listed as missing data', () => {
+    const b = withStarters('NATIONAL_TEAM', starters(2, []), starters(5, []));
+    expect(b.data_quality.missing).toContain('Arsenal: only 2 stored lineups for recent_starters');
+  });
+
+  it('without regularStarters the input is unchanged (no block, injuries as before)', () => {
+    const plain = buildHybridInput({ ...src }) as { injuries: unknown[] };
+    expect(plain).not.toHaveProperty('recent_starters');
+    expect(plain.injuries).toEqual([{ team: 'AWAY', player: 'J. Doe', type: 'Missing Fixture', reason: 'Knee Injury' }]);
   });
 });

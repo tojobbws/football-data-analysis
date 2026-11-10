@@ -1,7 +1,8 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
-import { DEFAULT_RULES, readMainLines, summarizeBenchmarkDays, type BenchmarkDay, type OutcomeDistribution } from '@fp/analysis';
+import { DEFAULT_RULES, readMainLines, regularStarters, summarizeBenchmarkDays, type BenchmarkDay, type OutcomeDistribution, type StartersLineup } from '@fp/analysis';
+import { competitionKind } from '@fp/shared/leagues';
 import { buildRegistry, type LeagueImportanceRow, type PopularityRegistry, type RivalryRow, type TeamPopularityRow } from '@fp/shared/popularity';
 import { webEnv } from './env';
 import { allRows, db } from './supabase';
@@ -302,7 +303,7 @@ export const matchBySlug = cache(async (slug: string) => {
       .eq('league_id', m.league_id)
       .eq('season', m.season)
       .in('team_id', [m.home_team_id, m.away_team_id]),
-    sb.from('injuries').select('team_id, player_name, type, reason').eq('fixture_id', m.id),
+    sb.from('injuries').select('team_id, player_id, player_name, type, reason').eq('fixture_id', m.id),
     sb.from('fixture_lineup_players').select('team_id, player_name, number, position, is_starter').eq('fixture_id', m.id).order('is_starter', { ascending: false }),
     sb.from('web_market_consensus').select('market, selection, line, bookmakers, opening_odds, current_odds, last_quote_at').eq('fixture_id', m.id),
     finished ? sb.from('fixture_statistics').select('team_id, type, value_num, value_text').eq('fixture_id', m.id) : Promise.resolve({ data: [], error: null }),
@@ -325,6 +326,10 @@ export const matchBySlug = cache(async (slug: string) => {
   for (const [name, r] of Object.entries({ rounds, snapshot, h2h, standings, injuries, lineups, market, stats, events, outlook, preview, notes })) if (r.error) fail(name, r.error);
   const noteFor = new Map((notes.data ?? []).map((n) => [Number(n.analysis_prediction_id), String(n.note_th)]));
 
+  // regular starters (ADR 0016): only before kick-off while the lineup is not confirmed; a fact about past matches
+  const confirmed = (lineups.data ?? []).filter((p) => p.is_starter).length >= 22;
+  const regulars = !finished && !LIVE.includes(m.status_short) && !confirmed ? await regularStartersOf(m) : null;
+
   const snapRow = (snapshot.data?.[0] as { analysis_snapshots?: unknown } | undefined)?.analysis_snapshots;
   return {
     match: m,
@@ -337,7 +342,8 @@ export const matchBySlug = cache(async (slug: string) => {
     form: { home: formHome, away: formAway },
     h2h: (h2h.data ?? []) as unknown as Array<{ slug: string; kickoff_at: string; home_team_id: number; ft_home: number | null; ft_away: number | null; goals_home: number | null; goals_away: number | null; home: { name: string }; away: { name: string } }>,
     standings: (standings.data ?? []) as Array<{ team_id: number; rank: number; points: number; played: number; win: number; draw: number; lose: number; goals_for: number; goals_against: number; form: string | null }>,
-    injuries: (injuries.data ?? []) as Array<{ team_id: number; player_name: string | null; type: string | null; reason: string | null }>,
+    injuries: (injuries.data ?? []) as Array<{ team_id: number; player_id: number | null; player_name: string | null; type: string | null; reason: string | null }>,
+    regulars,
     lineups: (lineups.data ?? []) as Array<{ team_id: number; player_name: string | null; number: number | null; position: string | null; is_starter: boolean }>,
     market: (market.data ?? []) as Array<{ market: string; selection: string; line: number | null; bookmakers: number; opening_odds: number | null; current_odds: number | null; last_quote_at: string }>,
     // optional extra: without a run under the current rules the market card falls back to the consensus table
@@ -350,6 +356,49 @@ export const matchBySlug = cache(async (slug: string) => {
     qualification: qualification.error ? null : ((qualification.data ?? null) as QualificationView | null),
   };
 });
+
+/**
+ * Regular starters of both teams (ADR 0016): starts in each team's last stored lineups before kick-off, any competition;
+ * a domestic cup also marks who started its previous round this season. Null when the league row is missing.
+ */
+async function regularStartersOf(m: { id: number; kickoff_at: string; league_id: number; season: number; home_team_id: number; away_team_id: number }) {
+  const sb = db();
+  const { data: league, error } = await sb.from('leagues').select('type, country').eq('id', m.league_id).maybeSingle();
+  if (error) fail('league', error);
+  if (!league) return null;
+  const target = { leagueId: m.league_id, season: m.season, kind: competitionKind(m.league_id, league.type, league.country) };
+  const lineupsOf = async (teamId: number): Promise<StartersLineup[]> => {
+    // the team's last 30 finished matches (enough to reach a domestic cup's previous round), then their starters
+    const fx = await sb
+      .from('fixtures')
+      .select('id, kickoff_at, league_id, season')
+      .in('status_short', FINISHED)
+      .lt('kickoff_at', m.kickoff_at)
+      .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+      .order('kickoff_at', { ascending: false })
+      .limit(30);
+    if (fx.error) fail('regular starters fixtures', fx.error);
+    const rows = fx.data ?? [];
+    if (!rows.length) return [];
+    const lp = await allRows<{ fixture_id: number; player_id: number | null; player_name: string | null }>((a, b) =>
+      sb.from('fixture_lineup_players').select('fixture_id, player_id, player_name').in('fixture_id', rows.map((r) => r.id)).eq('team_id', teamId).eq('is_starter', true).order('id').range(a, b),
+    );
+    if (lp.error) fail('regular starters lineups', lp.error);
+    const byFixture = new Map<number, Array<{ playerId: number; name: string }>>();
+    for (const p of lp.data ?? []) {
+      if (p.player_id == null) continue;
+      const list = byFixture.get(Number(p.fixture_id)) ?? [];
+      list.push({ playerId: Number(p.player_id), name: p.player_name ?? '' });
+      byFixture.set(Number(p.fixture_id), list);
+    }
+    return rows.flatMap((r) => {
+      const starters = byFixture.get(Number(r.id));
+      return starters ? [{ fixtureId: Number(r.id), kickoffAt: new Date(r.kickoff_at), leagueId: Number(r.league_id), season: Number(r.season), starters }] : [];
+    });
+  };
+  const [home, away] = await Promise.all([lineupsOf(m.home_team_id), lineupsOf(m.away_team_id)]);
+  return { kind: target.kind, home: regularStarters(home, target), away: regularStarters(away, target) };
+}
 
 /** 📊 มุมมองโมเดล: last model probabilities computed before kickoff (information, not a 🧭 pick). */
 export interface ModelOutlook {

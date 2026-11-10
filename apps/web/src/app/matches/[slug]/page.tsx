@@ -9,7 +9,7 @@ import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/matc
 import { ModelOutlookCard } from '@/components/model-outlook';
 import { QualificationCard } from '@/components/qualification';
 import { Badge, Card, Note } from '@/components/sheet';
-import { dataGaps, hybridSummaryFromReason, stageLabelTh, type MainLine, type MainLineMarket } from '@fp/analysis';
+import { dataGaps, hybridSummaryFromReason, isRegularStarter, stageLabelTh, type MainLine, type MainLineMarket } from '@fp/analysis';
 import { TeamLogo } from '@/components/ui';
 import { FINISHED, ROUND, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { isLive, toSeed } from '@/lib/live';
@@ -585,24 +585,35 @@ function SquadSection({ d }: { d: Data }) {
         {[m.home, m.away].map((t) => {
           const out = d.injuries.filter((i) => i.team_id === t.id);
           const xi = starters.filter((p) => p.team_id === t.id);
+          // regular starters (ADR 0016): before kick-off and the lineup only; counts of past lineups, never a predicted XI
+          const reg = d.regulars ? (t.id === m.home.id ? d.regulars.home : d.regulars.away) : null;
+          const known = reg && reg.of > 0 ? reg : null;
+          const startsOf = (playerId: number | null) => (known && playerId != null ? (known.players.find((p) => p.playerId === playerId)?.starts ?? 0) : null);
+          const regularsOut = known ? out.filter((i) => i.type === 'Missing Fixture' && isRegularStarter({ starts: startsOf(i.player_id) ?? 0 }, known.of)).length : 0;
           return (
             <div key={t.id} className="min-w-0">
               <p className="border-b border-zinc-200 pb-2 text-sm font-semibold text-zinc-950">{t.name}</p>
               <p className="mt-3 text-xs font-medium text-zinc-500">ตัวเจ็บ / ติดโทษ</p>
+              {regularsOut ? <p className="mt-1 text-sm font-medium text-zinc-900">ขาดตัวจริงประจำ {regularsOut} คน</p> : null}
               {out.length ? (
                 <ul className="mt-1 divide-y divide-zinc-100 text-sm">
-                  {out.map((i, k) => (
-                    <li key={k} className="flex items-baseline justify-between gap-3 py-1.5">
-                      <span className="min-w-0 text-zinc-800">
-                        {i.player_name} <span className="text-xs text-zinc-500">{i.reason}</span>
-                      </span>
-                      <span className={`shrink-0 text-xs ${i.type === 'Missing Fixture' ? 'font-medium text-zinc-800' : 'text-zinc-500'}`}>{ABSENCE[i.type ?? ''] ?? i.type}</span>
-                    </li>
-                  ))}
+                  {out.map((i, k) => {
+                    const s = startsOf(i.player_id);
+                    return (
+                      <li key={k} className="flex items-baseline justify-between gap-3 py-1.5">
+                        <span className="min-w-0 text-zinc-800">
+                          {i.player_name} <span className="text-xs text-zinc-500">{i.reason}</span>
+                          {s !== null && known ? <span className="block text-xs text-zinc-500">ตัวจริง {s}/{known.of} นัดหลังสุด</span> : null}
+                        </span>
+                        <span className={`shrink-0 text-xs ${i.type === 'Missing Fixture' ? 'font-medium text-zinc-800' : 'text-zinc-500'}`}>{ABSENCE[i.type ?? ''] ?? i.type}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="mt-1 text-sm text-zinc-500">ไม่มีรายงาน</p>
               )}
+              {!xi.length && known ? <RecentStarters reg={known} cup={d.regulars!.kind === 'DOMESTIC_CUP'} out={new Set(out.filter((i) => i.type === 'Missing Fixture').map((i) => i.player_id))} /> : null}
               {xi.length ? (
                 <>
                   <p className="mt-4 text-xs font-medium text-zinc-500">ตัวจริง</p>
@@ -621,6 +632,31 @@ function SquadSection({ d }: { d: Data }) {
         })}
       </div>
     </Card>
+  );
+}
+
+/** Players who started the team's recent lineups (most starts first), with the window stated; not this match's XI. */
+function RecentStarters({ reg, cup, out }: { reg: NonNullable<Data['regulars']>['home']; cup: boolean; out: Set<number | null> }) {
+  const shown = reg.players.filter((p) => p.starts > 0 || p.startedPreviousCupRound).slice(0, 16);
+  return (
+    <>
+      <p className="mt-4 text-xs font-medium text-zinc-500">ตัวจริงในช่วงหลัง</p>
+      <p className="mt-0.5 text-xs text-zinc-500">
+        นับจาก {reg.of} นัดหลังสุดที่มีรายชื่อตัวจริง ทุกรายการ ไม่ใช่รายชื่อตัวจริงนัดนี้
+        {cup ? ' · บอลถ้วยในประเทศมักหมุนตัว ป้าย "ถ้วยรอบก่อน" คือลงตัวจริงในถ้วยนี้รอบก่อน' : ''}
+      </p>
+      <ul className="mt-1 grid grid-cols-1 gap-x-4 text-sm sm:grid-cols-2">
+        {shown.map((p) => (
+          <li key={p.playerId} className="flex items-baseline justify-between gap-2 py-0.5">
+            <span className={`min-w-0 truncate ${out.has(p.playerId) ? 'text-zinc-400 line-through' : 'text-zinc-800'}`}>{p.name}</span>
+            <span className="flex shrink-0 items-baseline gap-1.5 text-xs tabular-nums text-zinc-500">
+              {cup && p.startedPreviousCupRound ? <span className="rounded bg-zinc-100 px-1 text-[11px] text-zinc-700">ถ้วยรอบก่อน</span> : null}
+              {p.starts}/{reg.of}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 

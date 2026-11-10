@@ -36,8 +36,9 @@ import {
   type HybridSource,
   type RankerResult,
 } from '@fp/ai';
-import { DEFAULT_RULES, hybridMarket, hybridOptions, type HybridOption } from '@fp/analysis';
+import { DEFAULT_RULES, hybridMarket, hybridOptions, regularStarters, type HybridOption } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
+import { competitionKind } from '@fp/shared';
 import { injuriesCoverage, withOpponentRanksAsOf } from './hybrid-input-v2.js';
 import { decisionFresh, dueRound, pickFixtures, type PickEngine, type PickSchedule } from './publish-job.js';
 
@@ -247,7 +248,8 @@ export function combineVotes(answers: readonly Answer[]): Record<string, unknown
 
 /**
  * Everything the Hybrid AI sees for one fixture at `now` (read-only): its recent matches and table, injuries,
- * lineups and the market's main lines from quotes known at `now` (since prompt v1.6 no Dixon-Coles prices);
+ * lineups, each team's starts in its last stored lineups (prompt v1.7) and the market's main lines from quotes known
+ * at `now` (since prompt v1.6 no Dixon-Coles prices);
  * plus the rules' decision of the moment, which is stored beside the AI's for comparison and never shown to it.
  */
 export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date, opts: { inputV2?: boolean } = {}) {
@@ -255,14 +257,19 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
   const quotes = await ctx.repo.latestQuotes(f.id, now);
   const market = hybridMarket(quotes, now);
   const options = hybridOptions(market);
-  const [recentHome, recentAway, standings, injuries, lineupPlayers, legacyRun] = await Promise.all([
+  const [recentHome, recentAway, standings, injuries, lineupPlayers, legacyRun, lineupsHome, lineupsAway] = await Promise.all([
     ctx.repo.teamRecentMatches(f.homeTeamId, now, 10),
     ctx.repo.teamRecentMatches(f.awayTeamId, now, 10),
     ctx.repo.standingsForTeams(f.leagueId, header.season, [f.homeTeamId, f.awayTeamId]),
     ctx.repo.injuriesDetailed(f.id),
     ctx.repo.lineupPlayers(f.id),
     ctx.repo.latestRun(f.id, DEFAULT_RULES.version),
+    ctx.repo.teamRecentLineups(f.homeTeamId, now),
+    ctx.repo.teamRecentLineups(f.awayTeamId, now),
   ]);
+  // prompt v1.7: who started each team's last stored lineups (a domestic cup also marks its previous round's XI)
+  const kind = competitionKind(header.leagueId, header.leagueType, header.leagueCountry);
+  const target = { leagueId: header.leagueId, season: header.season, kind };
   // input v2 (off by default): opponent positions as of each match date, and whether the league reports injuries at all
   const v2 = opts.inputV2
     ? {
@@ -285,7 +292,14 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     publishRound: round,
     recent: { home: v2 ? v2.recentHome : recentHome, away: v2 ? v2.recentAway : recentAway },
     standings: { home: standing(f.homeTeamId), away: standing(f.awayTeamId) },
-    injuries: injuries.map((i) => ({ team: side(i.team_id), player: i.player_name == null ? null : String(i.player_name), type: i.type == null ? null : String(i.type), reason: i.reason == null ? null : String(i.reason) })),
+    injuries: injuries.map((i) => ({
+      team: side(i.team_id),
+      player: i.player_name == null ? null : String(i.player_name),
+      type: i.type == null ? null : String(i.type),
+      reason: i.reason == null ? null : String(i.reason),
+      playerId: i.player_id == null ? null : Number(i.player_id),
+    })),
+    regularStarters: { kind, home: regularStarters(lineupsHome, target), away: regularStarters(lineupsAway, target) },
     nextMatch: { home: nextHome, away: nextAway },
     // prompt v1.5: xG difference, npxG, shooting performance, xPTS and goals prevented beside every recent match and window
     xgMetrics: true,

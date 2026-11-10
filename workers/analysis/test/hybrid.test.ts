@@ -105,6 +105,12 @@ beforeAll(async () => {
              values ($1, 39, 2026, $2, 301, 998, 'FT', 2, 1, 2, 1), ($3, 39, 2026, $2, 998, 999, 'FT', 1, 0, 1, 0)`, [4000 + i, at, 5000 + i]);
   }
   await q(`insert into fixture_statistics (fixture_id, team_id, type, value_num) values (4001, 301, 'expected_goals', 1.7), (4001, 998, 'expected_goals', 0.6), (4001, 301, 'shots_on_goal', 7), (4001, 998, 'shots_on_goal', 2)`);
+  // prompt v1.7: Good FC's XIs of those six matches: players 1-10 every time, 11 in all but the newest (4001), where 12 started
+  await q(`insert into fixture_lineup_players (fixture_id, team_id, player_id, player_name, is_starter)
+           select 4000 + i, 301, case when g = 11 and i = 1 then 12 else g end, 'Good ' || (case when g = 11 and i = 1 then 12 else g end), true
+             from generate_series(1, 6) i, generate_series(1, 11) g`);
+  // player 11 is out of the analysed match (no league id: the league's injury coverage stays as the other assertions expect)
+  await q(`insert into injuries (fixture_id, team_id, player_id, player_name, type, reason) values (301, 301, 11, 'Good 11', 'Missing Fixture', 'Hamstring')`);
   // a match that has not been played yet must never reach the input
   await q(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values (4999, 39, 2026, $1, 998, 301, 'NS')`, [new Date(Date.now() + 30 * 3_600_000).toISOString()]);
   // a postponed match of Good FC that falls before the real next one: it is not a next fixture
@@ -178,6 +184,15 @@ describe('hybridJob', () => {
     expect(row!.input_hash).toMatch(/^[0-9a-f]{64}$/);
     // prompt v1.6: no Dixon-Coles price in what the AI sees
     expect(row!.input).not.toHaveProperty('legacy_statistical_model');
+    // prompt v1.7: Good FC's starts over its last 5 stored lineups (4001-4005); Away FC has none stored
+    const rs = row!.input.recent_starters;
+    expect(rs.window_lineups).toBe(5);
+    expect(rs.home).toMatchObject({ lineups: 5 });
+    const starts = Object.fromEntries(rs.home.players.map((p: { player: string; starts: number }) => [p.player, p.starts]));
+    expect(starts).toMatchObject({ 'Good 1': 5, 'Good 11': 4, 'Good 12': 1 });
+    expect(rs.away).toMatchObject({ lineups: 0, players: [] });
+    expect(row!.input.injuries).toEqual([{ team: 'HOME', player: 'Good 11', type: 'Missing Fixture', reason: 'Hamstring', recent_starts: 4, recent_lineups: 5 }]);
+    expect(row!.input.data_quality.missing).toContain('Away FC: only 0 stored lineups for recent_starters');
 
     // shadow mode: the rules engine still owns publishing (no rules run here, so nothing at all)
     await publishJob(ctx, { sameFootballDay: false, engine: 'shadow' });

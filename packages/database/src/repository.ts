@@ -1241,6 +1241,31 @@ export class Repository {
     return res.rows;
   }
 
+  /**
+   * The team's last `n` stored lineups of finished matches before `before`, newest first, starters only
+   * (regular starters, docs/adr/0016-regular-starters.md). Enough lineups to find a domestic cup's previous round.
+   */
+  async teamRecentLineups(teamId: number, before: Date, n = 30) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select f.id, f.kickoff_at, f.league_id, f.season, lp.player_id, lp.player_name
+         from (select f.id, f.kickoff_at, f.league_id, f.season from fixtures f
+                where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $2
+                  and exists (select 1 from fixture_lineup_players x where x.fixture_id = f.id and x.team_id = $1 and x.is_starter)
+                order by f.kickoff_at desc limit $3) f
+         join fixture_lineup_players lp on lp.fixture_id = f.id and lp.team_id = $1 and lp.is_starter and lp.player_id is not null
+        order by f.kickoff_at desc, f.id desc`,
+      [teamId, before.toISOString(), n],
+    );
+    const out = new Map<number, { fixtureId: number; kickoffAt: Date; leagueId: number; season: number; starters: Array<{ playerId: number; name: string }> }>();
+    for (const r of res.rows) {
+      const id = Number(r.id);
+      let l = out.get(id);
+      if (!l) out.set(id, (l = { fixtureId: id, kickoffAt: new Date(r.kickoff_at as string), leagueId: Number(r.league_id), season: Number(r.season), starters: [] }));
+      l.starters.push({ playerId: Number(r.player_id), name: String(r.player_name ?? '') });
+    }
+    return [...out.values()];
+  }
+
   async injuriesDetailed(fixtureId: number) {
     const res = await this.db.query<Record<string, unknown>>(
       'select team_id, player_id, player_name, type, reason from injuries where fixture_id = $1',
