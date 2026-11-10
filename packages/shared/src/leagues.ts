@@ -37,6 +37,8 @@ export const KNOWN_LEAGUES = {
   71: { name: 'Serie A', country: 'Brazil' },
   // added 2026-10-27: Carabao Cup (EFL Cup)
   48: { name: 'League Cup', country: 'England' },
+  // added 2026-11-10: Copa del Rey (fixtures, results, live; out of every featured version so far)
+  143: { name: 'Copa del Rey', country: 'Spain' },
   // added 2026-11-09: national-team competitions outside Europe (fixtures, results, live; no featured picks)
   536: { name: 'CONCACAF Nations League', country: 'World' },
   36: { name: 'Africa Cup of Nations - Qualification', country: 'World' },
@@ -67,6 +69,9 @@ export const CROSS_LEAGUE_CUPS: Readonly<Record<number, readonly number[]>> = {
   848: UEFA_DOMESTIC,
   // Carabao Cup (EFL Cup): the 92 clubs of the Premier League, Championship, League One and League Two
   48: [39, 40, 41, 42],
+  // Copa del Rey: La Liga, Segunda, Primera Federación (2 groups), Segunda Federación (5) and Tercera Federación (18)
+  // (API-Football /leagues?country=Spain, 2026-11-10). The regional amateur clubs of the early rounds have no league there.
+  143: [140, 141, 435, 436, 875, 876, 877, 878, 879, 439, 440, 441, 442, 443, 444, 445, 446, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456],
 };
 
 /**

@@ -50,7 +50,8 @@ export const FEATURED_V1: FeaturedConfig = {
   target: 3,
   // national-team competitions (5 UNL, 536 CONCACAF NL, 36 AFCON qual., 7 Asian Cup) stay out of v1 to ai-v2;
   // 536/36/7 were added 2026-11-09 before they were tracked, so no version's pool changed. ai-v3 takes UNL (ADR 0015).
-  excludedLeagues: [296, 5, 1129, 536, 36, 7],
+  // Copa del Rey (143) likewise, added 2026-11-10 before it was tracked.
+  excludedLeagues: [296, 5, 1129, 536, 36, 7, 143],
   rankBy: 'SUPPORT',
   modelWeight: 1,
   allowOverUnder: true,
@@ -97,7 +98,7 @@ export const FEATURED_AI_V2: FeaturedConfig = {
 export const FEATURED_AI_V3: FeaturedConfig = {
   ...FEATURED_AI_V2,
   version: 'featured-ai-v3',
-  excludedLeagues: [296, 1129, 536, 36, 7],
+  excludedLeagues: [296, 1129, 536, 36, 7, 143],
   leagueCaps: { 5: 5 },
 };
 
