@@ -39,15 +39,16 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   const liveRead = liveMatches();
   // between match days there are no upcoming previews: the fallback read starts alongside instead of after
-  const recentRead = previewCards('recent', 4);
-  recentRead.catch(() => undefined); // awaited only when needed; an unused failure must not go unhandled
+  const recentRead = soft('recent previews', previewCards('recent', 4), []);
+  const noRanks = new Map<number, number>();
+  // only the day's matches (or the live list on ?live=1) may fail the page; every other read falls back to empty
   const [shown, live, articles, upcomingPreviews, ranks, prevRanks, registry] = await Promise.all([
     date ? matchesOnFootballDay(date, { withPreDawn: true }) : liveRead,
-    liveRead,
-    latestArticles(4),
-    previewCards('upcoming', 4),
-    date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
-    date ? featuredRanks(addDaysStr(date, -1)) : Promise.resolve(new Map<number, number>()),
+    soft('live count', liveRead, []),
+    soft('articles', latestArticles(4), []),
+    soft('upcoming previews', previewCards('upcoming', 4), []),
+    date ? soft('featured ranks', featuredRanks(date), noRanks) : noRanks,
+    date ? soft('featured ranks', featuredRanks(addDaysStr(date, -1)), noRanks) : noRanks,
     popularityRegistry(),
   ]);
   // the matches' written previews; between match days, the latest ones written
@@ -130,7 +131,19 @@ function Widgets() {
 }
 
 async function WidgetsLoaded() {
-  return <LeagueWidgets widgets={await leagueWidgets(5)} />;
+  // a side panel: if its read fails the page goes on without it
+  const widgets = await soft('league widgets', leagueWidgets(5), null);
+  return widgets ? <LeagueWidgets widgets={widgets} /> : null;
+}
+
+/** A read the page can live without: on failure it logs and answers `fallback` instead of failing the page. */
+async function soft<T>(what: string, read: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await read;
+  } catch (e) {
+    console.error(`home: ${what} unavailable:`, e instanceof Error ? e.message : e);
+    return fallback;
+  }
 }
 
 function WidgetsSkeleton() {

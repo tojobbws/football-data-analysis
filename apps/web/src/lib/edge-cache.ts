@@ -56,6 +56,17 @@ export function cacheKey(req: Request): Request {
   return new Request(url.toString(), { method: 'GET' });
 }
 
+/**
+ * A page that failed while it streamed still answers 200 (root loading.tsx sends the status before the reads
+ * end) and carries the error inside the HTML: the RSC error row (`:E{"digest":…}`, escaped in the page's
+ * __next_f payload) or React's client-render fallback (`$RX("…` script, `<!--$!-->` boundary).
+ * On 2026-11-11 such a copy of the home page ("This page couldn't load") was the one visitors were served.
+ */
+const RENDER_ERROR = /:E\{\\*"digest\\*":|\$RX\("|<!--\$!-->/;
+export function hasRenderError(html: string): boolean {
+  return RENDER_ERROR.test(html);
+}
+
 /** Whether a rendered response may be stored: a 200 HTML page that sets no cookie. */
 export function isStorableResponse(res: Response): boolean {
   return res.status === 200 && (res.headers.get('content-type') ?? '').includes('text/html') && !res.headers.has('set-cookie');
@@ -100,7 +111,9 @@ export async function withEdgeCache(
 
   const store = async (res: Response) => {
     try {
-      await cache.put(key, storedCopy(res, now()));
+      const body = await res.text();
+      if (hasRenderError(body)) return; // never kept: the next visitor renders again
+      await cache.put(key, storedCopy(new Response(body, res), now()));
     } catch {
       /* the next visitor renders again */
     }

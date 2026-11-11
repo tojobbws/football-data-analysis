@@ -6,6 +6,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // Workers Logs: a page error's digest (shown on the error page) finds its server log line and message
+  "observability": { "enabled": true },
   // Public address. Both hosts reach this Worker; middleware sends www (and workers.dev) to the apex with a 301.
   "routes": [
     { "pattern": "khemthitfootball.com", "custom_domain": true },

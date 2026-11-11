@@ -2,7 +2,7 @@
  * The public-page edge cache (src/lib/edge-cache.ts): what is cached, for how long, and that it never breaks a page.
  */
 import { describe, expect, it } from 'vitest';
-import { cacheKey, isCacheableRequest, isStorableResponse, PAGE_STALE_SECONDS, PAGE_TTL_SECONDS, withEdgeCache, type EdgeCache } from '../src/lib/edge-cache';
+import { cacheKey, hasRenderError, isCacheableRequest, isStorableResponse, PAGE_STALE_SECONDS, PAGE_TTL_SECONDS, withEdgeCache, type EdgeCache } from '../src/lib/edge-cache';
 
 const page = (path: string, headers: Record<string, string> = {}, method = 'GET') =>
   new Request(`https://khemthitfootball.com${path}`, { method, headers: { accept: 'text/html,application/xhtml+xml', ...headers } });
@@ -130,6 +130,35 @@ describe('withEdgeCache', () => {
     await withEdgeCache(page('/'), ctx, async () => html('x', { 'set-cookie': 'a=b' }), cache);
     await ctx.settle();
     expect(cache.puts).toBe(0);
+  });
+
+  it('never stores a 200 page that failed while it streamed; a stale copy keeps being served instead', async () => {
+    const failed = [
+      '<html><script>self.__next_f.push([1,"5:E{\\"digest\\":\\"1277548206\\"}\\n"])</script></html>',
+      '<html><!--$!--><template data-dgst="1277548206"></template><!--/$--></html>',
+      '<html><script>$RX("B:0","1277548206")</script></html>',
+    ];
+    for (const body of failed) {
+      expect(hasRenderError(body)).toBe(true);
+      const cache = memoryCache();
+      const ctx = waits();
+      const res = await withEdgeCache(page('/'), ctx, async () => html(body), cache);
+      await ctx.settle();
+      expect(await res.text()).toBe(body); // the visitor still gets what was rendered
+      expect(cache.puts).toBe(0);
+    }
+    expect(hasRenderError('<html><!--$--><p>ok</p><!--/$--></html>')).toBe(false);
+
+    let t = 0;
+    const cache = memoryCache();
+    const ctx = waits();
+    await withEdgeCache(page('/'), ctx, async () => html('good'), cache, () => t);
+    await ctx.settle();
+    t = (PAGE_TTL_SECONDS + 1) * 1000;
+    const stale = await withEdgeCache(page('/'), ctx, async () => html(failed[0]), cache, () => t);
+    await ctx.settle();
+    expect(await stale.text()).toBe('good');
+    expect(await (await cache.match(cacheKey(page('/'))))!.text()).toBe('good');
   });
 
   it('leaves uncacheable requests and a missing or failing cache to the handler', async () => {
