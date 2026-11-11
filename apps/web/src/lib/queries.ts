@@ -994,7 +994,7 @@ export interface LeagueWidget {
  * Per tracked league (current season): standings and top scorers.
  * Leagues played in groups (e.g. Nations League) get no standings here.
  */
-export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
+export const leagueWidgets = cache(async (scorers = 5): Promise<LeagueWidget[]> => {
   const sb = db();
   const ids = webEnv().leagues;
   const [leagues, seasons] = await Promise.all([
@@ -1009,6 +1009,8 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
   // Scorers: one paged read for every league instead of one request per league. A Worker invocation may make only
   // so many subrequests, and with 31 leagues the per-league reads pushed the home page past the limit (2026-10-27).
   // Each league keeps its top rows (spare rows so a player who moved clubs can still be summed below).
+  // The paged read carries no players embed: it tripled each page (~650 ms vs ~200 ms, 5,626 rows in 6 pages on
+  // 2026-11-11); names and photos are read below for the shown scorers only.
   const [st, ps] = await Promise.all([
     // one row per team of every tracked league (660 on 2026-10-26): read in pages, the server stops at 1000
     allRows<{ league_id: number; season: number; group_name: string; team_id: number; rank: number | null; played: number | null; goals_diff: number | null; points: number | null }>((a, b) =>
@@ -1023,10 +1025,10 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
         .order('team_id')
         .range(a, b),
     ),
-    allRows<{ player_id: number; team_id: number; league_id: number; season: number; goals: number; assists: number | null; player: { name: string; photo_url: string | null } | null }>((a, b) =>
+    allRows<{ player_id: number; team_id: number; league_id: number; season: number; goals: number; assists: number | null }>((a, b) =>
       sb
         .from('player_season_stats')
-        .select('player_id, team_id, league_id, season, goals, assists, player:players(name, photo_url)')
+        .select('player_id, team_id, league_id, season, goals, assists')
         .in('league_id', [...season.keys()])
         .in('season', years)
         .gt('goals', 0)
@@ -1049,13 +1051,31 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
     return n < scorers * 8;
   });
 
-  const teamIds = [...new Set([...stRows.map((r) => Number(r.team_id)), ...psRows.map((r) => Number(r.team_id))])];
-  const teams = new Map<number, Team>();
-  if (teamIds.length) {
-    const { data, error } = await sb.from('teams').select('id, name, logo_url').in('id', teamIds);
-    if (error) fail('teams', error);
-    for (const t of data ?? []) teams.set(Number(t.id), t as Team);
+  // a player who moved clubs mid-season has one row per team: sum them, show the latest club
+  const topByLeague = new Map<number, Array<{ playerId: number; goals: number; assists: number; teamId: number }>>();
+  for (const id of season.keys()) {
+    const byPlayer = new Map<number, { playerId: number; goals: number; assists: number; teamId: number }>();
+    for (const r of psRows.filter((x) => Number(x.league_id) === id)) {
+      const p = byPlayer.get(Number(r.player_id)) ?? { playerId: Number(r.player_id), goals: 0, assists: 0, teamId: Number(r.team_id) };
+      p.goals += Number(r.goals ?? 0);
+      p.assists += Number(r.assists ?? 0);
+      p.teamId = Number(r.team_id);
+      byPlayer.set(p.playerId, p);
+    }
+    topByLeague.set(id, [...byPlayer.values()].sort((a, b) => b.goals - a.goals || b.assists - a.assists).slice(0, scorers));
   }
+  const shown = [...topByLeague.values()].flat();
+
+  const teamIds = [...new Set([...stRows.map((r) => Number(r.team_id)), ...shown.map((p) => p.teamId)])];
+  const playerIds = [...new Set(shown.map((p) => p.playerId))];
+  const [teamRes, playerRes] = await Promise.all([
+    teamIds.length ? sb.from('teams').select('id, name, logo_url').in('id', teamIds) : Promise.resolve({ data: [], error: null }),
+    playerIds.length ? sb.from('players').select('id, name, photo_url').in('id', playerIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (teamRes.error) fail('teams', teamRes.error);
+  if (playerRes.error) fail('players', playerRes.error);
+  const teams = new Map((teamRes.data ?? []).map((t) => [Number(t.id), t as Team]));
+  const players = new Map((playerRes.data ?? []).map((p) => [Number(p.id), p as { name: string; photo_url: string | null }]));
   const team = (id: number): Team => teams.get(id) ?? { id, name: `#${id}`, logo_url: null };
 
   const order = new Map(ids.map((id, i) => [id, i]));
@@ -1069,22 +1089,16 @@ export async function leagueWidgets(scorers = 5): Promise<LeagueWidget[]> {
               .map((r) => ({ rank: Number(r.rank), team: team(Number(r.team_id)), played: Number(r.played ?? 0), goals_diff: Number(r.goals_diff ?? 0), points: Number(r.points ?? 0) }))
               .sort((a, b) => a.rank - b.rank)
           : [];
-      // a player who moved clubs mid-season has one row per team: sum them, show the latest club
-      const byPlayer = new Map<number, Omit<ScorerRow, 'team'> & { teamId: number }>();
-      for (const r of psRows.filter((x) => Number(x.league_id) === league.id)) {
-        const p = byPlayer.get(r.player_id) ?? { player: r.player?.name ?? `#${r.player_id}`, photo_url: r.player?.photo_url ?? null, goals: 0, assists: 0, teamId: r.team_id };
-        p.goals += Number(r.goals ?? 0);
-        p.assists += Number(r.assists ?? 0);
-        p.teamId = r.team_id;
-        byPlayer.set(r.player_id, p);
-      }
-      const top = [...byPlayer.values()]
-        .sort((a, b) => b.goals - a.goals || b.assists - a.assists)
-        .slice(0, scorers)
-        .map(({ teamId, ...p }) => ({ ...p, team: team(teamId) }));
+      const top = (topByLeague.get(league.id) ?? []).map((p) => ({
+        player: players.get(p.playerId)?.name ?? `#${p.playerId}`,
+        photo_url: players.get(p.playerId)?.photo_url ?? null,
+        goals: p.goals,
+        assists: p.assists,
+        team: team(p.teamId),
+      }));
       return { league, standings, scorers: top };
     });
-}
+});
 
 // ---------------------------------------------------------------------------
 // Daily featured list (ADR 0006)

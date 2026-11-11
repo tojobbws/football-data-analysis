@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { ArticleGrid, MoreLink, PreviewTable } from '@/components/home';
 import { watchSlugs } from '@/components/featured-picks';
 import { CompassMark, IconChevronRight } from '@/components/icons';
@@ -36,18 +37,21 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const date = liveView ? null : isValidDate(q.date) ? q.date : today;
   const onToday = date === today;
 
-  const [shown, live, articles, leagues, upcomingPreviews, ranks, prevRanks, registry] = await Promise.all([
-    date ? matchesOnFootballDay(date, { withPreDawn: true }) : liveMatches(),
-    liveMatches(),
+  const liveRead = liveMatches();
+  // between match days there are no upcoming previews: the fallback read starts alongside instead of after
+  const recentRead = previewCards('recent', 4);
+  recentRead.catch(() => undefined); // awaited only when needed; an unused failure must not go unhandled
+  const [shown, live, articles, upcomingPreviews, ranks, prevRanks, registry] = await Promise.all([
+    date ? matchesOnFootballDay(date, { withPreDawn: true }) : liveRead,
+    liveRead,
     latestArticles(4),
-    leagueWidgets(5),
     previewCards('upcoming', 4),
     date ? featuredRanks(date) : Promise.resolve(new Map<number, number>()),
     date ? featuredRanks(addDaysStr(date, -1)) : Promise.resolve(new Map<number, number>()),
     popularityRegistry(),
   ]);
   // the matches' written previews; between match days, the latest ones written
-  const previews = upcomingPreviews.length ? upcomingPreviews : await previewCards('recent', 4);
+  const previews = upcomingPreviews.length ? upcomingPreviews : await recentRead;
   // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list; finished ones keep the mark with their result
   // the day's own 00:00-06:00 kick-offs belong to the previous football day: they keep that day's gold frames
   const dayFrom = date ? Date.parse(footballDayRange(date).from) : 0;
@@ -84,7 +88,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
           {/* tracked leagues beside the day's matches on wide screens; phones and tablets get them further down */}
           <aside className="mt-4 hidden space-y-4 lg:sticky lg:top-32 lg:block lg:self-start" aria-label="ลีกที่เราวิเคราะห์">
-            <LeagueWidgets widgets={leagues} />
+            <Widgets />
           </aside>
         </div>
       </ScoreboardBand>
@@ -106,10 +110,35 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
         {/* ---------------- widgets (below lg; on lg they sit beside the scoreboard) ---------------- */}
         <aside className="space-y-4 lg:hidden" aria-label="ลีกที่เราวิเคราะห์">
-          <LeagueWidgets widgets={leagues} />
+          <Widgets />
         </aside>
       </div>
     </main>
+  );
+}
+
+/**
+ * Standings and top scorers of every tracked league: the slowest read of the page (thousands of scorer rows),
+ * so it streams in after the scoreboard instead of holding it back. Both asides share one read (React cache).
+ */
+function Widgets() {
+  return (
+    <Suspense fallback={<WidgetsSkeleton />}>
+      <WidgetsLoaded />
+    </Suspense>
+  );
+}
+
+async function WidgetsLoaded() {
+  return <LeagueWidgets widgets={await leagueWidgets(5)} />;
+}
+
+function WidgetsSkeleton() {
+  return (
+    <div className="space-y-4 motion-safe:animate-pulse" aria-hidden>
+      <div className="h-40 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200/80" />
+      <div className="h-72 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200/80" />
+    </div>
   );
 }
 
