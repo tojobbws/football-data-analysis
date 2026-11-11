@@ -3,7 +3,7 @@
 // Checks that every subtitle phrase is a verbatim, in-order piece of its voice segment.
 // usage: node prepare.cjs [YYYY-MM-DD]
 const path = require('path');
-const { dateArg, dayDir, readJson, writeJson } = require('./lib.cjs');
+const { dateArg, dayDir, readJson, writeJson, bettingTalk } = require('./lib.cjs');
 
 const date = dateArg();
 const dir = dayDir(date);
@@ -16,6 +16,7 @@ const BANNED = ['ทีเด็ด', 'แทง', 'กำไร', 'ตามค
 function check(where, segments, subs) {
   segments.forEach((seg, i) => {
     for (const w of BANNED) if (seg.includes(w)) errors.push(`${where} s${i}: banned word "${w}"`);
+    for (const t of [seg, ...(subs[i] || []).map((p) => p.show)]) for (const h of bettingTalk(t)) errors.push(`${where} s${i}: betting talk "${h}" in "${t}" (say the pick in football words: facts pick.fan)`);
     let cur = 0;
     for (const p of subs[i] || []) {
       const ix = seg.indexOf(p.say, cur);
@@ -36,6 +37,8 @@ spot.matches.forEach((s, i) => {
   const last = i === spot.matches.length - 1;
   const c = { ...m, key: `c${i + 1}`, src: s.match, head: s.head || `คู่ที่ ${i + 1}`, stats: s.stats, segments: [...s.segments], subs: [...s.subs] };
   if (c.segments.length !== 3) errors.push(`${c.key}: a match needs 3 voice segments (intro, analysis, pick)`);
+  if (!m.pick.fan) errors.push(`${c.key}: facts.json has no pick.fan; run fetch.cjs again`);
+  else if (!(s.subs[2] || []).some((p) => p.show.includes(m.pick.fan.text))) errors.push(`${c.key}: the pick segment must show "${m.pick.fan.text}" (facts pick.fan.text), not the line`);
   if (last) { c.segments.push(spot.outro.segment); c.subs.push(spot.outro.subs); }
   check(c.key, c.segments, c.subs);
   clips.push(c);

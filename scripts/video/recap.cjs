@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn, execFileSync, spawnSync } = require('child_process');
-const { dayDir, readJson, writeJson } = require('./lib.cjs');
+const { dayDir, readJson, writeJson, bettingTalk } = require('./lib.cjs');
 const { speak } = require('./tts.cjs');
 const { kit, mixdown, withCover } = require('./audio.cjs');
 
@@ -45,6 +45,8 @@ function prepare() {
     if (!m) { errors.push(`unknown match ${sm.match}`); continue; }
     if (!sm.segment.includes(m.result)) errors.push(`${sm.match}: the voice must say the real result "${m.result}"`);
     if (!sm.marks.result.includes(m.result)) errors.push(`${sm.match}: marks.result must be the result word "${m.result}"`);
+    // the pick in football words (facts pick.fan), never the betting line
+    if (!sm.subs.some((p) => p.show.includes(m.pick.fan.text))) errors.push(`${sm.match}: a subtitle must show the pick as "${m.pick.fan.text}" (facts pick.fan.text), not the line`);
     for (const p of sm.subs) {
       const sc = p.show.match(/(\d+)\s*-\s*(\d+)/);
       if (sc && ![`${m.home.goals}-${m.away.goals}`, `${m.away.goals}-${m.home.goals}`].includes(`${sc[1]}-${sc[2]}`)) errors.push(`${sm.match}: score "${sc[0]}" is not the real ${m.home.goals}-${m.away.goals}`);
@@ -58,6 +60,7 @@ function prepare() {
   segs.forEach((g, i) => {
     const where = `${g.role}${g.match ? ' ' + g.match.key : ''}`;
     for (const w of BANNED) if (g.segment.includes(w)) errors.push(`${where}: banned word "${w}"`);
+    for (const t of [g.segment, ...g.subs.map((p) => p.show)]) for (const h of bettingTalk(t)) errors.push(`${where}: betting talk "${h}" in "${t}" (say the pick in football words: facts pick.fan)`);
     let cur = 0;
     for (const p of g.subs) {
       const ix = g.segment.indexOf(p.say, cur);
@@ -129,12 +132,12 @@ function timeline({ facts, segs }) {
 }
 
 // ---------- 4. sound ----------
+// built on the story clock; withCover (audio.cjs) puts it behind the cover and moves the voice after it
 function sound(TL) {
   return withCover(TL, storySound(TL, TL.T - (TL.cover || 0) + 0.6));
 }
 function storySound(TL, T) {
   const K = kit(T);
-// built on the story clock; withCover (audio.cjs) puts it behind the cover and moves the voice after it
   const { mus, sfx, kick, noiseHit, snare, bassNote, chord, riser, whoosh, boom, crowd, bell, groove, audioLogo, fadeTail, add } = K;
   const sc = TL.scenes, open = sc[0], ms = sc.filter((s) => s.role === 'match'), sum = sc.find((s) => s.role === 'summary'), cl = sc.find((s) => s.role === 'closing');
   const statusOf = (key) => TL.facts.matches.find((m) => m.key === key).status;

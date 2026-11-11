@@ -80,7 +80,7 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#030817}
 #ou .w{position:relative;display:inline-block;font-family:Barlow;font-weight:900;font-size:330px;line-height:1;letter-spacing:6px;white-space:nowrap}
 #ou .w span{position:relative;display:block;background:linear-gradient(180deg,#fff9e0 0%,#ffd166 35%,#f59e0b 65%,#c2560a 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 #ou .ext{position:absolute;left:0;top:0;color:#7a3a04;white-space:nowrap}
-#ouLine{position:absolute;left:0;width:1080px;text-align:center;top:985px;z-index:9;font-family:Barlow;font-weight:800;font-size:76px;white-space:nowrap}
+#ouLine{position:absolute;left:0;width:1080px;text-align:center;top:985px;z-index:9;font-weight:700;font-size:68px;white-space:nowrap}
 #ouLine div{display:inline-block;padding:6px 40px;border-radius:20px;background:#0b1d4a;box-shadow:inset 0 0 0 4px #fbbf24,0 16px 40px rgba(0,0,0,.5)}
 #ouLine b{color:var(--gold)}
 #spot{position:absolute;left:540px;top:-200px;width:900px;height:1200px;margin-left:-450px;z-index:5;background:linear-gradient(180deg,rgba(255,225,150,.0),rgba(255,215,120,.35) 60%,rgba(255,200,90,.0));clip-path:polygon(42% 0,58% 0,100% 100%,0 100%);filter:blur(18px);mix-blend-mode:screen;transform-origin:50% 0}
@@ -233,11 +233,13 @@ pk.innerHTML=`<div class="k"><img src="brand/compass-mark.webp">เข็มท�
   (isOU?'':`<div class="main">${M.pick.label}</div>`)+
   `<div class="note">มุมมองจากข้อมูล ไม่ใช่ผลที่แน่นอน</div>`;
 if(isOU){
-  const word=pickSide==='over'?'OVER':'UNDER';
+  // no OVER / UNDER or O/U line on screen (owner 2026-11-11): the goal count in football words, from facts pick.fan
+  const n=(M.pick.fan.text.match(/\d+/)||['0'])[0];
+  const word=pickSide==='over'?`${n}+`:`0–${n}`;
   const w=document.querySelector('#ou .w');
   let ext='';for(let i=14;i>=1;i--)ext+=`<div class="ext" style="transform:translate(${i*0.6}px,${i*1.6}px);color:${i>10?'#2a1200':i>5?'#6b3303':'#9a4a06'}">${word}</div>`;
   w.innerHTML=ext+`<span>${word}</span>`;
-  document.querySelector('#ouLine div').innerHTML=`O/U <b>${M.pick.line}</b>`;
+  document.querySelector('#ouLine div').innerHTML=`<b>${M.pick.fan.text}</b>`;
   pk.style.top='1130px';
 }
 {const mn=pk.querySelector('.main');if(mn)mn.style.fontSize=Math.min(128,Math.floor(940/(M.pick.label.length*.5)))+'px';}

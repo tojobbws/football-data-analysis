@@ -4,16 +4,17 @@
 // usage: node recap-fetch.cjs [YYYY-MM-DD] [--spotlight] [--drop=m1,m3]   (default: yesterday's football day)
 const path = require('path');
 const { Client } = require('pg');
-const { dayDir, readJson, writeJson, currentFootballDay, MONTHS, MONTHS_FULL, kickoffTh, logo } = require('./lib.cjs');
+const { dayDir, readJson, writeJson, currentFootballDay, MONTHS, MONTHS_FULL, kickoffTh, logo, fanPick, RESULT_WORD } = require('./lib.cjs');
 
 const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-ai-v3'];
 // featured-ai-v2 (ADR 0014) and ai-v3 (ADR 0015): a pick day's list (14:00 -> 14:00 Thai), dated by the pick day; it wins on
 // the switch day. A pick day has a list from one of the two only.
 const listVersion = (vs) => (vs.includes('featured-ai-v3') ? 'featured-ai-v3' : vs.includes('featured-ai-v2') ? 'featured-ai-v2' : vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
 const FINISHED = ['FT', 'AET', 'PEN'];
-// fan wording of a settled result (the site's badges say ถูก / ผิด / ถูกครึ่ง / ผิดครึ่ง / เสมอตัว)
-const RESULT = { WIN: 'ทายถูก', LOSS: 'ทายผิด', HALF_WIN: 'ทายถูกครึ่ง', HALF_LOSS: 'ทายผิดครึ่ง', PUSH: 'เสมอตัว', VOID: 'โมฆะ', PENDING: 'รอผล' };
-const BADGE = { WIN: 'result-win', LOSS: 'result-loss', HALF_WIN: 'result-half-win', HALF_LOSS: 'result-half-loss', PUSH: 'result-push' };
+// result word in the film: a half result reads as the whole one (lib.cjs RESULT_WORD; owner 2026-11-11, after TikTok
+// removed a recap that said ทายถูกครึ่ง). The rate still counts a half result as half, like /performance.
+const RESULT = RESULT_WORD;
+const BADGE = { WIN: 'result-win', LOSS: 'result-loss', HALF_WIN: 'result-win', HALF_LOSS: 'result-loss', PUSH: 'result-push' };
 
 function yesterday() {
   const d = new Date(`${currentFootballDay()}T00:00:00Z`);
@@ -27,6 +28,8 @@ function summary(ms) {
   const c = { total: ms.length, win: n('WIN'), loss: n('LOSS'), half_win: n('HALF_WIN'), half_loss: n('HALF_LOSS'), push: n('PUSH'), void: n('VOID'), pending: ms.filter((m) => !RESULT[m.status] || m.status === 'PENDING').length };
   const right = c.win + c.half_win / 2, wrong = c.loss + c.half_loss / 2;
   c.right = right; c.wrong = wrong;
+  // what the film counts on screen and in the voice: a half result with the whole ones
+  c.shown_win = c.win + c.half_win; c.shown_loss = c.loss + c.half_loss;
   c.rate = right + wrong > 0 ? right / (right + wrong) : null;
   c.rate_pct = c.rate == null ? null : Math.round(c.rate * 100);
   return c;
@@ -71,14 +74,15 @@ function summary(ms) {
       if (Number(last.id) !== Number(p.id)) withdrawn.push(`m${r.rank} ${f.home} vs ${f.away}: film pick from round ${p.publish_round}, the site's newest round ${last.publish_round} is ${last.kind}`);
     }
     const first = (p.reason || '').split('\n')[0];
-    const label = (first.match(/เข็มทิศเกม:\s*(.+?)\s*\(/) || [])[1] || `${p.selection} ${Number(p.line)}`;
+    const lineLabel = (first.match(/เข็มทิศเกม:\s*(.+?)\s*\(/) || [])[1] || `${p.selection} ${Number(p.line)}`;
+    const fan = fanPick({ market: p.market, side: p.selection, line: p.line, home: f.home, away: f.away });
     out.push({
       key: `m${r.rank}`, rank: r.rank, ...(film ? { order: r.order } : {}), fixture_id: Number(f.id), prediction_id: Number(p.id), publish_round: p.publish_round, engine: p.decision_rule_version,
       league: f.league, league_importance: f.importance == null ? 30 : Number(f.importance), league_logo: await logo(f.llogo, `leagues-${f.league_id}.png`),
       kickoff_th: kickoffTh(f.kickoff_at), fixture_status: f.status_short, finished: FINISHED.includes(f.status_short),
       home: { name: f.home, logo: await logo(f.hlogo, `teams-${f.hid}.png`), goals: f.goals_home },
       away: { name: f.away, logo: await logo(f.alogo, `teams-${f.aid}.png`), goals: f.goals_away },
-      pick: { market: p.market, side: String(p.selection).toLowerCase(), label, line: Number(p.line), odds: p.odds_at_publish == null ? null : Number(p.odds_at_publish).toFixed(2) },
+      pick: { market: p.market, side: String(p.selection).toLowerCase(), label: fan.label, fan, line_label: lineLabel, line: Number(p.line), odds: p.odds_at_publish == null ? null : Number(p.odds_at_publish).toFixed(2) },
       status: p.status, result: RESULT[p.status] || p.status, badge: BADGE[p.status] ? `brand/${BADGE[p.status]}.webp` : null,
     });
   }
@@ -96,8 +100,8 @@ function summary(ms) {
   if (film) console.log('NOTE --spotlight: counted on the film\'s picks, so the rate can differ from /performance; leave "ทุกผลตรวจสอบได้" out of the summary');
   for (const w of withdrawn) console.log(`NOTE withdrawn later: ${w}`);
   for (const m of dropped) console.log(`dropped by the owner: [${m.key}] ${m.home.name} vs ${m.away.name} · ${m.result}`);
-  for (const m of kept) console.log(`[${m.key}] ${m.league} · ${m.home.name} ${m.home.goals ?? '-'}-${m.away.goals ?? '-'} ${m.away.name} (${m.fixture_status}) · ${m.pick.label} @ ${m.pick.odds} · ${m.status} = ${m.result}`);
+  for (const m of kept) console.log(`[${m.key}] ${m.league} · ${m.home.name} ${m.home.goals ?? '-'}-${m.away.goals ?? '-'} ${m.away.name} (${m.fixture_status}) · ${m.pick.label} (site: ${m.pick.line_label} @ ${m.pick.odds}) · ${m.status} = ${m.result}`);
   const s = facts.summary;
-  console.log(`summary: ${s.total} picks · ถูก ${s.win} · ผิด ${s.loss} · ถูกครึ่ง ${s.half_win} · ผิดครึ่ง ${s.half_loss} · เสมอตัว ${s.push} · โมฆะ ${s.void} · รอผล ${s.pending} · rate ${s.rate_pct ?? '-'}%`);
+  console.log(`summary: ${s.total} picks · film says ทายถูก ${s.shown_win} · ทายผิด ${s.shown_loss} (half results inside: ${s.half_win} / ${s.half_loss}) · เสมอตัว ${s.push} · โมฆะ ${s.void} · รอผล ${s.pending} · rate ${s.rate_pct ?? '-'}%`);
   if (s.pending || kept.some((m) => !m.finished)) console.error('WARNING: not every match is finished and settled yet; wait before making the film');
 })().catch((e) => { console.error(e.message); process.exit(1); });

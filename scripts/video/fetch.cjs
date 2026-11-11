@@ -4,7 +4,7 @@
 // usage: node fetch.cjs [YYYY-MM-DD]   (default: the current football day, 06:00-06:00 Thai)
 const path = require('path');
 const { Client } = require('pg');
-const { dateArg, dayDir, writeJson, MONTHS_FULL, kickoffTh, logo } = require('./lib.cjs');
+const { dateArg, dayDir, writeJson, MONTHS_FULL, kickoffTh, logo, fanPick } = require('./lib.cjs');
 
 const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-ai-v3'];          // same rule as apps/web/src/lib/queries.ts listVersion
 // featured-ai-v2 (ADR 0014) and ai-v3 (ADR 0015): a pick day's list (14:00 -> 14:00 Thai), dated by the pick day; it wins on
@@ -36,6 +36,8 @@ const listVersion = (vs) => (vs.includes('featured-ai-v3') ? 'featured-ai-v3' : 
     const label = (first.match(/เข็มทิศเกม:\s*(.+?)\s*\(/) || [])[1] || `${p.selection} ${p.line}`;
     const books = Number(((p.reason || '').match(/จาก (\d+) เจ้า/) || [])[1]) || null;
     const isOU = p.market === 'OVER_UNDER';
+    // `label` is what the film shows: plain football words, never the betting line (lib.cjs fanPick); `line_label` is the site's line, for checks only
+    const fan = fanPick({ market: p.market, side: p.selection, line: p.line, home: f.home, away: f.away });
     out.push({
       key: `m${r.rank}`, rank: r.rank, list_version: version, fixture_id: Number(f.id), prediction_id: Number(p.id),
       featured_prediction_id: Number(r.prediction_id), publish_round: p.publish_round, engine: p.decision_rule_version, status: p.status,
@@ -45,8 +47,8 @@ const listVersion = (vs) => (vs.includes('featured-ai-v3') ? 'featured-ai-v3' : 
       home: { name: f.home, logo: await logo(f.hlogo, `teams-${f.hid}.png`) },
       away: { name: f.away, logo: await logo(f.alogo, `teams-${f.aid}.png`) },
       pick: isOU
-        ? { type: 'ou', side: p.selection.toLowerCase(), label, line: Number(p.line).toString(), odds: Number(p.odds_at_publish).toFixed(2), books }
-        : { type: 'team', side: p.selection.toLowerCase(), label, line: Number(p.line), odds: Number(p.odds_at_publish).toFixed(2), books },
+        ? { type: 'ou', side: p.selection.toLowerCase(), label: fan.label, fan, line_label: label, line: Number(p.line).toString(), odds: Number(p.odds_at_publish).toFixed(2), books }
+        : { type: 'team', side: p.selection.toLowerCase(), label: fan.label, fan, line_label: label, line: Number(p.line), odds: Number(p.odds_at_publish).toFixed(2), books },
       reason: p.reason,
     });
   }
@@ -58,7 +60,7 @@ const listVersion = (vs) => (vs.includes('featured-ai-v3') ? 'featured-ai-v3' : 
   console.log(`${date} (${version}) -> days/${date}/facts.json`);
   for (const m of out) {
     console.log(`\n[${m.key}] ${m.league} (importance ${m.league_importance}) · ${m.home.name} vs ${m.away.name} · ${m.kickoff_th} · ${m.fixture_status}`);
-    console.log(`  pick: ${m.pick.label} @ ${m.pick.odds} (${m.publish_round}, ${m.engine}${m.prediction_id !== m.featured_prediction_id ? `, newer than featured row ${m.featured_prediction_id}` : ''})`);
+    console.log(`  pick: ${m.pick.label} (site: ${m.pick.line_label} @ ${m.pick.odds}) (${m.publish_round}, ${m.engine}${m.prediction_id !== m.featured_prediction_id ? `, newer than featured row ${m.featured_prediction_id}` : ''})`);
     console.log('  ' + (m.reason || '').split('\n').slice(1).join('\n  '));
   }
 })().catch((e) => { console.error(e.message); process.exit(1); });

@@ -6,7 +6,7 @@ description: Make the day's เข็มทิศเกม "คู่น่า�
 # Daily spotlight video
 
 The owner's brief is `scripts/video/BRIEF.md` (read it once per session). One film per football day:
-**opening** (คู่น่าจับตาวันนี้, the date, every featured match grouped by league) → **one segment per match** (intro, analysis, pick reveal) in the opening's order → **brand outro** (เข็มทิศเกม อ่านเกมด้วยข้อมูลจริง). Length is free.
+**cover** (0–1 s, `cover.js`, `COVER` in `timeline.cjs`: a still thumbnail frame with the site logo, คู่น่าจับตาวันนี้, the date and every team's logo; inside clip c0, no voice; the c0 sheet's first still is the cover) → **opening** (คู่น่าจับตาวันนี้, the date, every featured match grouped by league) → **one segment per match** (intro, analysis, pick reveal) in the opening's order → **brand outro** (เข็มทิศเกม อ่านเกมด้วยข้อมูลจริง). Length is free.
 
 Everything is code in `scripts/video/` (HTML pages driven by a deterministic `window.seek(t)`, rendered frame by frame with Playwright + the system Edge, music and SFX synthesized in `audio.cjs`). Work files go to `scripts/video/days/<date>/` (gitignored).
 
@@ -29,10 +29,10 @@ Run from `scripts/video/` (first time on a machine: `npm install`; needs `ffmpeg
 - `matches[]` in the opening's order, each `{match:"m<rank>", head:"คู่ที่ N", segments:[intro, analysis, pick], subs:[[...],[...],[...]], stats}`:
   - intro: `คู่แรก! / คู่ที่สอง! / คู่ที่สาม! …` + the two teams (+ competition when it helps).
   - analysis: explain **why** the pick (owner, 2026-11-05): the two `✓` facts of that match's `reason`, then one closing line that ties them to the pick, taken from the reason's summary sentence (e.g. `จึงมีสัญญาณว่ามิลาน อาจชนะไม่ขาด`). Every number from `reason`; nothing invented.
-  - pick: `เข็มทิศเกมเลือก... <the pick spoken in Thai>!`. The subtitle has exactly two phrases: the lead-in, then the pick (the reveal and its pause are timed on the second phrase).
+  - pick: `เข็มทิศเกมเลือก... <team> <facts pick.fan.text spoken>!` (e.g. `เกตาเฟ่ ไม่แพ้เกินหนึ่งลูก!`, show `เกตาเฟ่ ไม่แพ้เกิน 1 ลูก!`; over/under: `รวมสามประตูขึ้นไป!`). The subtitle has exactly two phrases: the lead-in, then the pick (the reveal and its pause are timed on the second phrase). Its `show` must contain `pick.fan.text` verbatim.
 - `outro`: keep `เข็มทิศเกม อ่านเกมด้วยข้อมูลจริง`.
 - `subs[i]` = phrases `{say, show, hi}`: `say` is a verbatim, in-order piece of the voice segment (prepare.cjs rejects anything else); `show` is what is written on screen (same words, digits allowed: say `ชนะเจ็ด` → show `ชนะ 7`); `hi` = 1-2 words of `show` lit in gold. Keep a phrase to about 30 characters (2 lines at most).
-- Spell numbers out in Thai words in `segments` (`สองจุดเจ็ดห้า`, `บวกศูนย์จุดสองห้า`, `เส้นเสมอ` for AH 0). Short club names fans use are fine in voice (แมนยู); the screen shows the database names.
+- Spell numbers out in Thai words in `segments` (`สองจุดเจ็ดห้า` for an xG, `ไม่แพ้เกินหนึ่งลูก`). Short club names fans use are fine in voice (แมนยู); the screen shows the database names.
 - `stats` (the analysis card + pitch overlay; every number must be in `reason`):
   - `{kind:"reasons", title:"เหตุผลจากข้อมูล", rows:[{team?:"home"|"away", text, hi?, at}], tactic}`: the default since 2026-11-05. Up to 3 rows, one per reason as it is spoken; `team` shows that club's logo, no `team` = the closing line with a gold check. Keep `text` short (one line) and never name the pick in the title.
   - `{kind:"compare", rows:[{label, home, away, at, bar?, lowerBetter?}], tactic, defend?}`: a side-by-side table (form, table position, points).
@@ -44,7 +44,8 @@ Run from `scripts/video/` (first time on a machine: `npm install`; needs `ffmpeg
 ## Rules (from the brief and the project)
 
 - The pick, market, line and names come from `facts.json` unchanged. Never change the pick or invent a statistic, injury, lineup or player fact.
-- No odds in the film: the pick card shows the pick and its line only, never `ราคากลาง` or the price, and the voice never says it (owner, 2026-11-04).
+- No odds in the film: never `ราคากลาง` or the price, in the voice or on screen (owner, 2026-11-04).
+- No betting line either (owner, 2026-11-11, after TikTok removed the 2026-11-08 recap for "LAZIO +0.25" and "ทายถูกครึ่ง"): the pick is said and shown in football words from `facts.json` `pick.fan` (`lib.cjs` `fanPick`: +0.25 → ไม่แพ้, -1 → ชนะห่าง 2 ลูกขึ้นไป, over 2.5 → รวม 3 ประตูขึ้นไป). Never +0.25 / บวกศูนย์จุดสองห้า, เส้นเสมอ, O/U, over/under, แฮนดิแคป or ต่อรอง. `pick.line_label` holds the site's line for checks only. The `reason` text still carries the line (e.g. `เลือก AH เกตาเฟ่ +1.25`): never copy it. prepare.cjs (`bettingTalk`) rejects a script that does.
 - An AI pick has no model probability: never show or say a percentage for it.
 - A lean, never a certainty; the pick card carries "มุมมองจากข้อมูล ไม่ใช่ผลที่แน่นอน". No gambling words (ทีเด็ด, แทง, กำไร, ตามคู่นี้, การันตี, ชัวร์); prepare.cjs blocks the common ones.
 - Real logo files only (API-Football club/league logos, the site's `apps/web/public/brand` images). No emoji 🧭🔎📊.
