@@ -28,7 +28,7 @@ function check(where, segments, subs) {
 
 const clips = [];
 const o = spot.opening;
-const opening = { key: 'c0', type: 'opening', page: 'opening.html', date_th: o.date_th || facts.date_th, segments: [o.segment], subs: [o.subs], groups: o.groups.map((g) => ({ ...g, rows: g.rows.map((r) => { const m = byKey(r.match); return { ...r, home: m.home, away: m.away, kickoff: m.kickoff_th }; }) })) };
+const opening = { key: 'c0', type: 'opening', page: 'opening.html', date_th: o.date_th || facts.date_th, hook: o.hook, segments: [o.segment], subs: [o.subs], groups: o.groups.map((g) => ({ ...g, rows: g.rows.map((r) => { const m = byKey(r.match); return { ...r, home: m.home, away: m.away, kickoff: m.kickoff_th }; }) })) };
 check('opening', opening.segments, opening.subs);
 clips.push(opening);
 spot.matches.forEach((s, i) => {

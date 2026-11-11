@@ -156,6 +156,7 @@ canvas{position:absolute;left:0;top:0;pointer-events:none}
   <canvas id="grain" width="540" height="960" style="width:1080px;height:1920px"></canvas>
 </div>
 <div id="hud"></div>
+<script src="cover.js"></script>
 <script>
 // ---------- math ----------
 const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
@@ -173,7 +174,8 @@ const NS='http://www.w3.org/2000/svg';
 function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);parent.appendChild(e);return e;}
 
 // ---------- data ----------
-const TL=window.TL,F=TL.facts,T=TL.T,subs=TL.subs;
+// the film is a cover (0 -> C) then the story; scenes, subs and marks run on the story clock, TL.T is the whole film
+const TL=window.TL,F=TL.facts,C=TL.cover||0,TF=TL.T,T=TF-C,subs=TL.subs;
 const SC=TL.scenes,OPEN=SC[0],MS=SC.filter(s=>s.role==='match'),SUM=SC.find(s=>s.role==='summary'),CL=SC.find(s=>s.role==='closing');
 const S=F.summary;
 const good=st=>st==='WIN'||st==='HALF_WIN',bad=st=>st==='LOSS'||st==='HALF_LOSS';
@@ -238,6 +240,8 @@ const TILES=[
   {kind:'half',n:`${S.half_win}/${S.half_loss}`,lab:'ถูกครึ่ง / ผิดครึ่ง',sub:extra,col:'#e2e8f0',tc:'rgba(226,232,240,.35)',at:SUM.marks.loss+.4,sm:true}];
 $('tiles').innerHTML=TILES.map(x=>`<div class="tile" style="--tc:${x.tc}"><div class="ic">${icon(x.kind)}</div><div class="body"><div class="num" style="color:${x.col}">0</div><div class="lab">${x.lab}${x.sub?`<small>${x.sub}</small>`:''}</div></div></div>`).join('');
 const tileEls=[...document.querySelectorAll('.tile')];
+const cover=makeCover({C,title:'สรุปผลงานการทำนาย',dateHTML:`ประจำ<b>${esc(F.date_th)}</b>`,pairs:F.matches,before:$('vig')});
+
 
 // ---------- stadium ----------
 const fls=[],flg=[];
@@ -287,7 +291,8 @@ const beams=[['bm1',-60,-14],['bm2',240,10],['bm3',560,-8],['bm4',820,16]];
 const tr=(e,tf,op)=>{e.style.transform=tf;if(op!==undefined)e.style.opacity=op;};
 const rise=(e,k)=>{e.firstElementChild.style.transform=`translateY(${(1-clamp(k,0,1.2))*105}%)`;};
 
-window.seek=function(t){
+window.seek=function(tf){story(Math.max(0,tf-C));cover(tf);$('hud').textContent=tf.toFixed(2)+'s / '+TF.toFixed(2);};
+function story(t){
   // ----- camera: slow push, punches on impacts -----
   let punch=0;for(const [ti,a] of impacts)if(t>=ti)punch+=a*Math.exp(-(t-ti)*7);
   const push=1+.04*prog(t,0,MS[0].t0)+.02*Math.sin(t*.35)*.5;
@@ -412,10 +417,9 @@ window.seek=function(t){
 
   // ----- grain -----
   const r=mulberry(Math.floor(t*30)+11);const im=gr.createImageData(540,960);const d=im.data;for(let i=0;i<d.length;i+=4){const v=r()*255;d[i]=d[i+1]=d[i+2]=v;d[i+3]=255;}gr.putImageData(im,0,0);
-  $('hud').textContent=t.toFixed(2)+'s / '+T.toFixed(2);
-};
+}
 let playing=false,pt=0,last=0;
-function loop(ts){if(!playing)return;pt+=(ts-last)/1000;last=ts;if(pt>T){pt=T;playing=false;}window.seek(pt);requestAnimationFrame(loop);}
+function loop(ts){if(!playing)return;pt+=(ts-last)/1000;last=ts;if(pt>TF){pt=TF;playing=false;}window.seek(pt);requestAnimationFrame(loop);}
 addEventListener('keydown',e=>{if(window.RENDER)return;if(e.code==='Space'){playing=!playing;last=performance.now();requestAnimationFrame(loop);}if(e.code==='ArrowRight'){pt+=1/30;seek(pt)}if(e.code==='ArrowLeft'){pt-=1/30;seek(pt)}if(e.code==='KeyR'){pt=0;playing=true;last=performance.now();requestAnimationFrame(loop);}});
 Promise.all([document.fonts.ready,...[...document.images].map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r}))]).then(()=>{document.fonts.load('700 60px Plex','สรุป');document.fonts.load('900 60px Barlow','0123');return document.fonts.ready}).then(()=>{window.seek(0);window.ready=true;});
 </script>

@@ -7,9 +7,11 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const TEMPO = 1.15;          // VO speed-up (clear, a little faster than the raw take)
-const LEAD = [0.35, 0.12, 0.12, 0.18]; // silence before each segment starts on the film clock
+const HOLD = Number(process.env.PICK_HOLD || 0.85); // how long the pick stays on screen after its last word (before the cut or the outro)
+const LEAD = [0.35, 0.12, 0.12, 0.18 + (HOLD - 0.85)]; // silence before each segment starts on the film clock
 const TAIL = 0.6;            // hold after the last word of the outro
 const REVEAL_PAUSE = 0.28;    // extra beat of silence before the pick name
+const COVER = 1.0;           // the film opens on a still cover (cover.js) for this long, inside the opening clip c0
 const { dateArg, dayDir, readJson } = require('./lib.cjs');
 const date = dateArg();
 const dir = dayDir(date);
@@ -55,13 +57,20 @@ for (const m of clips.filter((x) => !want.length || want.includes(x.key))) {
     clock = end;
   }
   const exit = m.segments.length < 4; // clip that hands over to the next one (no brand outro)
-  const T = +(clock + (exit ? 0.85 : TAIL)).toFixed(3);
+  const T = +(clock + (exit ? HOLD : TAIL)).toFixed(3);
   // scene boundaries: each scene starts just before its segment's first word
   const scenes = segs.map((s, k) => (k === 0 ? 0 : +(s.start - 0.1).toFixed(3)));
   while (scenes.length < 4) scenes.push(+(T + 100).toFixed(3));
   const pickSub = subs.filter((s) => s.seg === 2)[1] || { t0: T + 100 };
   const out = { key, page: m.page || 'spot.html', type: m.type || 'match', exitAt: exit ? +(T - 0.45).toFixed(3) : null, T, fps: 30, frames: Math.round(T * 30), tempo: TEMPO, scenes, reveal: pickSub.t0, segs, subs, match: m };
+  // the opening clip starts the film with the cover (cover.js): segs, subs, scenes and exitAt stay on the story
+  // clock; T, frames and probe become film time (cover + story)
+  const C = m.type === 'opening' ? COVER : 0;
+  if (C) {
+    Object.assign(out, { cover: C, T: +(C + T).toFixed(3), frames: Math.round((C + T) * 30) });
+    out.probe = [0, ...subs.filter((_, i) => i % 2 === 0 || i === subs.length - 1).map((x) => +(Math.min(x.t1, T - 0.5) + C).toFixed(2))];
+  }
   fs.writeFileSync(path.join(odir, 'timeline.json'), JSON.stringify(out, null, 2));
-  console.log(key, 'T', T, 'scenes', scenes.join(' / '), 'reveal', pickSub.t0);
-  for (const s of subs) console.log('  ', s.t0.toFixed(2), s.t1.toFixed(2), s.show);
+  console.log(key, 'T', out.T, C ? `(cover ${C} + story ${T})` : '', 'scenes', scenes.map((s) => +(s + C).toFixed(3)).join(' / '), 'reveal', pickSub.t0);
+  for (const s of subs) console.log('  ', (s.t0 + C).toFixed(2), (s.t1 + C).toFixed(2), s.show);
 }

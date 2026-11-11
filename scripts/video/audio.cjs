@@ -81,6 +81,12 @@ function build(TL) {
     const groupAt = TL.match.groups.map((g) => g.at), rowAt = TL.match.groups.flatMap((g) => g.rows.map((x) => x.at));
     for (const i of [1, ...groupAt]) whoosh(sfx, TL.subs[i].t0 - 0.2, 0.45, 0.25, i % 2 ? -0.4 : 0.4);
     for (const i of rowAt) { whoosh(sfx, TL.subs[i].t0 - 0.15, 0.5, 0.35, i % 2 ? 0.5 : -0.5); kick(sfx, TL.subs[i].t0 + 0.2, 0.35); noiseHit(sfx, TL.subs[i].t0 + 0.2, 0.6, 4, 12000, 4000, 0.12); }
+    // a hook before the title (spot.opening.hook): a hit on the stat, a whoosh and a boom into the title
+    if (TL.match.hook) {
+      const h = TL.match.hook.phrases;
+      kick(sfx, TL.subs[1].t0 + 0.05, 0.45); noiseHit(sfx, TL.subs[1].t0 + 0.05, 0.7, 4, 12000, 4000, 0.14);
+      whoosh(sfx, TL.subs[h].t0 - 0.3, 0.5, 0.4, 0); boom(sfx, TL.subs[h].t0, 0.5);
+    }
   } else {
   // ---- intro: riser into the VS impact ----
   const DROP = 1.2;
@@ -155,7 +161,24 @@ function mixdown(DAY, dir, TL, mus, sfx, key = TL.key) {
   console.log(key, 'mix', mix, 'input_i', j.input_i);
 }
 
-module.exports = { SR, kit, mixdown, writeWav };
+/**
+ * A page with a cover (TL.cover s, see cover.js) builds its story sound on the story clock; this puts that sound
+ * behind the cover, which gets a low pad, a soft crowd, one bell and a whoosh into the story, and moves the voice
+ * after it. Returns { mus, sfx, TL } with TL.segs on film time, ready for mixdown. No cover -> unchanged.
+ */
+function withCover(TL, story, tail = 0.6) {
+  const C = TL.cover || 0;
+  if (!C) return { ...story, TL };
+  const K = kit(TL.T + tail), off = Math.round(C * SR);
+  for (const b of ['mus', 'sfx']) for (const ch of [0, 1]) K[b][ch].set(story[b][ch].subarray(0, K.N - off), off);
+  K.chord(K.mus, 0, C + 0.1, [57, 60, 64, 69], 0.45, 800); K.bassNote(K.mus, 0, C, 33, 0.25);
+  K.crowd(K.sfx, 0, C + 0.4, 0.04, (t) => Math.min(1, t / 0.2) * (t > C ? Math.max(0, 1 - (t - C) / 0.4) : 1));
+  K.bell(K.sfx, 0.02, 81, 0.35, 0);
+  K.whoosh(K.sfx, C - 0.3, 0.5, 0.35, 0);
+  return { mus: K.mus, sfx: K.sfx, TL: { ...TL, segs: TL.segs.map((s) => ({ ...s, at: s.at + C })) } };
+}
+
+module.exports = { SR, kit, mixdown, writeWav, withCover };
 
 if (require.main === module) {
   const { dateArg, dayDir } = require('./lib.cjs');
@@ -165,7 +188,8 @@ if (require.main === module) {
   for (const key of wantClips.length ? wantClips : allClips) {
     const dir = path.join(DAY, 'out', key);
     const TL = JSON.parse(fs.readFileSync(path.join(dir, 'timeline.json'), 'utf8'));
-    const { mus, sfx } = build(TL);
-    mixdown(DAY, dir, TL, mus, sfx, key);
+    const C = TL.cover || 0; // the opening clip can start with a cover: its sound is built on the story clock
+    const { mus, sfx, TL: TLf } = withCover(TL, build({ ...TL, T: TL.T - C }), TL.exitAt != null ? 0 : 0.8);
+    mixdown(DAY, dir, TLf, mus, sfx, key);
   }
 }

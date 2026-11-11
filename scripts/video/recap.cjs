@@ -9,7 +9,7 @@ const os = require('os');
 const { spawn, execFileSync, spawnSync } = require('child_process');
 const { dayDir, readJson, writeJson } = require('./lib.cjs');
 const { speak } = require('./tts.cjs');
-const { kit, mixdown } = require('./audio.cjs');
+const { kit, mixdown, withCover } = require('./audio.cjs');
 
 const date = process.argv.slice(2).find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
 const step = process.argv.slice(2).find((a) => ['stills', 'film', 'all'].includes(a)) || 'all';
@@ -24,6 +24,7 @@ const LEAD = { opening: 0.95, match: 0.45, summary: 0.55, closing: 0.6 }; // sil
 const RESULT_PAUSE = 0.32;          // beat of silence before the result word (ทายถูก / ทายผิด)
 const TAIL = 2.0;                   // logo hold after the last word
 const HOLD = 0.9;                   // the result stays on screen after the voice before the next card flips in
+const COVER = 1.0;                  // film 0 -> COVER s: a still cover (brand + every team's logo), the thumbnail frame; the story starts after it
 const TAGS = { opening: '[excited] ', match: '[excited] ', summary: '[confident] ', closing: '[confident] ' };
 const BANNED = ['ทีเด็ด', 'แทง', 'กำไร', 'ตามคู่นี้', 'การันตี', 'ชัวร์', 'แน่นอน', 'ได้เงิน', 'เสียเงิน'];
 // marks each segment must carry: a verbatim piece of its text whose first character times a visual event
@@ -113,23 +114,27 @@ function timeline({ facts, segs }) {
     scenes.push({ role: g.role, key: g.match ? g.match.key : g.role, t0: +(g.i === 0 ? 0 : clock + 0.05).toFixed(3), speech: +start.toFixed(3), end: +end.toFixed(3), marks, subs: [first0, subs.length] });
     clock = end + (g.role === 'match' ? HOLD : 0);
   }
-  const T = +(clock + TAIL).toFixed(3);
+  const T = +(clock + TAIL).toFixed(3); // story length; the film is COVER + T
   scenes.forEach((s, k) => { s.t1 = k + 1 < scenes.length ? scenes[k + 1].t0 : T; });
   const ms = scenes.filter((s) => s.role === 'match');
   const sum = scenes.find((s) => s.role === 'summary'), cl = scenes.find((s) => s.role === 'closing');
-  const probe = [scenes[0].marks.date + 0.9, ...ms.flatMap((s) => [s.marks.pick + 0.6, s.marks.result + 1.0]), sum.marks.rate + 1.4, cl.marks.line2 + 0.8, T - 0.3].map((t) => +Math.min(t, T - 0.05).toFixed(2));
-  const TL = { key: 'recap', page: 'recap.html', type: 'recap', T, fps: 30, frames: Math.round(T * 30), tempo: TEMPO, segs: out, subs, scenes, probe,
+  const probe = [-COVER, scenes[0].marks.date + 0.9, ...ms.flatMap((s) => [s.marks.pick + 0.6, s.marks.result + 1.0]), sum.marks.rate + 1.4, cl.marks.line2 + 0.8, T - 0.3].map((t) => +(Math.min(t, T - 0.05) + COVER).toFixed(2));
+  // segs, subs, scenes and marks run on the story clock; T, frames and probe are film time (cover + story)
+  const TL = { key: 'recap', page: 'recap.html', type: 'recap', T: +(COVER + T).toFixed(3), cover: COVER, fps: 30, frames: Math.round((COVER + T) * 30), tempo: TEMPO, segs: out, subs, scenes, probe,
     facts: { date: facts.date, date_th: facts.date_th, date_short: facts.date_short, summary: facts.summary, matches: segs.filter((g) => g.match).map((g) => ({ ...g.match, head: g.head })) } };
   writeJson(path.join(ODIR, 'timeline.json'), TL);
-  console.log('recap T', T, '·', scenes.map((s) => `${s.key} ${s.t0.toFixed(2)}`).join(' / '));
-  for (const s of subs) console.log('  ', s.t0.toFixed(2), s.t1.toFixed(2), s.onscreen ? '(on screen)' : '', s.show);
+  console.log('recap T', TL.T, `(cover ${COVER} + story ${T}) ·`, scenes.map((s) => `${s.key} ${(s.t0 + COVER).toFixed(2)}`).join(' / '));
+  for (const s of subs) console.log('  ', (s.t0 + COVER).toFixed(2), (s.t1 + COVER).toFixed(2), s.onscreen ? '(on screen)' : '', s.show);
   return TL;
 }
 
 // ---------- 4. sound ----------
 function sound(TL) {
-  const T = TL.T + 0.6;
+  return withCover(TL, storySound(TL, TL.T - (TL.cover || 0) + 0.6));
+}
+function storySound(TL, T) {
   const K = kit(T);
+// built on the story clock; withCover (audio.cjs) puts it behind the cover and moves the voice after it
   const { mus, sfx, kick, noiseHit, snare, bassNote, chord, riser, whoosh, boom, crowd, bell, groove, audioLogo, fadeTail, add } = K;
   const sc = TL.scenes, open = sc[0], ms = sc.filter((s) => s.role === 'match'), sum = sc.find((s) => s.role === 'summary'), cl = sc.find((s) => s.role === 'closing');
   const statusOf = (key) => TL.facts.matches.find((m) => m.key === key).status;
@@ -186,8 +191,8 @@ async function film(TL) {
   console.log(`rendered ${TL.frames} frames in ${n} chunks, ${((Date.now() - t0) / 60000).toFixed(1)} min`);
   const parts = fs.readdirSync(ODIR).filter((f) => /^part_\d+\.mp4$/.test(f)).sort();
   fs.writeFileSync(path.join(ODIR, 'parts.txt'), parts.map((f) => `file '${f}'`).join('\n') + '\n');
-  const { mus, sfx } = sound(TL);
-  mixdown(DAY, ODIR, TL, mus, sfx, 'recap');
+  const { mus, sfx, TL: TLf } = sound(TL);
+  mixdown(DAY, ODIR, TLf, mus, sfx, 'recap');
   fs.mkdirSync(path.join(DAY, 'final'), { recursive: true });
   const out = path.join(DAY, 'final', `${date}_recap.mp4`);
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', path.join(ODIR, 'parts.txt'), '-i', path.join(ODIR, 'mix.wav'), '-map', '0:v', '-map', '1:a',
