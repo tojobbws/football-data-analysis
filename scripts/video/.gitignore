@@ -4,3 +4,4 @@ package-lock.json
 days/
 # third-party club / league logos, downloaded by fetch.cjs
 assets/logos/
+insights/
