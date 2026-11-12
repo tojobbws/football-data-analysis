@@ -172,6 +172,29 @@ describe('admin RLS', () => {
     expect(v.sides['all:featured-ai-v3']).toMatchObject({ picks: 1, settled: 1, fair_hit: 1 }); // 916 (AFCON qualifier) left out
   });
 
+  it('featured-ai-v4 (ADR 0018): visitors read its list; its comparison group leaves Copa del Rey out', async () => {
+    // kick-offs 6 hours ago, later than the ai-v3 matches above, so the ai-v4 period holds only these two
+    await db.exec(`
+      insert into leagues (id, name) values (143, 'Copa del Rey') on conflict do nothing;
+      insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short)
+        values (917, 5, 2026, now() + interval '1 day', 1, 2, 'NS'), (918, 143, 2026, now() + interval '1 day', 2, 1, 'NS');
+      insert into analysis_predictions (fixture_id, publish_round, kind, market, selection, line, market_probability, signal_strength, decision_rule_version) values
+        (917, 'DAILY', 'SIGNAL', 'ASIAN_HANDICAP', 'HOME', -0.5, 0.50, 'MEDIUM', 'hybrid-ai-v1'),
+        (918, 'DAILY', 'SIGNAL', 'ASIAN_HANDICAP', 'AWAY', 0.5, 0.50, 'MEDIUM', 'hybrid-ai-v1');
+      update fixtures set kickoff_at = now() - interval '6 hours', status_short = 'FT', ft_home = 2, ft_away = 0 where id in (917, 918);
+      update analysis_predictions set status = 'WIN', clv = 0.02 where fixture_id = 917;
+      update analysis_predictions set status = 'LOSS', clv = -0.02 where fixture_id = 918;
+      insert into featured_selections (football_date, version, fixture_id, league_id, phase, rank, prediction_id, locked_at)
+        select '2026-11-13', 'featured-ai-v4', p.fixture_id, 5, 'CONFIRMED', 1, p.id, now() from analysis_predictions p where p.fixture_id = 917;
+    `);
+    const seen = await as('anon', null, (q) => q(`select fixture_id, rank from featured_selections where version = 'featured-ai-v4'`));
+    expect(seen.map((r) => [Number(r.fixture_id), Number(r.rank)])).toEqual([[917, 1]]);
+    const [r] = await as('authenticated', ADMIN, (q) => q('select fp_admin_review() as r'));
+    const v = r!.r as { sides: Record<string, { picks: number; settled: number; fair_hit: number }> };
+    expect(v.sides['featured-ai-v4']).toMatchObject({ picks: 1, settled: 1, fair_hit: 1 });
+    expect(v.sides['all:featured-ai-v4']).toMatchObject({ picks: 1, settled: 1, fair_hit: 1 }); // 918 (Copa del Rey) left out
+  });
+
   it('benchmark scores the last pre-kickoff forecasts of both sides on the same matches', async () => {
     // fixture 1 (home win), fixture 2 (draw) — fixtures from the coverage test
     await db.exec(`

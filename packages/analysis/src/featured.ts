@@ -36,6 +36,8 @@ export interface FeaturedConfig {
    * ONCE: the list of a pick day is chosen once, after the daily pick run, and confirmed at once (ai-v2, ADR 0014).
    */
   choose?: 'HOURLY' | 'ONCE';
+  /** AI pool: how many of the Hybrid AI's three answers gave the pick (3 of 3 before 2 of 3) comes first in the order (featured-ai-v4, ADR 0018) */
+  rankByAgreement?: boolean;
 }
 
 /** The AI's confidence in the evidence, as stored on its published pick (STRONG = HIGH, MEDIUM, LEAN = LOW). */
@@ -102,9 +104,23 @@ export const FEATURED_AI_V3: FeaturedConfig = {
   leagueCaps: { 5: 5 },
 };
 
+/**
+ * ADR 0018: ai-v3 ordered first by how many of the AI's three answers gave the pick (3 of 3, then 2 of 3), then the
+ * ai-v1 order. No cap per league: the day's cap of 5 is the only one. Leagues in scope and the MEDIUM floor stay those
+ * of ai-v3. A new version, so its count starts again.
+ */
+export const FEATURED_AI_V4: FeaturedConfig = {
+  ...FEATURED_AI_V3,
+  version: 'featured-ai-v4',
+  // as many as the day holds: no league is capped below the day's 5
+  maxPerLeague: FEATURED_AI_V3.maxPerDay,
+  leagueCaps: {},
+  rankByAgreement: true,
+};
+
 /** Every version by name, for the report and the job that chooses a pick day's list. */
 export const FEATURED_CONFIGS: Readonly<Record<string, FeaturedConfig>> = Object.fromEntries(
-  [FEATURED_V1, FEATURED_V2, FEATURED_AI_V1, FEATURED_AI_V2, FEATURED_AI_V3].map((c) => [c.version, c]),
+  [FEATURED_V1, FEATURED_V2, FEATURED_AI_V1, FEATURED_AI_V2, FEATURED_AI_V3, FEATURED_AI_V4].map((c) => [c.version, c]),
 );
 
 /** The current pick of a match not locked yet. */
@@ -122,6 +138,8 @@ export interface FeaturedCandidate {
   aiConfidence?: AiConfidence | null;
   /** pool AI only: items the decision lists as missing data; fewer is better */
   dataGaps?: number;
+  /** pool AI only: how many of the AI's three answers gave this pick (null before prompt v1.6, which asked once) */
+  voteAgree?: number | null;
   /** the pick's market passes the league's tuning gate */
   gateEnabled: boolean;
   market?: string;
@@ -140,11 +158,15 @@ function rankScore(c: FeaturedCandidate, cfg: FeaturedConfig): number {
   return cfg.rankBy === 'BLENDED' ? (blendedProbability(c, cfg.modelWeight) ?? -1) : (c.supportScore ?? -1);
 }
 
-/** Pool AI order (ADR 0012): the AI's confidence, then on a tie priority leagues, fewer data gaps, earlier kick-off, fixture id. */
+/**
+ * Pool AI order (ADR 0012): the AI's confidence, then on a tie priority leagues, fewer data gaps, earlier kick-off, fixture id.
+ * featured-ai-v4 (ADR 0018) puts the agreement of the three answers first: 3 of 3 before 2 of 3 (unknown counts as none).
+ */
 function compareAi(a: FeaturedCandidate, b: FeaturedCandidate, cfg: FeaturedConfig): number {
+  const agree = (c: FeaturedCandidate) => (cfg.rankByAgreement ? -(c.voteAgree ?? 0) : 0);
   const conf = (c: FeaturedCandidate) => (c.aiConfidence === 'HIGH' ? 0 : 1);
   const pri = (c: FeaturedCandidate) => (cfg.priorityLeagues.includes(c.leagueId) ? 0 : 1);
-  return conf(a) - conf(b) || pri(a) - pri(b) || (a.dataGaps ?? 0) - (b.dataGaps ?? 0) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId;
+  return agree(a) - agree(b) || conf(a) - conf(b) || pri(a) - pri(b) || (a.dataGaps ?? 0) - (b.dataGaps ?? 0) || a.kickoffAt.getTime() - b.kickoffAt.getTime() || a.fixtureId - b.fixtureId;
 }
 
 export interface LockedSlot {

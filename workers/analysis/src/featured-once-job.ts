@@ -1,6 +1,6 @@
 /**
  * The featured list of a pick day, chosen once (featured-ai-v2, docs/adr/0014-one-daily-pick-run.md; featured-ai-v3
- * from docs/adr/0015-featured-ai-v3-nations-league.md). A pick day has one list: a day another chosen-once version
+ * from docs/adr/0015-featured-ai-v3-nations-league.md, featured-ai-v4 from docs/adr/0018-featured-ai-v4-agreement.md). A pick day has one list: a day another chosen-once version
  * already listed (the switch day) gets none from this one.
  *
  * Runs hourly after `model:publish`. For the current pick day (14:00 → 14:00 Thai) without a list yet, between
@@ -9,7 +9,7 @@
  * statement: listed matches CONFIRMED with their rank, every other published match SKIPPED. It never changes after.
  * A day with no qualifying pick has no list (no rows) and is looked at again until LIST_LATEST_HOUR.
  */
-import { DAILY_MIN_MINUTES, FEATURED_AI_V3, FEATURED_CONFIGS, reserveFeatured, type FeaturedCandidate, type FeaturedConfig } from '@fp/analysis';
+import { DAILY_MIN_MINUTES, FEATURED_AI_V4, FEATURED_CONFIGS, reserveFeatured, type FeaturedCandidate, type FeaturedConfig } from '@fp/analysis';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours, PICK_RUN_CUTOFF_HOUR, PICK_RUN_HOUR, pickDay } from '@fp/shared';
 
@@ -24,7 +24,7 @@ export interface FeaturedOnceOptions {
 const confidenceOf = (s: string | null) => (s === 'STRONG' ? 'HIGH' : s === 'MEDIUM' ? 'MEDIUM' : s === 'LEAN' ? 'LOW' : null);
 
 export function featuredOnceJob(ctx: JobContext, opts: FeaturedOnceOptions = {}) {
-  const cfg = opts.config ?? FEATURED_AI_V3;
+  const cfg = opts.config ?? FEATURED_AI_V4;
   const leagues = ctx.env.TRACKED_LEAGUES;
   const onceVersions = Object.values(FEATURED_CONFIGS).filter((c) => c.choose === 'ONCE').map((c) => c.version);
   if (!onceVersions.includes(cfg.version)) onceVersions.push(cfg.version);
@@ -52,7 +52,7 @@ export function featuredOnceJob(ctx: JobContext, opts: FeaturedOnceOptions = {})
     const ahead = [...published.values()].filter((m) => m.kickoffAt > now);
     const candidates: FeaturedCandidate[] = ahead
       .filter((m) => m.kind === 'SIGNAL')
-      .map((m) => ({ predictionId: m.predictionId!, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: null, distribution: null, gateEnabled: true, market: m.market ?? undefined, marketProbability: m.marketProbability, engine: m.engine, aiConfidence: confidenceOf(m.signalStrength), dataGaps: m.dataGaps ?? 0 }));
+      .map((m) => ({ predictionId: m.predictionId!, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: null, distribution: null, gateEnabled: true, market: m.market ?? undefined, marketProbability: m.marketProbability, engine: m.engine, aiConfidence: confidenceOf(m.signalStrength), dataGaps: m.dataGaps ?? 0, voteAgree: m.voteAgree }));
     const listed = reserveFeatured(candidates, [], cfg);
     if (!listed.length) {
       ctx.log.info('featured: no qualifying pick, the day has no list', { date: day.date, version: cfg.version });

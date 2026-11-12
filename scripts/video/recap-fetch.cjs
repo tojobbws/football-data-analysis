@@ -6,10 +6,10 @@ const path = require('path');
 const { Client } = require('pg');
 const { dayDir, readJson, writeJson, currentFootballDay, MONTHS, MONTHS_FULL, kickoffTh, logo, fanPick, RESULT_WORD } = require('./lib.cjs');
 
-const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-ai-v3'];
-// featured-ai-v2 (ADR 0014) and ai-v3 (ADR 0015): a pick day's list (14:00 -> 14:00 Thai), dated by the pick day; it wins on
-// the switch day. A pick day has a list from one of the two only.
-const listVersion = (vs) => (vs.includes('featured-ai-v3') ? 'featured-ai-v3' : vs.includes('featured-ai-v2') ? 'featured-ai-v2' : vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
+const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-ai-v3', 'featured-ai-v4'];
+// featured-ai-v2 (ADR 0014), ai-v3 (ADR 0015) and ai-v4 (ADR 0018): a pick day's list (14:00 -> 14:00 Thai), dated by the pick day; it wins on
+// the switch day. A pick day has a list from one of them only.
+const listVersion = (vs) => (vs.includes('featured-ai-v4') ? 'featured-ai-v4' : vs.includes('featured-ai-v3') ? 'featured-ai-v3' : vs.includes('featured-ai-v2') ? 'featured-ai-v2' : vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
 const FINISHED = ['FT', 'AET', 'PEN'];
 // result word in the film: a half result reads as the whole one (lib.cjs RESULT_WORD; owner 2026-11-11, after TikTok
 // removed a recap that said ทายถูกครึ่ง). The rate still counts a half result as half, like /performance.

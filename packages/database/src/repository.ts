@@ -1734,7 +1734,7 @@ export class Repository {
   async featuredDayMatches(leagueIds: number[], from: string, to: string) {
     const res = await this.db.query<Record<string, unknown>>(
       `select f.id as fixture_id, f.league_id, f.kickoff_at, p.id as prediction_id, p.publish_round, p.kind, p.model_distribution, p.market, p.model_probability, p.market_probability, c.support_score,
-              p.decision_rule_version, p.signal_strength, h.data_gaps
+              p.decision_rule_version, p.signal_strength, h.data_gaps, h.vote_agree
          from fixtures f
          left join lateral (
            select id, publish_round, kind, model_distribution, candidate_id, market, model_probability, market_probability, decision_rule_version, signal_strength, published_at from analysis_predictions
@@ -1742,7 +1742,10 @@ export class Repository {
          ) p on true
          left join analysis_candidates c on c.id = p.candidate_id
          left join lateral (
-           select coalesce(jsonb_array_length(input->'data_quality'->'missing'), 0) as data_gaps from hybrid_decisions
+           select coalesce(jsonb_array_length(input->'data_quality'->'missing'), 0) as data_gaps,
+                  -- how many of the three answers gave the decision's side (ADR 0013); null before v1.6
+                  case when votes is null then null else (select count(*) from jsonb_array_elements(votes) v where v->>'side' = hybrid_decisions.side) end as vote_agree
+             from hybrid_decisions
             where fixture_id = f.id and publish_round = p.publish_round and engine_version = p.decision_rule_version and status = 'OK' and decided_at <= p.published_at
             order by decided_at desc, id desc limit 1
          ) h on p.decision_rule_version like 'hybrid-%'
@@ -1765,6 +1768,7 @@ export class Repository {
       engine: r.decision_rule_version == null ? null : String(r.decision_rule_version),
       signalStrength: r.signal_strength == null ? null : String(r.signal_strength),
       dataGaps: r.data_gaps == null ? null : Number(r.data_gaps),
+      voteAgree: r.vote_agree == null ? null : Number(r.vote_agree),
     }));
   }
 

@@ -56,7 +56,7 @@ export const envSchema = z.object({
   /**
    * When picks are made (docs/adr/0014-one-daily-pick-run.md):
    *  rounds - hourly EARLY / PREMATCH / LINEUP rounds and the featured-ai-v1 list (before ADR 0014)
-   *  daily  - one final DAILY round at the 14:00 Thai run (retried until 16:00) and the pick day's featured list (featured-ai-v3 since ADR 0015)
+   *  daily  - one final DAILY round at the 14:00 Thai run (retried until 16:00) and the pick day's featured list (featured-ai-v4 since ADR 0018)
    * Set per run (GitHub Actions variable PICK_SCHEDULE); unset = rounds.
    */
   PICK_SCHEDULE: z

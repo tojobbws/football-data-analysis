@@ -61,7 +61,7 @@ export function featuredJob(ctx: JobContext, opts: FeaturedOptions = {}) {
         // A match that kicked off without ever holding a slot is not offered: nothing is chosen after the whistle.
         if (m.engine !== 'hybrid-ai-v1') return null;
         if (!(m.round === 'LINEUP' || m.kickoffAt > now || row.get(m.fixtureId)?.rank != null)) return null;
-        return { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: null, distribution: null, gateEnabled: true, market: m.market ?? undefined, marketProbability: m.marketProbability, engine: m.engine, aiConfidence: confidenceOf(m.signalStrength), dataGaps: m.dataGaps ?? 0 };
+        return { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: null, distribution: null, gateEnabled: true, market: m.market ?? undefined, marketProbability: m.marketProbability, engine: m.engine, aiConfidence: confidenceOf(m.signalStrength), dataGaps: m.dataGaps ?? 0, voteAgree: m.voteAgree };
       }
       if (!m.distribution || m.supportScore == null || !(m.round === 'LINEUP' || m.kickoffAt > now)) return null;
       return { predictionId: m.predictionId, fixtureId: m.fixtureId, leagueId: m.leagueId, kickoffAt: m.kickoffAt, supportScore: m.supportScore, distribution: m.distribution, gateEnabled: true, market: m.market ?? undefined, modelProbability: m.modelProbability, marketProbability: m.marketProbability };

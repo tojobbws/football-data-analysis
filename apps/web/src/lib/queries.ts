@@ -1085,9 +1085,9 @@ export async function featuredRanks(date: string): Promise<Map<number, number>> 
 /**
  * The lists the site reads (ADR 0012). Before ADR 0014 a football day's list is the newest version that has slots for
  * that day; from featured-ai-v2 on, each pick day (14:00 → 14:00 Thai) has its own list, dated by the pick day, from
- * one version only (featured-ai-v3 takes over from the first pick day ai-v2 has not listed, ADR 0015).
+ * one version only (featured-ai-v3 takes over from the first pick day ai-v2 has not listed, ADR 0015; ai-v4 likewise, ADR 0018).
  */
-const PICK_DAY_LISTS = ['featured-ai-v2', 'featured-ai-v3'];
+const PICK_DAY_LISTS = ['featured-ai-v2', 'featured-ai-v3', 'featured-ai-v4'];
 const FEATURED_VERSIONS = ['featured-v2', 'featured-ai-v1', ...PICK_DAY_LISTS];
 const isPickDayList = (version: unknown) => PICK_DAY_LISTS.includes(String(version));
 const listVersion = (versions: string[]) => (versions.includes('featured-ai-v1') ? 'featured-ai-v1' : versions.includes('featured-v2') ? 'featured-v2' : null);

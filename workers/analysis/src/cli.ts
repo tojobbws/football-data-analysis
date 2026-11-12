@@ -8,7 +8,7 @@ import { matchReport } from './report-job.js';
 import { settleJob } from './settle-job.js';
 import { closingJob } from './closing-job.js';
 import { shadowReport } from './shadow-report-job.js';
-import { FEATURED_AI_V1, FEATURED_AI_V3, FEATURED_V2 } from '@fp/analysis';
+import { FEATURED_AI_V1, FEATURED_AI_V4, FEATURED_V2 } from '@fp/analysis';
 import { featuredJob } from './featured-job.js';
 import { featuredOnceJob } from './featured-once-job.js';
 import { featuredReport } from './featured-report-job.js';
@@ -81,12 +81,13 @@ async function main() {
       if (ctx.env.PICK_SCHEDULE === 'daily') {
         // ADR 0014: the pick day's list is chosen once; ai-v1 takes no new match and only locks the rows it holds.
         // ADR 0015: ai-v3 (with the Nations League) replaces ai-v2 from the first pick day ai-v2 has not listed.
+        // ADR 0018: ai-v4 (3 of 3 answers first, no cap per league) replaces ai-v3 the same way.
         await featuredJob(ctx, { config: FEATURED_AI_V1, freeze: true });
-        await featuredOnceJob(ctx, { config: FEATURED_AI_V3 });
+        await featuredOnceJob(ctx, { config: FEATURED_AI_V4 });
       } else await featuredJob(ctx, { config: FEATURED_AI_V1 });
     }
     else if (job === 'featured-report') {
-      for (const version of ['featured-v1', 'featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-ai-v3']) {
+      for (const version of ['featured-v1', 'featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-ai-v3', 'featured-ai-v4']) {
       const r = await featuredReport(ctx, { version });
       const pct = (x: number | null) => (x === null ? '-' : `${(x * 100).toFixed(1)}%`);
       console.log(`featured list ${r.version} since ${r.since.toISOString().slice(0, 10)} — verdict: ${r.verdict} (needs ${r.trial.minPicks}, extends to ${r.trial.extendTo}; ADR 0003 must also have a verdict)`);

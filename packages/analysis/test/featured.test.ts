@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FEATURED_AI_V1, FEATURED_AI_V2, FEATURED_AI_V3, FEATURED_V1, FEATURED_V2, blendedProbability, featuredVerdict, isFeaturedEligible, trialSide, type TrialPick, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
+import { FEATURED_AI_V1, FEATURED_AI_V2, FEATURED_AI_V3, FEATURED_AI_V4, FEATURED_V1, FEATURED_V2, blendedProbability, featuredVerdict, isFeaturedEligible, trialSide, type TrialPick, lockFeatured, reserveFeatured, type FeaturedCandidate } from '../src/index.js';
 
 const at = (h: number) => new Date(Date.UTC(2026, 9, 17, h));
 const pick = (fixtureId: number, leagueId: number, supportScore: number, over: Partial<FeaturedCandidate> = {}): FeaturedCandidate => ({
@@ -136,6 +136,31 @@ describe('featured-ai-v3 (ADR 0015)', () => {
 
   it('keeps the ai-v1 order: the big five before the Nations League on equal confidence', () => {
     expect(ids(reserveFeatured([ai(1, 5, { dataGaps: 0 }), ai(2, 39, { dataGaps: 3 })], [], FEATURED_AI_V3))).toEqual([2, 1]);
+  });
+});
+
+describe('featured-ai-v4 (ADR 0018)', () => {
+  const ai = (fixtureId: number, leagueId: number, over: Partial<FeaturedCandidate> = {}): FeaturedCandidate =>
+    pick(fixtureId, leagueId, 0, { supportScore: null, distribution: null, engine: 'hybrid-ai-v1', aiConfidence: 'MEDIUM', dataGaps: 2, market: 'ASIAN_HANDICAP', voteAgree: 2, ...over });
+
+  it('3 of 3 answers before 2 of 3, ahead of the big five, fewer gaps and kick-off; unknown agreement last', () => {
+    // 1: big five, no gaps, 2 of 3. 2: Nations League, more gaps, 3 of 3. 3: before v1.6 (one answer)
+    const list = reserveFeatured([ai(1, 39, { dataGaps: 0 }), ai(2, 5, { dataGaps: 4, voteAgree: 3 }), ai(3, 39, { voteAgree: null })], [], FEATURED_AI_V4);
+    expect(ids(list)).toEqual([2, 1, 3]);
+    // ai-v3 ignores the agreement
+    expect(ids(reserveFeatured([ai(1, 39, { dataGaps: 0 }), ai(2, 5, { dataGaps: 4, voteAgree: 3 })], [], FEATURED_AI_V3))).toEqual([1, 2]);
+  });
+
+  it('no cap per league: one league may fill the day, still at most 5', () => {
+    const pl = [1, 2, 3, 4, 5, 6].map((i) => ai(i, 39, { voteAgree: 3 }));
+    expect(ids(reserveFeatured(pl, [], FEATURED_AI_V4))).toEqual([1, 2, 3, 4, 5]);
+    expect(ids(reserveFeatured(pl, [], FEATURED_AI_V3))).toEqual([1, 2]);
+  });
+
+  it('keeps the ai-v3 scope: LOW confidence, Thai League 1 and the other national-team competitions stay out', () => {
+    expect(isFeaturedEligible(ai(1, 5, { voteAgree: 3 }), FEATURED_AI_V4)).toBe(true);
+    expect(isFeaturedEligible(ai(1, 39, { aiConfidence: 'LOW', voteAgree: 3 }), FEATURED_AI_V4)).toBe(false);
+    for (const league of [536, 36, 7, 296, 1129, 143]) expect(isFeaturedEligible(ai(1, league, { voteAgree: 3 }), FEATURED_AI_V4)).toBe(false);
   });
 });
 
