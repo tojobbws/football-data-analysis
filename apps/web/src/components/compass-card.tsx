@@ -25,10 +25,57 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
   const line = c.line == null ? null : Number(c.line);
   const label = selectionLabel(c.market!, c.selection!, line, home, away);
   const sel = toSelection(c.market, c.selection, line);
+  // a Hybrid AI pick has no pick note (ADR 0010): its own one-sentence reason stands in
+  const aiNote = c.note_th ? null : hybridSummaryFromReason(c.reason);
+
+  return (
+    <Card id={id} title="เข็มทิศเกม" description={`${ROUND[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้`} action={<CompassBadge c={c} live={live} />} tone="pick">
+      <ChangedFrom c={c} changedFrom={changedFrom} home={home} away={away} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="compass">{MARKET_TH[c.market!] ?? c.market}</Badge>
+      </div>
+      <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-zinc-950">{label}</p>
+      {/* the note (pick_th) says the same direction as the rationale, with the facts behind it */}
+      {c.note_th || aiNote ? (
+        <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{c.note_th ?? aiNote}</p>
+      ) : sel ? (
+        <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{pickRationale(sel, home, away)}</p>
+      ) : null}
+      <CompassConditions c={c} home={home} away={away} />
+    </Card>
+  );
+}
+
+/** an unsettled pick is described by where the match stands; settled picks show their result */
+export function CompassBadge({ c, live }: { c: Compass; live: LiveSeed }) {
+  return c.status !== 'PENDING' ? <StatusPill status={c.status} /> : <LivePhaseBadge seed={live} />;
+}
+
+function ChangedFrom({ c, changedFrom, home, away }: { c: Compass; changedFrom?: Compass | null; home: string; away: string }) {
+  if (!changedFrom) return null;
+  return (
+    <p className="-mt-1 mb-3 text-xs text-zinc-500">
+      อัปเดต{ROUND[c.publish_round] ?? c.publish_round} ·{' '}
+      <a href="#earlier-picks" className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-800">
+        รอบก่อนหน้า ({ROUND[changedFrom.publish_round] ?? changedFrom.publish_round}) ชี้ {selectionLabel(changedFrom.market!, changedFrom.selection!, changedFrom.line == null ? null : Number(changedFrom.line), home, away)}
+      </a>
+    </p>
+  );
+}
+
+/**
+ * Everything under the pick's label and note: what has to happen for each outcome (with the model's
+ * chance), the reasons, the result once settled, and the technical figures behind "รายละเอียดเพิ่มเติม".
+ * `inline`: folded open under the write-up's own เข็มทิศเกม block, so the market, round and lock lines
+ * the card carries in its header come first here.
+ */
+export function CompassConditions({ c, home, away, inline = false, changedFrom }: { c: Compass; home: string; away: string; inline?: boolean; changedFrom?: Compass | null }) {
+  const line = c.line == null ? null : Number(c.line);
+  const sel = toSelection(c.market, c.selection, line);
   const rows = sel ? winCondition(sel, home, away) : [];
   const dist = c.model_distribution;
 
-  // a Hybrid AI pick has no pick note (ADR 0010): its own one-sentence reason stands in, and is not repeated in the list below
+  // the AI's one-sentence reason already stands as the note above: not repeated in the list
   const aiNote = c.note_th ? null : hybridSummaryFromReason(c.reason);
   // the stored reason is hashed and can't change: only how it is shown can
   const reasons = (c.reason ?? '')
@@ -40,9 +87,6 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
   const isTechnical = (l: string) => TECHNICAL.some((p) => l.startsWith(p));
   const edge = c.model_probability != null && c.market_probability != null ? Math.round((Number(c.model_probability) - Number(c.market_probability)) * 1000) / 10 : null;
 
-  // an unsettled pick is described by where the match stands; settled picks show their result
-  const badge = c.status !== 'PENDING' ? <StatusPill status={c.status} /> : <LivePhaseBadge seed={live} />;
-
   // model_probability leaves pushes out and counts half outcomes as half: say so when it matters
   const qualifiers = [
     rows.some((r) => r.outcome === 'PUSH') ? 'ไม่นับกรณีเสมอตัว' : null,
@@ -50,26 +94,15 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
   ].filter(Boolean);
 
   return (
-    <Card id={id} title="เข็มทิศเกม" description={`${ROUND[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้`} action={badge} tone="pick">
-      {changedFrom ? (
-        <p className="-mt-1 mb-3 text-xs text-zinc-500">
-          อัปเดต{ROUND[c.publish_round] ?? c.publish_round} ·{' '}
-          <a href="#earlier-picks" className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-800">
-            รอบก่อนหน้า ({ROUND[changedFrom.publish_round] ?? changedFrom.publish_round}) ชี้ {selectionLabel(changedFrom.market!, changedFrom.selection!, changedFrom.line == null ? null : Number(changedFrom.line), home, away)}
-          </a>
-        </p>
+    <>
+      {inline ? (
+        <>
+          <p className="text-xs text-zinc-500">
+            {MARKET_TH[c.market!] ?? c.market} · {ROUND[c.publish_round] ?? c.publish_round} · ล็อกก่อนเตะ แก้ไขไม่ได้
+          </p>
+          <ChangedFrom c={c} changedFrom={changedFrom} home={home} away={away} />
+        </>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="compass">{MARKET_TH[c.market!] ?? c.market}</Badge>
-      </div>
-      <p className="mt-2 text-[28px] font-semibold leading-tight tracking-tight text-zinc-950">{label}</p>
-      {/* the note (pick_th) says the same direction as the rationale, with the facts behind it */}
-      {c.note_th || aiNote ? (
-        <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{c.note_th ?? aiNote}</p>
-      ) : sel ? (
-        <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{pickRationale(sel, home, away)}</p>
-      ) : null}
-
       {rows.length ? (
         <div className="mt-4">
           <table className="w-full text-sm">
@@ -141,7 +174,7 @@ export function CompassCard({ c, home, away, live, id, changedFrom }: { c: Compa
           </div>
         </div>
       </details>
-    </Card>
+    </>
   );
 }
 

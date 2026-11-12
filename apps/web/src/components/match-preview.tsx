@@ -49,6 +49,17 @@ export function withPickScore(p: MatchPreview, pick?: { sel: MarketSelection } |
   return s ? { ...p, predicted_home: s.home, predicted_away: s.away, predicted_p: s.p, pickScore: true } : p;
 }
 
+/**
+ * The Game Compass as the write-up shows it. `badge` is its live phase or settled result; `details` (the win
+ * conditions, chances and reasons) opens under "ดูเงื่อนไข…" so the page carries one compass block, not a second card.
+ */
+export interface PreviewPick {
+  label: string;
+  sel: MarketSelection;
+  badge?: ReactNode;
+  details?: ReactNode;
+}
+
 export function MatchPreviewCard({
   p: stored,
   home,
@@ -69,7 +80,7 @@ export function MatchPreviewCard({
   away: string;
   result?: { home: number; away: number } | null;
   modelTested: boolean;
-  pick?: { label: string; sel: MarketSelection } | null;
+  pick?: PreviewPick | null;
   /** the pick's stored one-line note, shown under its label at the end of the write-up */
   pickNote?: string | null;
   overInOutlook?: boolean;
@@ -110,6 +121,7 @@ export function MatchPreviewCard({
           <p className="max-w-prose text-[15px] leading-7 text-zinc-800">{p.overview_th}</p>
           <TeamTexts p={p} home={home} away={away} className="mt-5 border-t border-zinc-100 pt-4" />
           <div className="mt-5 border-t border-zinc-100 pt-4">{numbers}</div>
+          {pick ? <div className="mt-5"><PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} /></div> : null}
         </>
       )}
 
@@ -143,7 +155,7 @@ const CONFIDENCE: Record<NonNullable<MatchPreview['confidence']>, { label: strin
  * preview-v1.1 keeps this frame in the order of a Thai press preview: a headline, each side in turn
  * with its form chips, the team news, the analysis, the score, then a list of facts read off the data.
  */
-function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: { label: string; sel: MarketSelection } | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null }) {
+function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null }) {
   const mainAway = p.main_side === 'AWAY';
   const main = { name: mainAway ? away : home, logo: mainAway ? logos?.away : logos?.home, form: (mainAway ? teams?.away : teams?.home)?.form ?? [] };
   const opp = { name: mainAway ? home : away, logo: mainAway ? logos?.home : logos?.away, form: (mainAway ? teams?.home : teams?.away)?.form ?? [] };
@@ -299,17 +311,31 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
         </dl>
       </section>
 
-      {pick ? (
-        <section aria-labelledby="pv-pick" className="border-t border-zinc-100 pt-4">
-          <SectionTitle id="pv-pick">เข็มทิศเกม</SectionTitle>
-          <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{pick.label}</p>
-          {pickNote ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{pickNote}</p> : null}
-          <a href="#pick" className="mt-1.5 inline-block text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950">
-            ดูเงื่อนไขและโอกาสของเข็มทิศเกม
-          </a>
-        </section>
-      ) : null}
+      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} /> : null}
     </div>
+  );
+}
+
+/** The pick at the end of the write-up (id="pick" for the page's section nav); its conditions fold open in place. */
+function PickSection({ label, note, badge, details, title = 'เข็มทิศเกม', summary = 'ดูเงื่อนไขและโอกาสของเข็มทิศเกม' }: { label: string; note?: string | null; badge?: ReactNode; details?: ReactNode; title?: string; summary?: string }) {
+  return (
+    <section id="pick" aria-labelledby="pv-pick" className="scroll-mt-32 border-t border-zinc-100 pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <SectionTitle id="pv-pick">{title}</SectionTitle>
+        {badge}
+      </div>
+      <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{label}</p>
+      {note ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{note}</p> : null}
+      {details ? (
+        <details className="group/pick mt-1.5">
+          <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950 [&::-webkit-details-marker]:hidden">
+            <span className="group-open/pick:hidden">{summary}</span>
+            <span className="hidden group-open/pick:inline">ซ่อนเงื่อนไขของเข็มทิศเกม</span>
+          </summary>
+          <div className="pt-2">{details}</div>
+        </details>
+      ) : null}
+    </section>
   );
 }
 
@@ -328,7 +354,7 @@ function SummaryRow({ k, v }: { k: string; v: string }) {
  * when there is a pick: fog is not shown on fan pages). The pick and its note come from the rules
  * engine and the pick-note job; this text never chooses one.
  */
-function FourPartPreview({ p, home, away, teams, logos, pick, pickNote, limits, children }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: { label: string } | null; pickNote?: string | null; limits: string[]; children: ReactNode }) {
+function FourPartPreview({ p, home, away, teams, logos, pick, pickNote, limits, children }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; children: ReactNode }) {
   // what could change the picture, plus the data's own limits: one place for both
   const cautions = [p.key_factor_th, ...limits].filter((x): x is string => Boolean(x));
 
@@ -362,16 +388,7 @@ function FourPartPreview({ p, home, away, teams, logos, pick, pickNote, limits, 
         ) : null}
       </section>
 
-      {pick ? (
-        <section aria-labelledby="pv-pick" className="border-t border-zinc-100 pt-4">
-          <SectionTitle id="pv-pick">เข็มทิศเกม</SectionTitle>
-          <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{pick.label}</p>
-          {pickNote ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{pickNote}</p> : null}
-          <a href="#pick" className="mt-1.5 inline-block text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950">
-            ดูเงื่อนไขและโอกาสของเข็มทิศเกม
-          </a>
-        </section>
-      ) : null}
+      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} /> : null}
     </div>
   );
 }
@@ -382,7 +399,7 @@ function FourPartPreview({ p, home, away, teams, logos, pick, pickNote, limits, 
  * chips come from the database; the prose is the stored text. No winner is called here: the one view
  * of the match is the Game Compass above, which the model section points back to.
  */
-function SectionedPreview({ p, home, away, teams, logos, pick, pickNote, limits, children }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: { label: string } | null; pickNote?: string | null; limits: string[]; children: ReactNode }) {
+function SectionedPreview({ p, home, away, teams, logos, pick, pickNote, limits, children }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; children: ReactNode }) {
   const play = [
     { k: 'เกมรุก', v: p.attack_th },
     { k: 'เกมรับ', v: p.defence_th },
@@ -420,16 +437,7 @@ function SectionedPreview({ p, home, away, teams, logos, pick, pickNote, limits,
         <div className="mt-2">{children}</div>
       </section>
 
-      {pick ? (
-        <section aria-labelledby="pv-pick" className="border-t border-zinc-100 pt-4">
-          <SectionTitle id="pv-pick">ตัวเลือกที่น่าสนใจที่สุด</SectionTitle>
-          <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{pick.label}</p>
-          {pickNote ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{pickNote}</p> : null}
-          <a href="#pick" className="mt-1.5 inline-block text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950">
-            ดูเหตุผลและเงื่อนไขของเข็มทิศเกม
-          </a>
-        </section>
-      ) : null}
+      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} title="ตัวเลือกที่น่าสนใจที่สุด" summary="ดูเหตุผลและเงื่อนไขของเข็มทิศเกม" /> : null}
 
       {risks.length ? (
         <section aria-labelledby="pv-risk" className="border-t border-zinc-100 pt-4">

@@ -2,7 +2,7 @@ import { ScrollTopOnEnter } from '@/components/scroll-top-on-enter';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CompassCard } from '@/components/compass-card';
+import { CompassBadge, CompassCard, CompassConditions } from '@/components/compass-card';
 import { COMPASS_LINE } from '@/components/compass-explainer';
 import { LiveGoal, LiveHeadBadge, LiveStaleNote, LiveWatch } from '@/components/live';
 import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/match-preview';
@@ -58,7 +58,18 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   const fogAfterPick = latest?.kind === 'NO_CLEAR_SIGNAL' && prevPick ? latest : null;
   const noAnalysisYet = !latest;
   const pickSel = pick ? toSelection(pick.market, pick.selection, pick.line == null ? null : Number(pick.line)) : null;
-  const previewPick = pick && pickSel ? { label: selectionLabel(pick.market!, pick.selection!, pick.line == null ? null : Number(pick.line), m.home.name, m.away.name), sel: pickSel } : null;
+  // with a write-up, the pick lives once at its end (สรุปเกม → เข็มทิศเกม) and its conditions fold open there;
+  // the separate amber card stays only for a match with a pick and no write-up
+  const pickInline = Boolean(d.preview && pick && pickSel);
+  const previewPick =
+    pick && pickSel
+      ? {
+          label: selectionLabel(pick.market!, pick.selection!, pick.line == null ? null : Number(pick.line), m.home.name, m.away.name),
+          sel: pickSel,
+          badge: <CompassBadge c={pick} live={toSeed(m)} />,
+          details: <CompassConditions c={pick} home={m.home.name} away={m.away.name} changedFrom={changedFrom} inline />,
+        }
+      : null;
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -77,8 +88,9 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   const teamName = (id: number) => (id === m.home.id ? m.home.name : m.away.name);
 
   const sections = [
-    pick || earlierPicks.length || noAnalysisYet ? { id: 'pick', label: 'เข็มทิศเกม' } : null,
+    !pickInline && (pick || earlierPicks.length || noAnalysisYet) ? { id: 'pick', label: 'เข็มทิศเกม' } : null,
     d.preview || (!d.finished && !OFF[m.status_short]) ? { id: 'analysis', label: 'วิเคราะห์' } : null,
+    pickInline ? { id: 'pick', label: 'เข็มทิศเกม' } : null,
     d.outlook?.sides_tested ? { id: 'model', label: 'โมเดล' } : null,
     qualification ? { id: 'qualification', label: 'ผ่านเข้ารอบ' } : null,
     d.finished && d.stats.length ? { id: 'stats', label: 'สถิติ' } : null,
@@ -88,6 +100,26 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
     { id: 'table', label: 'ตาราง' },
     { id: 'h2h', label: 'H2H' },
   ].filter((x): x is { id: string; label: string } => x != null);
+
+  const earlierBlock = earlierPicks.length ? (
+    <div id={pick ? 'earlier-picks' : 'pick'} className="scroll-mt-24 space-y-2">
+      {fogAfterPick ? <p className="text-sm text-zinc-600">{ROUND[fogAfterPick.publish_round] ?? fogAfterPick.publish_round} โมเดลไม่ชี้ฝั่งใดชัดเจน</p> : null}
+      {earlierPicks.map((c) => (
+        <details key={c.public_id} className="group">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 border-b border-zinc-200 text-sm text-zinc-700 [&::-webkit-details-marker]:hidden">
+            <span>
+              เข็มทิศเกมรอบก่อนหน้า <span className="font-mono text-xs text-zinc-500">{c.public_id}</span>
+            </span>
+            <span className="text-xs text-zinc-500 group-open:hidden">แสดง</span>
+            <span className="hidden text-xs text-zinc-500 group-open:inline">ซ่อน</span>
+          </summary>
+          <div className="pt-3">
+            <CompassCard c={c} home={m.home.name} away={m.away.name} live={toSeed(m)} />
+          </div>
+        </details>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <div className="bg-white">
@@ -113,26 +145,8 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
 
         <div className="mt-6 grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0 space-y-6">
-            {pick ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} live={toSeed(m)} changedFrom={changedFrom} /> : null}
-            {earlierPicks.length ? (
-              <div id={pick ? 'earlier-picks' : 'pick'} className="scroll-mt-24 space-y-2">
-                {fogAfterPick ? <p className="text-sm text-zinc-600">{ROUND[fogAfterPick.publish_round] ?? fogAfterPick.publish_round} โมเดลไม่ชี้ฝั่งใดชัดเจน</p> : null}
-                {earlierPicks.map((c) => (
-                  <details key={c.public_id} className="group">
-                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 border-b border-zinc-200 text-sm text-zinc-700 [&::-webkit-details-marker]:hidden">
-                      <span>
-                        เข็มทิศเกมรอบก่อนหน้า <span className="font-mono text-xs text-zinc-500">{c.public_id}</span>
-                      </span>
-                      <span className="text-xs text-zinc-500 group-open:hidden">แสดง</span>
-                      <span className="hidden text-xs text-zinc-500 group-open:inline">ซ่อน</span>
-                    </summary>
-                    <div className="pt-3">
-                      <CompassCard c={c} home={m.home.name} away={m.away.name} live={toSeed(m)} />
-                    </div>
-                  </details>
-                ))}
-              </div>
-            ) : null}
+            {pick && !pickInline ? <CompassCard id="pick" c={pick} home={m.home.name} away={m.away.name} live={toSeed(m)} changedFrom={changedFrom} /> : null}
+            {pickInline ? null : earlierBlock}
             {noAnalysisYet ? (
               <Card id="pick" title="เข็มทิศเกม" description={COMPASS_LINE}>
                 <p className="text-sm text-zinc-500">{FINISHED.includes(m.status_short) ? 'แมตช์นี้ไม่มีบทวิเคราะห์ที่เผยแพร่' : 'บทวิเคราะห์จะเผยแพร่ภายใน 24 ชม. ก่อนเตะ'}</p>
@@ -146,6 +160,8 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
                 <p className="text-sm text-zinc-500">บทวิเคราะห์จะเผยแพร่ภายใน 48 ชม. ก่อนเตะ</p>
               </Card>
             ) : null}
+
+            {pickInline ? earlierBlock : null}
 
             {qualification ? <QualificationCard id="qualification" q={qualification} a={teamName(qualification.team_a_id)} b={teamName(qualification.team_b_id)} /> : null}
 
