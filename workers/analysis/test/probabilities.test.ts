@@ -145,6 +145,19 @@ describe('computeProbabilities', () => {
     await expect(db.query(`update probability_predictions set probability = 0.99`)).rejects.toThrow(/not allowed/);
   });
 
+  it('reads no league history when every fixture is already priced (the hourly run, Disk IO 2026-11-12)', async () => {
+    const reads: number[] = [];
+    const repo = Object.create(ctx.repo) as typeof ctx.repo;
+    repo.finishedMatches = (league: number) => {
+      reads.push(league);
+      return ctx.repo.finishedMatches(league);
+    };
+    await computeProbabilities({ ...ctx, repo }, { now: NOW });
+    // the Premier League fixture was priced in the first run; the Nations League one never is (no history), so
+    // only that league is read again, to find it still has too few matches
+    expect(reads).toEqual([5]);
+  });
+
   it('registers model versions', async () => {
     const ids = (await q(`select id from model_versions order by id`)).map((r) => r.id);
     expect(ids).toEqual(['dixon-coles-v0.2', 'elo-v0.1', 'ensemble-v0.1']);

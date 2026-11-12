@@ -311,16 +311,43 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
     await ctx.repo.ensureModelVersion(ELO_VERSION, 'Elo with home advantage and goal-difference multiplier; heuristic draw share', {});
     await ctx.repo.ensureModelVersion(ENSEMBLE_VERSION, 'Linear blend of Dixon-Coles and Elo 1X2, weight tuned per league', {});
 
+    // A league's finished matches are the job's heavy read (every season, with xG and events). Read each league
+    // once per run (a cup's cross-league fit reads its domestic leagues again), and only for a league with a
+    // fixture to price: the hourly run used to read all of them every hour, most for nothing to price, and on
+    // 2026-11-12 that read helped drain the database's Disk IO budget.
+    const histories = new Map<number, ReturnType<JobContext['repo']['finishedMatches']>>();
+    const historyOf = (l: number) => {
+      let h = histories.get(l);
+      if (!h) histories.set(l, (h = ctx.repo.finishedMatches(l)));
+      return h;
+    };
+
     let written = 0;
     for (const league of leagues) {
       const log = ctx.log.child({ league });
-      const history = await ctx.repo.finishedMatches(league);
+      const upcoming = await ctx.repo.upcomingFixturesWithTeams(league, now.toISOString(), addDays(now, days).toISOString());
+      if (!upcoming.length) continue;
+
+      // fixtures to price: no recent run, or the market now offers a line we have not priced
+      const due: Array<{ f: (typeof upcoming)[number]; offered: Awaited<ReturnType<JobContext['repo']['offeredLines']>> }> = [];
+      for (const f of upcoming) {
+        const offered = await ctx.repo.offeredLines(f.id);
+        const last = await ctx.repo.lastProbabilityAt(f.id, DIXON_COLES_VERSION);
+        if (last && now.getTime() - last.getTime() < minGapMs) {
+          const priced = await ctx.repo.latestProbabilities(f.id, DIXON_COLES_VERSION);
+          const has = (m: string, sel: string, l: number) => priced.some((p) => p.market === m && p.selection === sel && p.line !== null && Math.abs(p.line - l) < 1e-9);
+          const covered = offered.ou.every((l) => has('OVER_UNDER', 'OVER', l)) && offered.ahHome.every((h) => has('ASIAN_HANDICAP', 'HOME', h));
+          if (covered) continue;
+        }
+        due.push({ f, offered });
+      }
+      if (!due.length) continue;
+
+      const history = await historyOf(league);
       if (history.length < MIN_MATCHES_TO_MODEL) {
         log.warn('not enough finished matches to model this league', { matches: history.length, need: MIN_MATCHES_TO_MODEL });
         continue;
       }
-      const upcoming = await ctx.repo.upcomingFixturesWithTeams(league, now.toISOString(), addDays(now, days).toISOString());
-      if (!upcoming.length) continue;
       // what the fit saw, so a later re-fit can prove it used the same data (xG is overwritten when the provider revises it, audit A-13)
       const trainingHash = trainingSetHash(history, now);
 
@@ -339,7 +366,7 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
       let cross: ReturnType<typeof fitCrossLeague> | null = null;
       if (domesticLeagues) {
         const domestic = new Map<number, MatchRecord[]>();
-        for (const l of domesticLeagues) domestic.set(l, await ctx.repo.finishedMatches(l));
+        for (const l of domesticLeagues) domestic.set(l, await historyOf(l));
         cross = fitCrossLeague(history, domestic, now, { dixonColes: sidesP, leaguePrior: CROSS_LEAGUE_PRIOR });
         log.info('cross-league model', { domesticMatches: [...domestic.values()].reduce((n, ms) => n + ms.length, 0), cupMatches: cross.cupMatchesUsed });
       }
@@ -353,17 +380,7 @@ export function computeProbabilities(ctx: JobContext, opts: { days?: number; min
       };
       const configIds = { sides: cfg.SIDES?.id ?? null, totals: cfg.TOTALS?.id ?? null, elo: cfg.ELO?.id ?? null, ensemble: cfg.ENSEMBLE?.id ?? null };
 
-      for (const f of upcoming) {
-        const offered = await ctx.repo.offeredLines(f.id);
-        const last = await ctx.repo.lastProbabilityAt(f.id, DIXON_COLES_VERSION);
-        if (last && now.getTime() - last.getTime() < minGapMs) {
-          // recent run — only recompute if the market now offers a line we have not priced
-          const priced = await ctx.repo.latestProbabilities(f.id, DIXON_COLES_VERSION);
-          const has = (m: string, sel: string, l: number) => priced.some((p) => p.market === m && p.selection === sel && p.line !== null && Math.abs(p.line - l) < 1e-9);
-          const covered = offered.ou.every((l) => has('OVER_UNDER', 'OVER', l)) && offered.ahHome.every((h) => has('ASIAN_HANDICAP', 'HOME', h));
-          if (covered) continue;
-        }
-
+      for (const { f, offered } of due) {
         const computedAt = now.toISOString();
         // data behind a team's strength: its cup matches, plus its domestic league's when the cross-league mix prices it
         const weighted = (team: number) => (sides.teamMatches.get(team) ?? 0) + (cross ? (cross.within.get(cross.teamLeague.get(team) ?? UNKNOWN_LEAGUE)?.teamMatches.get(team) ?? 0) : 0);
