@@ -2,7 +2,7 @@ import { ScrollTopOnEnter } from '@/components/scroll-top-on-enter';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CompassBadge, CompassCard, CompassConditions } from '@/components/compass-card';
+import { CompassBadge, CompassCard, CompassConditions, compassConditionsLine } from '@/components/compass-card';
 import { COMPASS_LINE } from '@/components/compass-explainer';
 import { LiveGoal, LiveHeadBadge, LiveStaleNote, LiveWatch } from '@/components/live';
 import { FormChips, MatchPreviewCard, type TeamContext } from '@/components/match-preview';
@@ -67,6 +67,7 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
           label: selectionLabel(pick.market!, pick.selection!, pick.line == null ? null : Number(pick.line), m.home.name, m.away.name),
           sel: pickSel,
           badge: <CompassBadge c={pick} live={toSeed(m)} />,
+          when: compassConditionsLine(pick, m.home.name, m.away.name),
           details: <CompassConditions c={pick} home={m.home.name} away={m.away.name} changedFrom={changedFrom} inline />,
         }
       : null;

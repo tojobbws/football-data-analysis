@@ -191,3 +191,15 @@ function ReasonList({ lines }: { lines: string[] }) {
     </ul>
   );
 }
+
+const OUTCOME_WORDS: Record<string, string> = { WIN: 'ถือว่าถูก', HALF_WIN: 'ถูกครึ่ง', PUSH: 'เสมอตัว', HALF_LOSS: 'ผิดครึ่ง', LOSS: 'ถือว่าผิด' };
+
+/**
+ * The win conditions in one plain line ("England ชนะ 3 ลูกขึ้นไปถือว่าถูก · England ชนะ 2 ลูกพอดีถูกครึ่ง · …"),
+ * shown open under the pick in the write-up while the table with its chances stays folded. Same rows as the table.
+ */
+export function compassConditionsLine(c: Compass, home: string, away: string): string | null {
+  const sel = toSelection(c.market, c.selection, c.line == null ? null : Number(c.line));
+  const rows = sel ? winCondition(sel, home, away) : [];
+  return rows.length ? `${rows.map((r) => `${r.when}${OUTCOME_WORDS[r.outcome] ?? STATUS[r.outcome].label}`).join(' · ')} (นับผล 90 นาที)` : null;
+}

@@ -58,6 +58,8 @@ export interface PreviewPick {
   sel: MarketSelection;
   badge?: ReactNode;
   details?: ReactNode;
+  /** what has to happen for the pick to be right, half right or wrong, in plain words (compassConditionsLine) */
+  when?: string | null;
 }
 
 export function MatchPreviewCard({
@@ -100,13 +102,15 @@ export function MatchPreviewCard({
   const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
   const build = previewBuild(p.version);
   const v10 = build >= 100;
+  // preview-v1.2: the khemthit-football-writer layout, which places the data gaps inside the write-up
+  const v12 = build >= 102;
   const fourPart = build >= 8;
   const numbers = <ModelNumbers p={p} result={result} modelTested={modelTested} pick={pick} overInOutlook={overInOutlook} fourPart={fourPart} />;
 
   return (
     <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`} action={<Badge variant={support.variant}>{support.label}</Badge>}>
       {v10 ? (
-        <V10Preview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes} info={info} support={support.label} modelTested={modelTested} result={result} />
+        <V10Preview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes} info={info} support={support.label} modelTested={modelTested} result={result} gaps={v12 ? gaps : []} v12={v12} />
       ) : fourPart ? (
         <FourPartPreview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes}>
           {numbers}
@@ -121,11 +125,11 @@ export function MatchPreviewCard({
           <p className="max-w-prose text-[15px] leading-7 text-zinc-800">{p.overview_th}</p>
           <TeamTexts p={p} home={home} away={away} className="mt-5 border-t border-zinc-100 pt-4" />
           <div className="mt-5 border-t border-zinc-100 pt-4">{numbers}</div>
-          {pick ? <div className="mt-5"><PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} /></div> : null}
+          {pick ? <div className="mt-5"><PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} when={pick.when} /></div> : null}
         </>
       )}
 
-      {gaps.length ? <p className="mt-4 text-xs leading-relaxed text-zinc-500">ข้อมูลที่ยังไม่มี: {gaps.join(' · ')}</p> : null}
+      {gaps.length && !v12 ? <p className="mt-4 text-xs leading-relaxed text-zinc-500">ข้อมูลที่ยังไม่มี: {gaps.join(' · ')}</p> : null}
       <Note>
         {p.text_source === 'AI' ? 'เรียบเรียงโดย AI จากข้อมูลในระบบเท่านั้น ตัวเลขทุกตัวมาจากโมเดลและฐานข้อมูล' : 'สร้างจากตัวเลขในระบบโดยอัตโนมัติ'} · บันทึกก่อนเตะ แก้ไขไม่ได้ ·{' '}
         {fourPart ? 'เข็มทิศเกมเลือกโดยกฎของระบบ AI เป็นผู้อธิบายเท่านั้น ส่วนบทวิเคราะห์ไม่นับในผลงาน' : 'เป็นข้อมูลประกอบ ไม่ใช่เข็มทิศเกม และไม่นับในผลงาน'}
@@ -154,8 +158,11 @@ const CONFIDENCE: Record<NonNullable<MatchPreview['confidence']>, { label: strin
  * its own name and its own block: the summary is not a second pick.
  * preview-v1.1 keeps this frame in the order of a Thai press preview: a headline, each side in turn
  * with its form chips, the team news, the analysis, the score, then a list of facts read off the data.
+ * preview-v1.2 follows the khemthit-football-writer brief: the story-first lead, each side, how the
+ * model and the market see it, the score, what is not known yet (the page's own data gaps), the game
+ * summary, the Game Compass, and the closing line last.
  */
-function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null }) {
+function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result, gaps = [], v12 = false }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null; gaps?: string[]; v12?: boolean }) {
   const mainAway = p.main_side === 'AWAY';
   const main = { name: mainAway ? away : home, logo: mainAway ? logos?.away : logos?.home, form: (mainAway ? teams?.away : teams?.home)?.form ?? [] };
   const opp = { name: mainAway ? home : away, logo: mainAway ? logos?.home : logos?.away, form: (mainAway ? teams?.home : teams?.away)?.form ?? [] };
@@ -214,10 +221,12 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
               <p className="mt-2 max-w-prose text-sm leading-relaxed text-zinc-700">{p.team_news_th}</p>
             </section>
           ) : null}
-          <section aria-labelledby="pv-analysis" className="border-t border-zinc-100 pt-4">
-            <SectionTitle id="pv-analysis">วิเคราะห์คู่นี้</SectionTitle>
-            <p className="mt-2 max-w-prose text-[15px] leading-7 text-zinc-800">{p.analysis_th}</p>
-          </section>
+          {p.analysis_th ? (
+            <section aria-labelledby="pv-analysis" className="border-t border-zinc-100 pt-4">
+              <SectionTitle id="pv-analysis">{v12 ? 'โมเดลกับตลาดมองยังไง' : 'วิเคราะห์คู่นี้'}</SectionTitle>
+              <p className="mt-2 max-w-prose text-[15px] leading-7 text-zinc-800">{p.analysis_th}</p>
+            </section>
+          ) : null}
         </>
       ) : (
         <section aria-labelledby="pv-points" className="border-t border-zinc-100 pt-4">
@@ -290,6 +299,20 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
         </section>
       ) : null}
 
+      {v12 && gaps.length ? (
+        <section aria-labelledby="pv-gaps" className="border-t border-zinc-100 pt-4">
+          <SectionTitle id="pv-gaps">ยังไม่รู้อะไรบ้าง</SectionTitle>
+          <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-zinc-700">
+            {gaps.map((x) => (
+              <li key={x} className="flex gap-2.5">
+                <span className="mt-[0.6em] h-px w-2.5 shrink-0 bg-zinc-300" aria-hidden />
+                <span>{x}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <section aria-labelledby="pv-summary" className="border-t border-zinc-100 pt-4">
         <SectionTitle id="pv-summary">สรุปเกม</SectionTitle>
         <dl className="mt-2 divide-y divide-zinc-100 text-sm">
@@ -311,13 +334,14 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
         </dl>
       </section>
 
-      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} /> : null}
+      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} when={pick.when} /> : null}
+      {v12 && p.summary_th ? <p className="border-t border-zinc-100 pt-4 max-w-prose text-base font-medium leading-7 text-zinc-950">{p.summary_th}</p> : null}
     </div>
   );
 }
 
 /** The pick at the end of the write-up (id="pick" for the page's section nav); its conditions fold open in place. */
-function PickSection({ label, note, badge, details, title = 'เข็มทิศเกม', summary = 'ดูเงื่อนไขและโอกาสของเข็มทิศเกม' }: { label: string; note?: string | null; badge?: ReactNode; details?: ReactNode; title?: string; summary?: string }) {
+function PickSection({ label, note, badge, details, when, title = 'เข็มทิศเกม', summary = 'ดูเงื่อนไขและโอกาสของเข็มทิศเกม' }: { label: string; note?: string | null; badge?: ReactNode; details?: ReactNode; when?: string | null; title?: string; summary?: string }) {
   return (
     <section id="pick" aria-labelledby="pv-pick" className="scroll-mt-32 border-t border-zinc-100 pt-4">
       <div className="flex items-center justify-between gap-3">
@@ -326,6 +350,7 @@ function PickSection({ label, note, badge, details, title = 'เข็มทิ�
       </div>
       <p className="mt-2 text-xl font-semibold leading-tight text-zinc-950">{label}</p>
       {note ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{note}</p> : null}
+      {when ? <p className="mt-1.5 max-w-prose text-sm leading-relaxed text-zinc-700">{when}</p> : null}
       {details ? (
         <details className="group/pick mt-1.5">
           <summary className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-950 [&::-webkit-details-marker]:hidden">
@@ -388,7 +413,7 @@ function FourPartPreview({ p, home, away, teams, logos, pick, pickNote, limits, 
         ) : null}
       </section>
 
-      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} /> : null}
+      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} when={pick.when} /> : null}
     </div>
   );
 }
@@ -437,7 +462,7 @@ function SectionedPreview({ p, home, away, teams, logos, pick, pickNote, limits,
         <div className="mt-2">{children}</div>
       </section>
 
-      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} title="ตัวเลือกที่น่าสนใจที่สุด" summary="ดูเหตุผลและเงื่อนไขของเข็มทิศเกม" /> : null}
+      {pick ? <PickSection label={pick.label} note={pickNote} badge={pick.badge} details={pick.details} when={pick.when} title="ตัวเลือกที่น่าสนใจที่สุด" summary="ดูเหตุผลและเงื่อนไขของเข็มทิศเกม" /> : null}
 
       {risks.length ? (
         <section aria-labelledby="pv-risk" className="border-t border-zinc-100 pt-4">

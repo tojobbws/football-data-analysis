@@ -14,6 +14,7 @@ import {
   previewScoreMatrix,
   previewStageFor,
   restDays,
+  thaiKickoff,
   topScorelines,
   type PreviewFacts,
   type PreviewTeam,
@@ -327,38 +328,45 @@ describe('bothTeamsScore', () => {
 });
 
 describe('buildTemplateText', () => {
-  it('v1.1 parts: headline, each side in turn, team news, analysis and facts, every number from the facts', () => {
+  it('v1.2 parts: headline, lead with kickoff, each side with its absences, model and market, closing line; every number from the facts', () => {
     const f = facts();
     const t = buildTemplateText(f, assessDataSupport(f));
-    expect(Object.keys(t)).toEqual(['headline_th', 'overview_th', 'home_th', 'away_th', 'team_news_th', 'analysis_th', 'facts_th']);
-    expect(t.headline_th).toContain('Arsenal พบ Chelsea');
-    expect(t.overview_th).toContain('Arsenal ชนะ 52%');
-    expect(t.overview_th).toContain('ตัวเลขเอียงไปทาง Arsenal');
-    expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกัน');
+    expect(Object.keys(t)).toEqual(['headline_th', 'overview_th', 'home_th', 'away_th', 'analysis_th', 'summary_th']);
+    // the story first: the last meeting
+    expect(t.headline_th).toBe('Arsenal พบ Chelsea อีกครั้ง หลังเกมล่าสุดจบ 1-2');
+    expect(t.overview_th).toContain('เกมล่าสุดที่เจอกัน Chelsea 1-2 Arsenal');
+    expect(t.overview_th).toContain('วันเสาร์ที่ 10 ต.ค. เวลา 21:00 น. (เวลาไทย)');
+    expect(t.overview_th).not.toMatch(/%/);
     expect(t.home_th).toContain('Arsenal: 5 นัดล่าสุด ชนะ 3 เสมอ 1 แพ้ 1 ยิงได้ 7 ประตู');
     expect(t.home_th).toContain('เสีย 3 ประตูใน 5 นัดล่าสุด');
+    // a side's absences sit in its own paragraph
+    expect(t.home_th).toContain('A. Player');
     expect(t.away_th.startsWith('Chelsea: ')).toBe(true);
-    // absences are the team news part's, not a side's
-    expect(t.team_news_th).toContain('A. Player');
-    expect(t.home_th).not.toContain('A. Player');
-    expect(t.team_news_th).toContain('ยังไม่ประกาศรายชื่อตัวจริง');
-    expect(t.analysis_th).toContain('โมเดลคาดประตู (xG) Arsenal 1.70 ต่อ Chelsea 1.00');
-    // the write-up names no scoreline: the page shows the one that fits the pick
-    expect(t.analysis_th).not.toMatch(/ds*[-–]s*d/);
-    expect(t.facts_th.length).toBeGreaterThan(0);
-    expect(t.facts_th.length).toBeLessThanOrEqual(5);
-    for (const x of t.facts_th) expect(x).not.toMatch(/%/);
-    for (const x of [...Object.values(t).filter((v): v is string => typeof v === 'string'), ...t.facts_th]) expect(x).not.toMatch(/[—–]/);
+    expect(t.analysis_th).toContain('โมเดลให้ Arsenal ชนะ 52%');
+    expect(t.analysis_th).toContain('ตลาดมองไปทางเดียวกัน');
+    // the write-up names no scoreline for this match: the page shows the one that fits the pick
+    expect(t.analysis_th).not.toMatch(/\d\s*[-–]\s*\d/);
+    expect(t.summary_th).toContain('Arsenal');
+    expect(t.summary_th).not.toMatch(/แต่(?!ละ)/);
+    for (const x of Object.values(t)) expect(x).not.toMatch(/[—–]/);
   });
 
-  it('no model: says so in the overview and the analysis', () => {
-    const thin = facts({ model: null });
-    const t = buildTemplateText(thin, assessDataSupport(thin));
-    expect(t.overview_th).toContain('โมเดลยังไม่มีตัวเลข');
-    expect(t.analysis_th).toContain('โมเดลยังไม่มีตัวเลขสำหรับคู่นี้');
+  it('the chance of 3+ goals joins the model part when the job hands it over', () => {
+    const base = facts();
+    const f = { ...base, model: { ...base.model!, pGoals3plus: 0.61 } };
+    expect(buildTemplateText(f, assessDataSupport(f)).analysis_th).toContain('โมเดลให้โอกาส 61% ที่เกมนี้จะมีอย่างน้อย 3 ประตู');
   });
 
-  it('a market far from the model, a missing key player, a rest gap and recent form against the model are named', () => {
+  it('no model: the market alone, or nothing; the closing line falls back to the lean of the market', () => {
+    const none = facts({ model: null });
+    const t = buildTemplateText(none, assessDataSupport(none));
+    expect(t.analysis_th).toMatch(/^ตลาดให้ Arsenal ชนะ \d+%/);
+    const bare = facts({ model: null, market: null });
+    expect(buildTemplateText(bare, assessDataSupport(bare)).analysis_th).toBe('');
+    expect(buildTemplateText(bare, assessDataSupport(bare)).summary_th).toContain('ใกล้กัน');
+  });
+
+  it('a market far from the model is named with its chance; no caveat about the data in the prose', () => {
     const f = facts({
       home: team('Arsenal', { restDays: 3, form: Array(5).fill({ venue: 'H', result: 'L', goalsFor: 0, goalsAgainst: 2, xgFor: 0.7, xgAgainst: 1.9 }) }),
       away: team('Chelsea', { restDays: 6, injuries: [{ player: 'C. Palmer', type: 'Missing Fixture', reason: 'Injury', isKeyPlayer: true, goals: 5, assists: 3 }] }),
@@ -366,11 +374,15 @@ describe('buildTemplateText', () => {
     });
     f.views = compareViews(f);
     const t = buildTemplateText(f, assessDataSupport(f));
-    expect(t.overview_th).toContain('ตลาดมองไปทางเดียวกันแต่ให้โอกาสเพียง 54%');
-    expect(t.analysis_th).toContain('Chelsea ขาด C. Palmer');
-    expect(t.analysis_th).toContain('ผลงานช่วงหลัง Chelsea ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล');
-    expect(t.analysis_th).toContain('Arsenal มีเวลาพักน้อยกว่า');
-    expect(t.team_news_th).toContain('Chelsea มีรายงานตัวเจ็บ/ติดโทษ 1 คน (C. Palmer)');
+    expect(t.analysis_th).toContain('ตลาดมองไปทางเดียวกันแต่ให้ Arsenal เพียง 54%');
+    expect(t.away_th).toContain('มีรายงานตัวเจ็บ/ติดโทษ 1 คน (C. Palmer)');
+    for (const x of Object.values(t)) expect(x).not.toMatch(/ข้อมูลจำกัด|ข้อมูลน้อย|ความมั่นใจ/);
+  });
+});
+
+describe('thaiKickoff', () => {
+  it('Thai time in Thai words: a 19:45 UTC kickoff is 02:45 the next day', () => {
+    expect(thaiKickoff('2026-11-12T19:45:00Z')).toBe('วันศุกร์ที่ 13 พ.ย. เวลา 02:45 น. (เวลาไทย)');
   });
 });
 

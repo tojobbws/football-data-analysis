@@ -10,53 +10,76 @@ import { allowedNumbers, BANNED_WORDS, inventedNumbers } from './guards.js';
 
 // v1.2: a fact may name a player of the input instead of a team
 // v1.3: no scoreline of this match in the prose (the page shows the one that fits the pick)
-export const PREVIEW_PROMPT_VERSION = 'preview-ai-v1.3';
+// v2.0: the khemthit-football-writer brief (owner, 2026-11-13): story-first lead with kickoff and venue, one
+//       paragraph per side, model vs market with the chance of 3+ goals, a closing line; no facts list, no
+//       team-news part, no caveats about the data in the prose (the page shows those in their own boxes)
+export const PREVIEW_PROMPT_VERSION = 'preview-ai-v2.0';
 
 /** Kept byte-stable (no dates, no per-request values) so it caches across fixtures. */
-export const PREVIEW_SYSTEM_PROMPT = `You are the analyst of a Thai football data & analysis brand. You receive one upcoming match as JSON and write a Thai match preview in the shape of the Thai football press: a headline, the match in brief, each side in turn, the team news, the analysis, and a few facts worth knowing. Lively and easy to read for ordinary fans, every point backed by the data, readable in about three minutes. It is for knowledge and entertainment, never betting advice.
+export const PREVIEW_SYSTEM_PROMPT = `You write the match preview of เข็มทิศฟุตบอล, a Thai football analysis site. You receive one upcoming match as JSON and turn it into an article an ordinary fan reads to the end and then knows what this match is about: not a table of numbers written out as sentences. It is for knowledge and entertainment, never betting advice. The site records every preview before kickoff and shows its record, right or wrong, so every line must stand up when read again after the match.
 
 What the input contains, and nothing else exists for you:
-- fixture: teams, competition, round, stage (EARLY = lineups not out yet, LINEUP = both XIs confirmed), venue, referee
-- home / away: recent results (date, competition, opponent, score, xG when available), their totals (formSummary), rest days, averages of shots on target and possession, the league table with home and away records (null = no table that means anything yet), key players this season (top scorers and assisters only), injuries (isKeyPlayer marks one of those key players; other absent players may still matter, you just cannot tell from the data), confirmed starters and, at LINEUP, formation, coach and key players not in the XI, modelMatches (a time-weighted amount of history the model rates the team on; never quote it as a number of matches)
-- model: our statistical model. p = its chance of a home win, a draw and an away win. expectedGoals = the goals it expects each side to score. null = the model has no numbers for this match.
+- fixture: teams, competition, round, kickoffTh (the kickoff in Thai, already in Thai time: copy it as written), venue, referee, stage (EARLY = lineups not out yet, LINEUP = both XIs confirmed)
+- home / away: recent results (date, competition, opponent, score, xG when available), their totals (formSummary), rest days, averages of shots on target and possession, the league table with home and away records (null = no table that means anything yet), key players this season (top scorers and assisters only), injuries (confirmed absences; isKeyPlayer marks one of the key players), confirmed starters and, at LINEUP, formation, coach and key players not in the XI, modelMatches (a time-weighted amount of history; never quote it)
+- model: our statistical model. p = its chance of a home win, a draw and an away win. pGoals3plus = its chance that the match has at least 3 goals. expectedGoals = the goals it expects each side to score. null = the model has no numbers for this match.
 - market: 1X2 consensus odds (opening -> current). views.marketP is the same market as chances with the bookmakers' margin taken out: use those, never the odds.
-- views: which way each source leans (a team name, or EVEN): model, market, recentForm (points over the recent results), recentXg, otherModel (a second rating model). disagreements lists where a source points away from the model: MARKET (the market favours the other side), MARKET_GAP (same side, but the market gives it a much smaller chance), FORM, XG, OTHER_MODEL.
+- views: which way each source leans (a team name, or EVEN): model, market, recentForm, recentXg, otherModel. disagreements lists where a source points away from the model: MARKET (the market favours the other side), MARKET_GAP (same side, a much smaller chance), FORM, XG, OTHER_MODEL.
 - apiPrediction: a third-party opinion. h2h: recent meetings.
-- data_support: how far the data can carry an opinion (GOOD / LIMITED / THIN) and the reasons, in Thai. These are facts about the input: respect them.
+- data_support: how far the data can carry an opinion (GOOD / LIMITED / THIN). It tells you how firmly you may write; never write about it.
 
-Write seven fields (all Thai, no headings, no bullet characters, no markdown). The page shows each under its own heading, so do not restate the heading.
-1. headline_th, one line of at most 60 characters: the story of this match as the data tells it (a run of results, the table, a key absence, the meeting of two sides in contrasting form). Name at least one team. No nicknames, no news, no question marks, no verdict.
-2. overview_th, 1-2 sentences: the match in brief and which side the data favours, naming both teams. It is also the teaser on match lists.
-3. home_th, 3-5 sentences on the home side (fixture.home): its recent form and how it scores and concedes (goals, xG, shots on target), its home record and place in the table, the key players the data confirms, rest days or a busy run of matches when the data shows it. Name fixture.home. Use only the home side's numbers.
-4. away_th, 3-5 sentences on the away side (fixture.away), in the same frame, with its away record. Name fixture.away. Use only the away side's numbers.
-5. team_news_th, 1-3 sentences: the confirmed absences on both sides and how each could matter (a missing key player matters most); at LINEUP, the formation and the key players left out of the XI. At EARLY say the lineups are not announced yet. When neither side lists an absence, say only that the lineups are not out yet (EARLY) or describe the XIs (LINEUP).
-6. analysis_th, 4-6 sentences: how the two sides meet (where one side's strength runs into the other's weak spot, as the numbers show it), then two or three reasons for the lean, each tied to a fact in the input (the model's chances, expected goals, recent form, the market). The page shows a likely score for the match in large type right above this field: do not write any score for this match yourself, and do not say which score is most likely. If views.disagreements is not empty, say plainly which source points elsewhere and keep both sides of it: for MARKET or MARKET_GAP, say the market (ตลาด) sees it closer or the other way, with its chance from views.marketP; for FORM or XG, say recent form or xG points the other way and that the model rates the teams on a longer stretch of matches than the last five; for OTHER_MODEL, say the model's view is not settled. Never quote only the numbers that support one side. End with what in the facts could change the result when there is something specific (a missing key player, a disagreement, a gap in rest days); no stock lines such as "the first goal will matter".
-7. facts_th, a list of 3-5 short items, one fact each, read straight off the input: a run of results, a home or away record, a place in the table, a top scorer's goals, a recent meeting in h2h. One sentence each, no opinion, no chance or percentage, nothing about the market, no prediction. Each item names the team it is about, or a player listed in the input (keyPlayers or injuries) as the input writes the name. Do not repeat a sentence from another field word for word.
+Before writing, find the story: every match has at least one thing fans most want to know (they met recently and the result was lopsided, a side in form meets a side out of form, a top scorer against a leaky defence, the model and the market see it differently). Open on it and let every part serve it.
 
-Style: short spoken sentences, no officialese, no research-paper tone, no long run-ups. Thai punctuation: separate sentences with a space, no full stops, no semicolons. Write chances as whole percentages (80%, not 80.3%). Explain a technical term once where it first appears (xG คือค่าประเมินคุณภาพของโอกาสยิง). Use only the numbers that explain the match, at most three or four in a section. Say each point once: what one section says, another does not repeat. Keep what the data shows (results, table, injuries) apart from what it suggests (how the match may go). Not every match needs a firm conclusion: when the data is thin or the sources disagree, say the picture is open. Aim for 2,000-3,200 Thai characters in all, fewer when the data is limited; never pad to reach a length.
+Write six fields (all Thai, no headings, no bullet characters, no markdown). The page shows each part under its own heading, so do not restate the heading.
+1. headline_th, one line of at most 60 characters: the story. Name at least one team. No question mark, no nicknames, no verdict.
+2. overview_th, 1-2 sentences: open on the story, then say when (fixture.kickoffTh, copied as written) and where (the venue when the input has one) and the competition. Name both teams. It is also the teaser on match lists. No percentages.
+3. home_th, one short paragraph of 2-4 sentences on fixture.home: how the team is doing lately, told as a story rather than a list of statistics, with the 2-3 numbers that tell it best (results, goals scored and conceded, xG, place in the table, home record), the player to watch from keyPlayers with his goals or assists, and its confirmed absences when injuries lists any (at LINEUP: the formation and key players left out of the XI). Name fixture.home. Use only the home side's numbers.
+4. away_th, the same for fixture.away, with its away record. Name fixture.away. Use only the away side's numbers.
+5. analysis_th, 2-4 sentences, how the model and the market see the match: the model's chance of a home win, a draw and an away win; compare it with the market (views.marketP, called ตลาด) only where the two really differ, and say what the difference means in plain words (for example: the market leaves more room for a draw or a surprise). Then, when model.pGoals3plus is there, the model's chance that the match has at least 3 goals, in those words. When the model is null, give the market's chances only. When both are null, return an empty string.
+6. summary_th, one or two sentences that close the article: the line a reader remembers, confident in what the data says, and the thing to watch in the match (for example: if A keeps creating chances at this rate, B has to find a way to stop it). Do not repeat numbers, do not start a new topic, never end on a limit of the data, and do not set one side against the other with a contrast: never use the word แต่ (so no แม้...แต่ either).
 
-Names: write team and player names exactly as they appear in the input, in the same script. Never transliterate them into Thai.
+How to write:
+- Like a friend who knows football telling you about the match: short and long sentences mixed, one idea per paragraph, light imagery at most, never louder than the data (no ถล่มยับ, no ไม่มีทางรอด).
+- Every number has a job: at most three or four numbers per paragraph, the ones that tell the story. Drop the rest or fold them into one sentence.
+- Say each fact once in the whole article. A run of results told in home_th is not told again in overview_th or summary_th.
+- Explain a technical term in the same sentence the first time it appears, never as a separate note: xG = how good the chances were (ค่า xG 3.22 ต่อเกม หมายถึงโอกาสที่สร้างได้มีคุณภาพพอจะยิงได้กว่า 3 ลูก), xG conceded = how many good chances the side gives away, the model against the market = whose chance is higher and why it matters. Describe the market as the combined view of how likely each result is, never as money or profit.
+- Thai punctuation: separate sentences with a space, no full stops, no semicolons. Chances as whole percentages (87%, not 87.3%).
+- Write every number in digits (2 ประตู, 5 นัด, อันดับ 3), never in Thai words (สองประตู, ห้านัด): each one is checked against the input.
+- Names: team and player names exactly as in the input, in the same script, the same way throughout. Never transliterate them into Thai.
+- About 350-550 words (roughly 1,800-2,800 Thai characters) in all. With little data write less; never pad.
+- No caveats in the prose: do not write about data limits, the model's limits, uncertainty or a confidence level. The page shows what is not known yet and the confidence level in their own boxes. Yet never write more firmly than the data: no แน่นอน, no ชัวร์, no ไม่มีทางพลาด, nothing that reads as more certain than the model's chances.
 
 Hard rules:
-- Never create a probability, percentage, odds value, xG, goal count, rank, points, day count or any other number. Only repeat numbers that appear in the input (a probability like 0.634 may be written as 63%). home_th may only use the home side's numbers, away_th only the away side's, team_news_th only the two sides' (not the model's). A percentage must be one of: model.p, a scoreline chance, views.marketP, apiPrediction, possession, and never appears in headline_th or facts_th. If you are unsure whether a number is in the input, leave it out.
-- Never write a score for this match (no predicted, likely or expected score): the page shows one, chosen by the site. Past results in form and h2h may be quoted only in headline_th and facts_th. Never present any score as the expected result (no คาดว่าจะจบ, no สกอร์คาดการณ์, no ฟันธง).
-- Never name a winner or call the result: no ชนะแน่, no ผลแน่นอน, no 100%. The site's one analytical view of the match (the Game Compass) is explained elsewhere on the page: do not mention handicaps, over/under, lines, odds or prices.
-- Do not claim one fact causes another unless the input states both and the link is direct. A stronger team is not the same as a team that will win by a margin. Do not describe a style of play (pressing, counter-attacks, possession) beyond what the numbers in the input show.
-- Do not write dates, kickoff times, player names, injuries, news or results that are not in the input. No outside knowledge about these teams, players, coaches or referees, and no sources or URLs. The table zone is the provider's English label: you may say it in Thai, never add to it.
-- At stage EARLY the lineups are not out: do not write about starters or a lineup (ตัวจริง, ไลน์อัพ) except to say they are not announced yet, and never say a team is at full strength. Never infer from an empty injury list that a squad is complete (no เต็มทีม, no ครบทีม).
-- When model is null, say the model has no numbers for this match and write from the football facts only. When data_support is THIN, make no strong claims (no ได้เปรียบชัด, no เหนือกว่าชัด).
-- Missing pieces that are not in data_support (no injuries listed, no h2h, no market, no venue): leave that topic out without pointing out that it is missing.
-- This is data analysis, not gambling advice. Never use these words: ทีเด็ด, แทง, แทงบอล, กำไร, ตามคู่นี้, การันตี, ฟันธง, ชัวร์, กินเต็ม. Never guarantee or promise an outcome.`;
+- Never create a probability, percentage, odds value, xG, goal count, rank, points, day count or any other number. Only repeat numbers that appear in the input (a probability like 0.634 may be written as 63%). home_th may only use the home side's numbers, away_th only the away side's. A percentage must be one of: model.p, model.pGoals3plus, views.marketP, apiPrediction, possession, and appears only in home_th, away_th (possession) and analysis_th. If you are unsure whether a number is in the input, leave it out.
+- Never write a score for this match (no predicted, likely or expected score): the page shows one, chosen by the site. Past results from form and h2h may be quoted. Never present any score as the expected result (no คาดว่าจะจบ, no สกอร์คาดการณ์, no ฟันธง).
+- Never name a winner or call the result: no ชนะแน่, no ผลแน่นอน, no 100%. Use โมเดลมองว่า, แนวโน้ม. The site's pick (the Game Compass) and its line are shown in their own part of the page: do not mention handicaps, over/under, lines, odds or prices.
+- Do not claim one fact causes another unless the input states both and the link is direct. Do not describe a style of play (pressing, counter-attacks, possession) beyond what the numbers show.
+- Do not write dates, kickoff times other than fixture.kickoffTh, player names, injuries, news or results that are not in the input. No outside knowledge about these teams, players, coaches or referees, and no sources or URLs.
+- At stage EARLY the lineups are not out: do not write about starters or a lineup (ตัวจริง, ไลน์อัพ), and never say a team is at full strength. Never infer from an empty injury list that a squad is complete (no เต็มทีม, no ครบทีม). When injuries lists nobody, leave absences out: the page says so.
+- When data_support is THIN, make no strong claims (no ได้เปรียบชัด, no เหนือกว่าชัด).
+- This is data analysis, not gambling advice. Never use these words: ทีเด็ด, แทง, แทงบอล, กำไร, ตามคู่นี้, การันตี, ฟันธง, ชัวร์, กินเต็ม, ห้ามพลาด, ทางรวย, ตามเลย. Never urge anyone to bet and never promise an outcome.`;
 
 /** The shared list plus ฟันธง: the preview must never call the result (the shadow ranking's list stays frozen for its trial). */
 export const PREVIEW_BANNED_WORDS = [...BANNED_WORDS, 'ฟันธง', 'ชัวร์', 'กินเต็ม'] as const;
 
 /**
- * From preview-ai-v0.9: the pick's markets are left to the Game Compass note, a scoreline is never
- * the result, and an empty injury list is never a full squad.
+ * From preview-ai-v0.9: the pick's markets are left to the Game Compass, a scoreline is never the
+ * result, and an empty injury list is never a full squad. From v2.0 also the brief's hype words.
  */
-const PREVIEW_V09_BANNED = ['แฮนดิแคป', 'ราคาต่อรอง', 'ค่าน้ำ', 'ราคาน้ำ', 'สูง/ต่ำ', 'โอเวอร์', 'อันเดอร์', 'คาดว่าจะจบ', 'สกอร์คาดการณ์', 'ชนะแน่', 'ผลแน่นอน', 'เต็มทีม', 'ครบทีม', '100%'] as const;
+const PREVIEW_V09_BANNED = ['แฮนดิแคป', 'ราคาต่อรอง', 'ค่าน้ำ', 'ราคาน้ำ', 'สูง/ต่ำ', 'โอเวอร์', 'อันเดอร์', 'คาดว่าจะจบ', 'สกอร์คาดการณ์', 'ชนะแน่', 'ผลแน่นอน', 'เต็มทีม', 'ครบทีม', '100%', 'ห้ามพลาด', 'ทางรวย', 'ตามเลย', 'ไม่มีทางพลาด', 'ถล่มยับ', 'ไม่มีทางรอด'] as const;
+/**
+ * v2.0: the prose carries no caveat about the data or the model (the page shows the gaps and the
+ * confidence level in their own boxes) and nothing firmer than the chances.
+ */
+// a team's morale (เรียกความมั่นใจกลับมา) is football, not a caveat: only the confidence level's own words count
+const CAVEAT_WORDS = ['ระดับความมั่นใจ', 'ความมั่นใจต่ำ', 'ความมั่นใจปานกลาง', 'ความมั่นใจของโมเดล', 'ความมั่นใจในตัวเลข', 'ข้อมูลจำกัด', 'ข้อมูลน้อย', 'ข้อมูลมีจำกัด', 'ไม่แน่ใจ', 'แน่นอน'] as const;
+/** แต่ in the closing line, not แต่ละ ("each") or ตั้งแต่ ("since") */
+const BUT = /(?<!ตั้ง)แต่(?!ละ)/;
 const MARKET_WORDS_LATIN = /\b(over|under|handicap)\b/i;
+/**
+ * Scripts that are neither Thai nor Latin (Greek, Cyrillic, Hebrew, Arabic, Devanagari, kana, CJK, Hangul): a stray
+ * "الأبرز" in the middle of Thai prose (England vs Croatia smoke test, 2026-11-13). Allowed only where the input has the same text.
+ */
+const FOREIGN_SCRIPT = /[Ͱ-ϿЀ-ӿ֐-׿؀-ۿݐ-ݿऀ-ॿ぀-ヿ㐀-鿿가-힯]+/g;
 /** only when data_support is THIN */
 const STRONG_CLAIMS = ['ได้เปรียบชัด', 'เหนือกว่าชัด', 'เต็งชัด', 'เต็งหนึ่ง', 'ขาดลอย'] as const;
 /**
@@ -66,30 +89,28 @@ const STRONG_CLAIMS = ['ได้เปรียบชัด', 'เหนือ�
 const LINEUP_NOT_OUT = /(?:ยังไม่|ก่อน)\S{0,25}?(?:ตัวจริง|ไลน์อัพ|ไลน์อัป)|(?:ตัวจริง|ไลน์อัพ|ไลน์อัป)\S{0,25}?ยังไม่/g;
 const LINEUP_WORDS = /ตัวจริง|ไลน์อัพ|ไลน์อัป/;
 /** Thai separates sentences with a space; a stray semicolon is fixed here, not worth a retry */
-const tidy = (s: string | null) => (s == null ? s : s.replace(/\s*;\s*/g, ' '));
-/** a FORM / XG disagreement counts as stated when one of these appears where it should be said */
-const FORM_WORDS = ['ฟอร์ม', 'xG', 'ช่วงหลัง', 'ล่าสุด'];
-/** the whole write-up, about 800 Thai words (the brief asks for 2,000-3,200 characters) */
-const MAX_TOTAL_CHARS = 3800;
+const tidy = (s: string) => s.replace(/\s*;\s*/g, ' ');
+/** the whole write-up: the brief asks for 350-550 words (about 1,800-2,800 Thai characters) */
+const MAX_TOTAL_CHARS = 2900;
 
-const TEXT_FIELDS = ['headline_th', 'overview_th', 'home_th', 'away_th', 'team_news_th', 'analysis_th'] as const;
-type TextField = (typeof TEXT_FIELDS)[number] | 'facts_th';
+const TEXT_FIELDS = ['headline_th', 'overview_th', 'home_th', 'away_th', 'analysis_th', 'summary_th'] as const;
+type TextField = (typeof TEXT_FIELDS)[number];
 
 export const PREVIEW_OUTPUT_SCHEMA = {
   type: 'object',
-  properties: { ...Object.fromEntries(TEXT_FIELDS.map((k) => [k, { type: 'string' }])), facts_th: { type: 'array', items: { type: 'string' } } },
-  required: [...TEXT_FIELDS, 'facts_th'],
+  properties: Object.fromEntries(TEXT_FIELDS.map((k) => [k, { type: 'string' }])),
+  required: [...TEXT_FIELDS],
   additionalProperties: false,
 } as const;
 
 export const previewOutputSchema = z.object({
   headline_th: z.string().trim().min(8).max(80),
   overview_th: z.string().trim().min(40).max(400),
-  home_th: z.string().trim().min(60).max(900),
-  away_th: z.string().trim().min(60).max(900),
-  team_news_th: z.string().trim().min(20).max(600),
-  analysis_th: z.string().trim().min(60).max(1100),
-  facts_th: z.array(z.string().trim().min(10).max(220)).min(3).max(5),
+  home_th: z.string().trim().min(60).max(800),
+  away_th: z.string().trim().min(60).max(800),
+  // empty only when neither the model nor the market has numbers (checked below)
+  analysis_th: z.string().trim().max(800),
+  summary_th: z.string().trim().min(20).max(300),
 });
 
 export interface ValidatedPreview {
@@ -99,10 +120,10 @@ export interface ValidatedPreview {
 }
 
 /**
- * The part of the input each field may take its numbers from: a side's part never quotes the other
- * side's figures or the model's, the team news only the two sides', the headline and the facts only
- * the football facts (no model, no market). The fixture (team names such as "1899 Hoffenheim") is
- * always allowed. The overview and the analysis may use everything.
+ * The part of the input each field may take its numbers from: a side's paragraph never quotes the
+ * other side's figures or the model's; the headline, the lead and the closing line only the football
+ * facts (no model, no market). The fixture (team names such as "1899 Hoffenheim", the kickoff) is
+ * always allowed. The model-and-market part may use everything.
  */
 function numberSources(field: TextField, input: Record<string, unknown>): unknown {
   const { fixture, home, away, h2h, data_support } = input;
@@ -111,38 +132,30 @@ function numberSources(field: TextField, input: Record<string, unknown>): unknow
       return { fixture, home, data_support };
     case 'away_th':
       return { fixture, away, data_support };
-    case 'team_news_th':
-      return { fixture, home, away, data_support };
     case 'headline_th':
-    case 'facts_th':
+    case 'overview_th':
+    case 'summary_th':
       return { fixture, home, away, h2h, data_support };
     default:
       return input;
   }
 }
 
-/** Player names the input lists for either side: key players and injuries. */
-function inputPlayers(input: Record<string, unknown>): string[] {
-  const out: string[] = [];
-  for (const side of ['home', 'away'] as const) {
-    const t = input[side] as { keyPlayers?: Array<{ name?: string | null }>; injuries?: Array<{ player?: string | null }> } | undefined;
-    for (const p of t?.keyPlayers ?? []) if (p.name) out.push(p.name);
-    for (const i of t?.injuries ?? []) if (i.player) out.push(i.player);
-  }
-  return out;
-}
+/** where a percentage may appear: the chances in the model-and-market part, possession in a side's paragraph */
+const PERCENT_FIELDS: ReadonlySet<TextField> = new Set(['home_th', 'away_th', 'analysis_th']);
 
-type Chances ={ home?: number; draw?: number; away?: number } | null | undefined;
+type Chances = { home?: number; draw?: number; away?: number } | null | undefined;
 
-/** What a percentage may stand for: 1X2 chances (model and market), scoreline chances, the API's percents, possession. */
+/** What a percentage may stand for: 1X2 chances (model and market), 3+ goals, scoreline chances, the API's percents, possession. */
 export function allowedPercents(input: Record<string, unknown>): number[] {
   const out: number[] = [];
   const add = (x: unknown) => {
     if (typeof x === 'number' && Number.isFinite(x)) out.push(x <= 1 ? x * 100 : x);
   };
   const three = (c: Chances) => [c?.home, c?.draw, c?.away].forEach(add);
-  const model = input.model as { p?: Chances; scorelines?: Array<{ p?: number }> } | null | undefined;
+  const model = input.model as { p?: Chances; scorelines?: Array<{ p?: number }>; pGoals3plus?: number | null } | null | undefined;
   three(model?.p);
+  add(model?.pGoals3plus);
   model?.scorelines?.forEach((s) => add(s.p));
   three((input.views as { marketP?: Chances } | null | undefined)?.marketP);
   const api = input.apiPrediction as { homePct?: number; drawPct?: number; awayPct?: number } | null | undefined;
@@ -152,70 +165,69 @@ export function allowedPercents(input: Record<string, unknown>): number[] {
 }
 
 /**
- * Same discipline as the shadow ranking, plus the v0.9 / v1.0 / v1.1 checks. Every number traces back
- * to its part of the input and every percentage to a chance (none in the headline or the facts).
- * Scorelines are the model's or past results (the analysis only the model's, the headline and the
- * facts only past results). Each part names its team as in the input. Nothing about lineups before
- * they are out. A disagreement listed in views is stated. No market or verdict words, and the whole
- * stays within about 800 words. A failure never loses the match: the job stores the template text
- * instead and keeps the violations for review.
+ * Same discipline as the shadow ranking, plus the checks of the brief. Every number traces back to
+ * its part of the input and every percentage to a chance (only in the side paragraphs and the
+ * model-and-market part). Scorelines are past results only: the model's are not in the input. Each
+ * part names its team as in the input. Nothing about lineups before they are out. The model-and-market
+ * part names the market when it compares, and is empty only without numbers. No caveat or hype words,
+ * no แต่ in the closing line, and the whole stays within the brief's length. A failure never loses the
+ * match: the job stores the template text instead and keeps the violations for review.
  */
 export function validatePreviewOutput(raw: unknown, input: Record<string, unknown>): ValidatedPreview {
   const parsed = previewOutputSchema.safeParse(raw);
   if (!parsed.success) {
     return { ok: false, violations: [`schema: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`], text: null };
   }
-  const out: PreviewText = { ...parsed.data, facts_th: parsed.data.facts_th.map((x) => tidy(x)!) };
-  for (const f of TEXT_FIELDS) out[f] = tidy(out[f])!;
+  const out = { ...parsed.data } as PreviewText;
+  for (const f of TEXT_FIELDS) out[f] = tidy(out[f]);
   const violations: string[] = [];
   const fixture = (input.fixture ?? {}) as { home?: string; away?: string; stage?: string };
   const support = (input.data_support ?? {}) as { level?: string };
-  const listed = knownScorelines(input);
-  const modelScores = knownScorelines({ model: input.model });
   const pastScores = knownScorelines({ h2h: input.h2h, home: input.home, away: input.away });
   const percents = allowedPercents(input);
-  const parts: Array<[TextField, string]> = [...TEXT_FIELDS.map((f): [TextField, string] => [f, out[f]]), ...out.facts_th.map((x): [TextField, string] => ['facts_th', x])];
+  const inputText = JSON.stringify(input);
 
-  for (const [field, t] of parts) {
+  for (const field of TEXT_FIELDS) {
+    const t = out[field];
+    for (const m of t.matchAll(FOREIGN_SCRIPT)) if (!inputText.includes(m[0])) violations.push(`${field}: text in another script: ${m[0]}`);
     for (const w of [...PREVIEW_BANNED_WORDS, ...PREVIEW_V09_BANNED]) if (t.includes(w)) violations.push(`banned word "${w}"`);
+    for (const w of CAVEAT_WORDS) if (t.includes(w)) violations.push(`${field}: caveat or certainty word "${w}"`);
     if (MARKET_WORDS_LATIN.test(t)) violations.push(`${field}: market word`);
     if (support.level === 'THIN') for (const w of STRONG_CLAIMS) if (t.includes(w)) violations.push(`${field}: strong claim on thin data "${w}"`);
     const plain = withoutThousandsSeparators(t);
     for (const n of inventedNumbers(plain, allowedNumbers(numberSources(field, input)))) violations.push(`${field}: number not in input: ${n}`);
     for (const m of plain.matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)) {
       const n = Number(m[1]!.replace(',', '.'));
-      if (field === 'headline_th' || field === 'facts_th') violations.push(`${field}: no chance belongs here: ${m[1]}%`);
+      if (!PERCENT_FIELDS.has(field)) violations.push(`${field}: no chance belongs here: ${m[1]}%`);
       else if (!percents.some((p) => Math.abs(p - n) <= 0.51)) violations.push(`${field}: percent is not a chance in the input: ${m[1]}%`);
     }
-    const allowed = field === 'analysis_th' ? modelScores : field === 'headline_th' || field === 'facts_th' ? pastScores : listed;
-    for (const m of t.matchAll(/(?<![\d.])(\d)\s*[-–]\s*(\d)(?![\d.])/g)) {
+    for (const m of t.matchAll(/(?<![\d.:])(\d)\s*[-–]\s*(\d)(?![\d.:])/g)) {
       const s = `${m[1]}-${m[2]}`;
-      // "2-1" style scorelines must be the model's or a result in the input; W-D-L counts like "ชนะ 3 เสมอ 1" don't match this shape
-      if (!allowed.has(s)) violations.push(field === 'analysis_th' ? `analysis_th: scoreline not from the model: ${s}` : `${field}: scoreline not in input: ${s}`);
+      // "7-0" style scorelines must be a past result of the input; W-D-L counts like "ชนะ 3 เสมอ 1" don't match this shape
+      if (field === 'analysis_th' || !pastScores.has(s)) violations.push(`${field}: scoreline not a past result in the input: ${s}`);
     }
     if (fixture.stage === 'EARLY' && LINEUP_WORDS.test(t.replace(LINEUP_NOT_OUT, ''))) violations.push(`${field}: lineup claim before the lineups are out`);
   }
+  if (BUT.test(out.summary_th)) violations.push('summary_th: the closing line uses แต่');
 
   // the teams as the input names them: the page shows them that way, and a transliteration cannot be checked
-  const named: Array<[(typeof TEXT_FIELDS)[number], string | undefined]> = [
+  const named: Array<[TextField, string | undefined]> = [
     ['overview_th', fixture.home],
     ['overview_th', fixture.away],
     ['home_th', fixture.home],
     ['away_th', fixture.away],
   ];
   for (const [field, name] of named) if (name && !out[field].includes(name)) violations.push(`${field}: does not name ${name}`);
-  const namesATeam = (t: string) => [fixture.home, fixture.away].some((n) => n && t.includes(n));
-  if (!namesATeam(out.headline_th)) violations.push('headline_th: names neither team');
-  // a fact about a player ("Gabriel Barbosa ทำ 15 ประตู") is as traceable as one about a team (Santos, 2026-10-28)
-  const players = inputPlayers(input);
-  for (const x of out.facts_th) if (!namesATeam(x) && !players.some((p) => x.includes(p))) violations.push(`facts_th: names no team or player of the input: ${x.slice(0, 40)}`);
+  if (![fixture.home, fixture.away].some((n) => n && out.headline_th.includes(n))) violations.push('headline_th: names neither team');
 
-  const says = (fields: Array<(typeof TEXT_FIELDS)[number]>, words: string[]) => fields.some((f) => words.some((w) => out[f].includes(w)));
-  const disagreements = (input.views as { disagreements?: string[] } | null | undefined)?.disagreements ?? [];
-  if ((disagreements.includes('MARKET') || disagreements.includes('MARKET_GAP')) && !says(['overview_th', 'analysis_th'], ['ตลาด'])) violations.push('disagreement not stated: market');
-  if ((disagreements.includes('FORM') || disagreements.includes('XG')) && !says(['overview_th', 'analysis_th'], FORM_WORDS)) violations.push('disagreement not stated: recent form');
+  // the model-and-market part: there whenever either has numbers, and it names the market when the market has chances
+  const marketP = (input.views as { marketP?: unknown } | null | undefined)?.marketP ?? null;
+  const hasNumbers = input.model != null || marketP != null;
+  if (hasNumbers && out.analysis_th.length < 60) violations.push('analysis_th: missing or too short while the model or the market has numbers');
+  else if (!hasNumbers && out.analysis_th) violations.push('analysis_th: written without model or market numbers');
+  else if (input.model != null && marketP != null && !out.analysis_th.includes('ตลาด')) violations.push('analysis_th: does not compare with the market');
 
-  const total = parts.reduce((n, [, t]) => n + t.length, 0);
+  const total = TEXT_FIELDS.reduce((n, f) => n + out[f].length, 0);
   if (total > MAX_TOTAL_CHARS) violations.push(`too long: ${total} characters`);
 
   const unique = [...new Set(violations)];

@@ -13,7 +13,7 @@ import { mixScoreMatrices } from './cross-league.js';
 import { scoreMatrix } from './dixon-coles.js';
 import { settle, type MarketSelection } from './settlement.js';
 
-export const PREVIEW_VERSION = 'preview-v1.1';
+export const PREVIEW_VERSION = 'preview-v1.2';
 export type PreviewStage = 'EARLY' | 'LINEUP';
 export type DataSupport = 'GOOD' | 'LIMITED' | 'THIN';
 
@@ -147,6 +147,8 @@ export interface PreviewModel {
   crossLeague: { cupMatchesUsed: number } | null;
   /** the league's 1X2 model passed its back-test (model:tune); false = still being measured */
   tested?: boolean;
+  /** preview-v1.2: chance of 3 or more goals from the same matrix (goalBands.threePlus), set by the preview job only */
+  pGoals3plus?: number | null;
 }
 
 /** The side the write-up is built around (preview-v1.0): the model's lean, or the home side when it is even. */
@@ -165,6 +167,8 @@ export interface PreviewFacts {
     leagueType: string | null;
     round: string | null;
     kickoffAt: string;
+    /** preview-v1.2: the kickoff in Thai words and Thai time (thaiKickoff), for the lead to copy */
+    kickoffTh?: string;
     stage: PreviewStage;
     venue?: { name: string; city: string | null } | null;
     referee?: string | null;
@@ -189,23 +193,32 @@ export interface MarketQuote {
 }
 
 /**
- * The write-up (preview-v1.1), laid out like a match preview in the Thai football press: a headline,
- * a short lead that also serves as the teaser on match lists (overview_th), the home side and the away
- * side each in turn (form, how it scores and concedes, its home or away record), the team news
- * (team_news_th: absences, and the lineups once confirmed), the analysis of how the two meet with
- * the reasons behind the model's most likely score (analysis_th), and a few facts straight from the
- * data (facts_th). No market items and no prediction among the facts. The game summary and its
- * confidence level are built from numbers and rules, not written. The Game Compass part is the pick
- * note, written separately after the rules pick.
+ * The write-up (preview-v1.2), in the shape of the khemthit-football-writer brief (owner, 2026-11-13):
+ * a headline and a lead that opens on the match's story and says when and where (overview_th, also the
+ * teaser on match lists), one short paragraph per side (home_th, away_th: how it is doing, two or three
+ * numbers, the players to watch, confirmed absences), how the model and the market see it (analysis_th,
+ * empty when neither has numbers) and a closing line on what to watch (summary_th). The parts the
+ * system builds itself sit around these on the page: what is not known yet (dataGaps), the game summary
+ * with its rules-based confidence, and the Game Compass with its win conditions.
  */
 export interface PreviewText {
   headline_th: string;
   overview_th: string;
   home_th: string;
   away_th: string;
-  team_news_th: string;
   analysis_th: string;
-  facts_th: string[];
+  summary_th: string;
+}
+
+const TH_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+/** "วันศุกร์ที่ 13 พ.ย. เวลา 02:45 น. (เวลาไทย)": Thai time, written out so the writer copies it rather than converting a timestamp. */
+export function thaiKickoff(iso: string): string {
+  const d = new Date(new Date(iso).getTime() + 7 * 3_600_000);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `วัน${TH_DAYS[d.getUTCDay()]}ที่ ${d.getUTCDate()} ${TH_MONTHS[d.getUTCMonth()]} เวลา ${hh}:${mm} น. (เวลาไทย)`;
 }
 
 export function previewFocus(f: PreviewFacts, views: PreviewViews | null = f.views ?? null): PreviewFocus {
@@ -364,8 +377,9 @@ export interface GoalBands {
 }
 
 /**
- * Goal bands of the blended matrix. Stored with the preview for the card only, never put in the
- * facts the AI sees: 3+ is the over 2.5 figure, which the AI once wrote up as an over lean.
+ * Goal bands of the blended matrix, stored with the preview for the card. From preview-v1.2 the writer
+ * also gets 3+ (the brief asks for it), as a chance of at least 3 goals: the over/under words stay banned,
+ * since the AI once wrote this figure up as an over lean.
  */
 export function goalBands(matrix: number[][]): GoalBands {
   const sum = [0, 0, 0];
@@ -524,62 +538,52 @@ export function buildTemplateText(f: PreviewFacts, _support: { level: DataSuppor
   const m = f.model;
   const views = f.views ?? compareViews(f);
   const where = `${league}${round ? ` ${round}` : ''}`;
+  const when = f.fixture.kickoffTh ?? thaiKickoff(f.fixture.kickoffAt);
+  const venue = f.fixture.venue?.name ? ` ที่ ${f.fixture.venue.name}` : '';
+  const last = f.h2h[0];
 
-  let overview = `${home} พบ ${away} ใน ${where}`;
+  // the story the data tells first: the last meeting, else the table, else the plain fixture
+  const headline = last ? `${home} พบ ${away} อีกครั้ง หลังเกมล่าสุดจบ ${last.homeGoals}-${last.awayGoals}` : `${home} พบ ${away} ใน ${league}`;
+  const overview = `${last ? `เกมล่าสุดที่เจอกัน ${last.home} ${last.homeGoals}-${last.awayGoals} ${last.away} ` : ''}${home} พบ ${away} ใน ${where} ${when}${venue}`;
+
+  let analysis = '';
   if (m) {
-    overview += ` โมเดลให้ ${home} ชนะ ${pct(m.p.home)} เสมอ ${pct(m.p.draw)} ${away} ชนะ ${pct(m.p.away)}`;
-    overview += views.model === EVEN ? ' เป็นเกมที่สูสีตามตัวเลข' : ` ตัวเลขเอียงไปทาง ${views.model}`;
-    if (views.marketP && views.market) {
+    analysis = `โมเดลให้ ${home} ชนะ ${pct(m.p.home)} เสมอ ${pct(m.p.draw)} ${away} ชนะ ${pct(m.p.away)}`;
+    if (views.marketP) {
       const side = views.model === away ? 'away' : 'home';
-      if (views.disagreements.includes('MARKET')) overview += ` ขณะที่ตลาดให้น้ำหนัก ${views.market} มากกว่า`;
-      else if (views.disagreements.includes('MARKET_GAP')) overview += ` ตลาดมองไปทางเดียวกันแต่ให้โอกาสเพียง ${pct(views.marketP[side])}`;
-      else overview += ' และตลาดมองไปทางเดียวกัน';
+      if (views.disagreements.includes('MARKET')) analysis += ` ส่วนตลาดให้น้ำหนัก ${views.market} มากกว่า (${home} ${pct(views.marketP.home)} ${away} ${pct(views.marketP.away)})`;
+      else if (views.disagreements.includes('MARKET_GAP')) analysis += ` ตลาดมองไปทางเดียวกันแต่ให้ ${side === 'home' ? home : away} เพียง ${pct(views.marketP[side])} จึงเผื่อโอกาสพลิกไว้มากกว่า`;
+      else analysis += ' และตลาดมองไปทางเดียวกัน';
     }
-  } else {
-    overview += ' โมเดลยังไม่มีตัวเลขสำหรับคู่นี้ จึงอ่านเกมจากฟอร์มและสถิติที่มีเท่านั้น';
+    if (m.pGoals3plus != null) analysis += ` โมเดลให้โอกาส ${pct(m.pGoals3plus)} ที่เกมนี้จะมีอย่างน้อย 3 ประตู`;
+  } else if (views.marketP) {
+    analysis = `ตลาดให้ ${home} ชนะ ${pct(views.marketP.home)} เสมอ ${pct(views.marketP.draw)} ${away} ชนะ ${pct(views.marketP.away)}`;
   }
 
-  // no scoreline here: the page shows the one that fits the match's pick (pickScoreline), chosen when it renders
-  let score = 'โมเดลยังไม่มีตัวเลขสำหรับคู่นี้';
-  if (m) score = `โมเดลคาดประตู (xG) ${home} ${n2(m.expectedGoals.home)} ต่อ ${away} ${n2(m.expectedGoals.away)}`;
-  const uncertainty = uncertaintyText(f, views);
-  const facts = templateFacts(f);
-
   return {
-    headline_th: `${home} พบ ${away} ใน ${league}`,
+    headline_th: headline,
     overview_th: overview,
-    home_th: `${attackText(f.home)} · ${defenceText(f.home, 'home').replace(`${home}: `, '')}`,
-    away_th: `${attackText(f.away)} · ${defenceText(f.away, 'away').replace(`${away}: `, '')}`,
-    team_news_th: teamNewsText(f),
-    analysis_th: uncertainty ? `${score} ${uncertainty}` : score,
-    facts_th: facts,
+    home_th: `${attackText(f.home)} · ${defenceText(f.home, 'home').replace(`${home}: `, '')}${absenceText(f.home)}`,
+    away_th: `${attackText(f.away)} · ${defenceText(f.away, 'away').replace(`${away}: `, '')}${absenceText(f.away)}`,
+    analysis_th: analysis,
+    summary_th: closingText(f, views),
   };
 }
 
-/** Absences on both sides, and the lineups' state. */
-function teamNewsText(f: PreviewFacts): string {
-  const parts: string[] = [];
-  for (const t of [f.home, f.away]) {
-    const names = t.injuries.map((i) => i.player).filter(Boolean).slice(0, 3).join(', ');
-    if (t.injuries.length) parts.push(`${t.name} มีรายงานตัวเจ็บ/ติดโทษ ${t.injuries.length} คน${names ? ` (${names})` : ''}`);
-    if (t.lineup?.formation) parts.push(`${t.name} ลงด้วยแผน ${t.lineup.formation}`);
-  }
-  parts.push(f.fixture.stage === 'LINEUP' ? 'ทั้งสองทีมประกาศตัวจริงแล้ว' : 'ยังไม่ประกาศรายชื่อตัวจริง');
-  return parts.join(' · ');
+/** A side's confirmed absences (up to three names), as a clause for its paragraph. */
+function absenceText(t: PreviewTeam): string {
+  if (!t.injuries.length) return '';
+  const names = t.injuries.map((i) => i.player).filter(Boolean).slice(0, 3).join(', ');
+  return ` · มีรายงานตัวเจ็บ/ติดโทษ ${t.injuries.length} คน${names ? ` (${names})` : ''}`;
 }
 
-/** Up to five facts read straight off the data: the table, each side's recent run, the last meeting. */
-function templateFacts(f: PreviewFacts): string[] {
-  const out: string[] = [];
-  for (const t of [f.home, f.away]) {
-    const s = t.standing;
-    if (s?.rank != null && s.points != null) out.push(`${t.name} อยู่อันดับ ${s.rank} ของตาราง มี ${s.points} คะแนนจาก ${s.played} นัด`);
-    const sum = t.formSummary ?? formSummary(t.form);
-    if (sum) out.push(`${t.name} ${sum.matches} นัดล่าสุด ชนะ ${sum.won} เสมอ ${sum.drawn} แพ้ ${sum.lost}`);
-  }
-  const last = f.h2h[0];
-  if (last) out.push(`เจอกันครั้งล่าสุด ${last.home} ${last.homeGoals}-${last.awayGoals} ${last.away}`);
-  return out.slice(0, 5);
+/** The closing line: what to watch, from the model's lean; never a caveat about the data. */
+function closingText(f: PreviewFacts, views: PreviewViews): string {
+  const { home, away } = f.fixture;
+  const lean = views.model ?? views.market;
+  if (!lean || lean === EVEN) return `ตัวเลขของ ${home} กับ ${away} ใกล้กัน เกมนี้น่าจะตัดสินกันที่ใครใช้โอกาสได้คุ้มกว่า`;
+  const other = lean === home ? away : home;
+  return `ตัวเลขเอียงไปทาง ${lean} สิ่งที่ต้องดูคือ ${other} จะหยุดเกมรุกของ ${lean} ได้แค่ไหน`;
 }
 
 function attackText(t: PreviewTeam): string {
@@ -607,23 +611,7 @@ function defenceText(t: PreviewTeam, where: 'home' | 'away'): string {
   }
   const v = t.standing?.[where];
   if (v?.played) parts.push(`${where === 'home' ? 'ในบ้าน' : 'นอกบ้าน'}เสีย ${v.goalsAgainst} ประตูจาก ${v.played} นัด`);
-  // absences are the team news part's
+  // absences follow in absenceText
   if (t.restDays != null) parts.push(`พักมา ${t.restDays} วัน`);
   return `${t.name}: ${parts.length ? parts.join(' · ') : 'ไม่มีข้อมูลเกมรับล่าสุดในระบบ'}`;
-}
-
-/** What could change the result, only when the facts name something; no stock "the first goal matters". */
-function uncertaintyText(f: PreviewFacts, views: PreviewViews): string | null {
-  const parts: string[] = [];
-  for (const t of [f.home, f.away]) {
-    const missing = t.injuries.find((i) => i.isKeyPlayer && i.player);
-    if (missing) parts.push(`${t.name} ขาด ${missing.player} ซึ่งเป็นตัวหลักในเกมรุก`);
-    const benched = t.lineup?.keyPlayersNotStarting[0];
-    if (benched) parts.push(`${benched} ไม่ได้อยู่ในตัวจริงของ ${t.name}`);
-  }
-  if (views.disagreements.includes('FORM') && views.recentForm) parts.push(`ผลงานช่วงหลัง ${views.recentForm} ทำได้ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล`);
-  else if (views.disagreements.includes('XG') && views.recentXg) parts.push(`xG ช่วงหลัง ${views.recentXg} ดีกว่า ซึ่งสวนกับตัวเลขของโมเดล`);
-  const [h, a] = [f.home.restDays, f.away.restDays];
-  if (h != null && a != null && Math.abs(h - a) >= 2) parts.push(`${(h < a ? f.home : f.away).name} มีเวลาพักน้อยกว่า`);
-  return parts.length ? parts.join(' ') : null;
 }

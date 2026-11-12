@@ -9,12 +9,12 @@
  * disagreement left out). Without an API key, or when the AI answer fails, the deterministic template
  * text is stored instead — so every match has a preview.
  *
- * preview-v1.1 is laid out like a match preview in the Thai football press: a headline (headline_th),
- * a lead (overview_th), the home side (home_th), the away side (away_th), the team news
- * (team_news_th), the analysis with the reasons behind the most likely score (analysis_th) and a few
- * facts read off the data (facts_th). The game summary's confidence level and both-teams-score chance
- * are set here by rules, never by the AI. The v1.0 parts (attack_th, defence_th, opponent_th,
- * score_th, key_factor_th) and h2h_th / summary_th stay null.
+ * preview-v1.2 follows the khemthit-football-writer brief (owner, 2026-11-13): a headline (headline_th),
+ * a story-first lead with the kickoff and venue (overview_th), one paragraph per side (home_th, away_th),
+ * how the model and the market see it (analysis_th) and a closing line (summary_th). The writer also gets
+ * the kickoff in Thai words and the model's chance of 3+ goals. The game summary's confidence level and
+ * both-teams-score chance are set here by rules, never by the AI. team_news_th and facts_th (v1.1) and the
+ * v1.0 parts (attack_th, defence_th, opponent_th, score_th, key_factor_th, h2h_th) stay null.
  */
 import {
   isPersistentApiError,
@@ -41,6 +41,7 @@ import {
   previewScoreMatrix,
   previewStageFor,
   restDays,
+  thaiKickoff,
   topScorelines,
   type GoalBands,
   type PreviewFacts,
@@ -113,11 +114,8 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
       const { facts, bands, btts, matrix } = await collectFacts(ctx, f, stage);
       const support = assessDataSupport(facts);
       const confidence = confidenceLevel(facts, support);
-      // the written text never sees the model's scorelines (so it can quote none): the page shows the score
-      // that fits the pick, chosen when it renders. The stored predicted_* below still come from `facts`.
-      const textFacts: PreviewFacts = { ...facts, model: facts.model ? { ...facts.model, scorelines: [] } : null };
+      const { textFacts, input } = previewWriterInput(facts, bands, support);
       const template = buildTemplateText(textFacts, support);
-      const input: Record<string, unknown> = { ...textFacts, data_support: { level: support.level, notes_th: support.notes } };
 
       let text: PreviewText = template;
       let row: Record<string, unknown> = { text_source: 'TEMPLATE', ai_status: 'SKIPPED', prompt_version: null, model: null, output: null, guard_violations: [], usage: null };
@@ -187,16 +185,16 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
           overview_th: text.overview_th,
           home_th: text.home_th,
           away_th: text.away_th,
-          team_news_th: text.team_news_th,
+          team_news_th: null,
           analysis_th: text.analysis_th,
-          facts_th: text.facts_th,
+          facts_th: null,
           attack_th: null,
           defence_th: null,
           opponent_th: null,
           score_th: null,
           key_factor_th: null,
           h2h_th: null,
-          summary_th: null,
+          summary_th: text.summary_th,
           facts: input,
         });
         written++;
@@ -216,6 +214,21 @@ export function matchPreviewJob(ctx: JobContext, opts: PreviewJobOptions = {}) {
     if (report.length) console.table(report);
     return written;
   });
+}
+
+/**
+ * What the preview writer sees (and the template is built from). It never gets the model's scorelines, so it
+ * can quote none: the page shows the score that fits the pick, chosen when it renders (the stored predicted_*
+ * still come from `facts`). preview-v1.2 adds the kickoff in Thai words and the chance of 3+ goals.
+ * Shared with scripts/preview-smoke.ts so the smoke test sends what the job sends.
+ */
+export function previewWriterInput(facts: PreviewFacts, bands: GoalBands | null, support: { level: string; notes: string[] }): { textFacts: PreviewFacts; input: Record<string, unknown> } {
+  const textFacts: PreviewFacts = {
+    ...facts,
+    fixture: { ...facts.fixture, kickoffTh: thaiKickoff(facts.fixture.kickoffAt) },
+    model: facts.model ? { ...facts.model, scorelines: [], pGoals3plus: bands ? r4(bands.threePlus) : null } : null,
+  };
+  return { textFacts, input: { ...textFacts, data_support: { level: support.level, notes_th: support.notes } } };
 }
 
 type Fixture = Awaited<ReturnType<JobContext['repo']['fixturesForCandidates']>>[number];
@@ -261,7 +274,7 @@ export async function collectFacts(ctx: JobContext, f: Fixture, stage: PreviewFa
     | undefined;
 
   let model: PreviewModel | null = null;
-  // card only, kept out of the facts the AI sees (see goalBands)
+  // goal bands: the card shows all three; the preview writer gets only 3+ (preview-v1.2, see textFacts)
   let bands: GoalBands | null = null;
   let btts: number | null = null;
   let scoreMatrix: number[][] | null = null;

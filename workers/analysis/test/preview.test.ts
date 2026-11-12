@@ -35,16 +35,15 @@ function fakeWriter(answers: Record<string, Partial<RankerResult> & { output?: u
   return w;
 }
 
-/** a v1.1 answer, naming the teams as the guard asks */
+/** a v2.0 answer (the khemthit-football-writer brief), naming the teams as the guard asks */
 const prose = (home: string, away: string, over: Record<string, unknown> = {}) => ({
   output: {
     headline_th: `${home} รับมือ ${away}`,
-    overview_th: `โมเดลให้ ${home} 50% เกมนี้ข้อมูลเอียงไปทาง ${home} เล็กน้อย ส่วน ${away} ยังตามอยู่`,
-    home_th: `${home} ฟอร์มดีจากข้อมูลล่าสุดในระบบของเรา เกมรุกเดินได้ต่อเนื่อง ส่วนเกมรับยังมีข้อมูลไม่มาก`,
-    away_th: `${away} มีข้อมูลน้อยในระบบ จึงอ่านได้ไม่มากว่าจะสร้างปัญหาให้เจ้าบ้านได้แค่ไหนในเกมนี้`,
-    team_news_th: 'ยังไม่ประกาศรายชื่อตัวจริงของทั้งสองทีม',
-    analysis_th: 'โมเดลคาดประตูของเจ้าบ้านสูงกว่าทีมเยือน ข้อมูลของทั้งสองทีมยังมีไม่มาก',
-    facts_th: [`${home} ฟอร์มดีในช่วงหลัง`, `${away} มีข้อมูลในระบบน้อย`, `${home} ได้เล่นในบ้าน`],
+    overview_th: `${home} เปิดบ้านรับ ${away} โดยเจ้าบ้านมาด้วยฟอร์มที่ดีกว่าในช่วงหลัง`,
+    home_th: `${home} ฟอร์มดีในช่วงหลัง เกมรุกเดินได้ต่อเนื่อง และเกมรับยังเหนียวพอให้เจ้าบ้านคุมจังหวะเกมได้`,
+    away_th: `${away} ยังหาจังหวะของตัวเองไม่เจอ งานนี้ต้องบุกไปเล่นในบ้านของทีมที่กำลังมาแรง`,
+    analysis_th: `โมเดลให้ ${home} ชนะ 50% ตัวเลขจึงเอียงมาทางเจ้าบ้าน ส่วน ${away} ต้องหาทางทำผลงานในเกมเยือนให้ได้`,
+    summary_th: `สิ่งที่ต้องดูคือ ${away} จะหยุดเกมรุกของ ${home} ได้แค่ไหน`,
     ...over,
   },
 });
@@ -159,7 +158,7 @@ describe('matchPreviewJob', () => {
 
     const a = await one(`select * from match_previews where fixture_id = 101`);
     expect(a).toMatchObject({ stage: 'EARLY', text_source: 'AI', ai_status: 'OK', data_support: 'LIMITED', prompt_version: PREVIEW_PROMPT_VERSION, version: PREVIEW_VERSION, predicted_home: 2, predicted_away: 0 });
-    expect(a.overview_th).toContain('50%');
+    expect(a.analysis_th).toContain('50%');
     expect(Number(a.p_home)).toBe(0.5); // ensemble, like 📊 มุมมองโมเดล
     // goals from the run's totals matrix (the outlook's over 2.5), not the sides one (lambda 1.6)
     expect(Number(a.expected_home)).toBeCloseTo(2.2, 1);
@@ -167,15 +166,14 @@ describe('matchPreviewJob', () => {
     expect(Number(a.p_goals_0_1) + Number(a.p_goals_2) + Number(a.p_goals_3plus)).toBeCloseTo(1, 3);
     expect(Number(a.p_goals_3plus)).toBeCloseTo(priceSelection(TOTALS, { market: 'OVER_UNDER', selection: 'OVER', line: 2.5 }).probability, 3);
     expect(Number(a.p_goals_3plus)).toBeCloseTo(goalBands(TOTALS).threePlus, 3);
-    // v1.1: each side in turn, team news, analysis and facts; the v1.0 points and the v0.7 sections stay null
-    expect(a).toMatchObject({ main_side: 'HOME', attack_th: null, defence_th: null, opponent_th: null, score_th: null, key_factor_th: null, h2h_th: null, summary_th: null });
+    // v1.2: lead, each side, model and market, closing line; v1.1's team news and facts and the older parts stay null
+    expect(a).toMatchObject({ main_side: 'HOME', attack_th: null, defence_th: null, opponent_th: null, score_th: null, key_factor_th: null, h2h_th: null, team_news_th: null, facts_th: null });
     expect(a.headline_th).toBe('Home A รับมือ Away A');
     expect(a.home_th).toContain('Home A ฟอร์มดี');
     expect(a.away_th).toContain('Away A');
-    expect(a.team_news_th).toContain('ยังไม่ประกาศรายชื่อตัวจริง');
-    expect(a.analysis_th).toContain('โมเดลคาดประตู');
-    expect(a.analysis_th).not.toMatch(/ds*[-–]s*d/);
-    expect(a.facts_th).toEqual(['Home A ฟอร์มดีในช่วงหลัง', 'Away A มีข้อมูลในระบบน้อย', 'Home A ได้เล่นในบ้าน']);
+    expect(a.analysis_th).toContain('โมเดลให้ Home A ชนะ 50%');
+    expect(a.analysis_th).not.toMatch(/\d\s*[-–]\s*\d/);
+    expect(a.summary_th).toBe('สิ่งที่ต้องดูคือ Away A จะหยุดเกมรุกของ Home A ได้แค่ไหน');
     // the summary's confidence comes from rules: limited data (short form) -> MEDIUM
     expect(a).toMatchObject({ confidence: 'MEDIUM', confidence_notes: ['ข้อมูลบางส่วนจำกัด'] });
     // both teams to score from the same totals matrix as the bands
@@ -194,8 +192,11 @@ describe('matchPreviewJob', () => {
     // the written text is given no scoreline of this match: the page shows the one that fits the pick
     expect((seen.model as { scorelines: unknown[] }).scorelines).toHaveLength(0);
     expect((seen.data_support as { level: string }).level).toBe('LIMITED');
-    // the AI never sees the goal bands (3+ is over 2.5, once written up as an over lean)
+    // v1.2: the writer gets the chance of 3+ goals (the brief's model part), never the other bands,
+    // and the kickoff in Thai words to copy
+    expect((seen.model as { pGoals3plus: number }).pGoals3plus).toBeCloseTo(goalBands(TOTALS).threePlus, 3);
     expect(JSON.stringify(seen)).not.toMatch(/threePlus|upTo1|p_goals/);
+    expect((seen.fixture as { kickoffTh: string }).kickoffTh).toMatch(/^วัน.+ เวลา \d{2}:\d{2} น\. \(เวลาไทย\)$/);
     // which way each source leans: no odds and no Elo here, recent form and xG side with the model
     expect(seen.focus).toEqual({ mainSide: 'HOME', main: 'Home A', opponent: 'Away A' });
     expect(seen.views).toEqual({ model: 'Home A', market: null, recentForm: 'Home A', recentXg: 'Home A', otherModel: null, marketP: null, disagreements: [] });
@@ -224,19 +225,19 @@ describe('matchPreviewJob', () => {
 
     const b = await one(`select * from match_previews where fixture_id = 102`);
     expect(b).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'INVALID', data_support: 'THIN' });
-    expect(b.guard_violations).toEqual(expect.arrayContaining(['analysis_th: number not in input: 72%', 'analysis_th: scoreline not from the model: 2-1']));
+    expect(b.guard_violations).toEqual(expect.arrayContaining(['analysis_th: number not in input: 72%', 'analysis_th: scoreline not a past result in the input: 2-1']));
     expect((b.data_notes as string[])[0]).toContain('บอลถ้วยที่ทีมมาจากคนละลีก');
-    expect(b.analysis_th).toContain('โมเดลคาดประตู (xG)');
-    expect(b.analysis_th).not.toMatch(/ds*[-–]s*d/);
-    // a cup with no table, no recent results and no meeting in the DB: the template lists no facts rather than invent one
-    expect(b.facts_th).toEqual([]);
+    expect(b.analysis_th).toContain('โมเดลให้ Home B ชนะ');
+    expect(b.analysis_th).not.toMatch(/\d\s*[-–]\s*\d/);
+    expect(b.facts_th).toBeNull();
     // a cross-league cup with 40 cup matches is THIN; the template names no stock risk
     expect(b.overview_th).toContain('Home B พบ Away B');
+    expect(b.summary_th).toContain('Home B');
     expect(b.predicted_home).not.toBeNull();
 
+    // no model and no market: the template leaves the model-and-market part empty
     const c = await one(`select * from match_previews where fixture_id = 103`);
-    expect(c).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'REFUSED', data_support: 'THIN', predicted_home: null, p_home: null });
-    expect(c.overview_th).toContain('โมเดลยังไม่มีตัวเลข');
+    expect(c).toMatchObject({ text_source: 'TEMPLATE', ai_status: 'REFUSED', data_support: 'THIN', predicted_home: null, p_home: null, analysis_th: '' });
 
     expect((await one(`select count(*) n from match_previews where fixture_id = 104`)).n).toBe(0);
   });
@@ -248,7 +249,7 @@ describe('matchPreviewJob', () => {
     expect(down.calls).toBe(2);
 
     const second = fakeWriter({
-      'Home B': prose('Home B', 'Away B', { overview_th: 'บอลถ้วยข้ามลีก Home B กับ Away B ข้อมูลเทียบกันได้น้อย โมเดลเอียงไปทางเจ้าบ้านเล็กน้อยเท่านั้น', analysis_th: 'สกอร์ของโมเดลสูสี ข้อมูลยังบางมากสำหรับคู่นี้ จึงยังสรุปภาพของเกมนี้ได้ไม่ชัดนักในตอนนี้' }),
+      'Home B': prose('Home B', 'Away B', { overview_th: 'บอลถ้วยข้ามลีก Home B เปิดบ้านรับ Away B สองทีมที่มาจากคนละลีก', analysis_th: 'โมเดลเอียงไปทาง Home B เพียงเล็กน้อย เกมนี้จึงยังเปิดให้ Away B ลุ้นได้จากเกมเยือนที่ต้องเล่นอย่างอดทน' }),
       'Home C': prose('Home C', 'Away C', { overview_th: 'โมเดลให้ Home C 99% แน่นอนว่าชนะ Away C' }),
     });
     expect(await matchPreviewJob(ctx, { sameFootballDay: false, now: NOW, writer: second })).toBe(2);
@@ -283,7 +284,7 @@ describe('matchPreviewJob', () => {
     ]);
     const lineupRow = await one(`select home_th, team_news_th, facts from match_previews where fixture_id = 101 and stage = 'LINEUP'`);
     expect(lineupRow.home_th).toContain('ประกาศตัวจริงแล้ว');
-    expect(lineupRow.team_news_th).toContain('ทั้งสองทีมประกาศตัวจริงแล้ว');
+    expect(lineupRow.team_news_th).toBeNull();
     // LINEUP: formation and the key players who are not in the XI (Star Striker, id 101, starts)
     expect((lineupRow.facts as { home: PreviewTeam }).home.lineup).toEqual({ formation: '4-3-3', coach: null, keyPlayersNotStarting: ['Playmaker'] });
   });
