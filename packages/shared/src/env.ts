@@ -40,6 +40,8 @@ export const envSchema = z.object({
   /** Optional: with both set, the AI jobs (previews, shadow ranking) use OpenAI instead of Claude. */
   OPENAI_API_KEY: z.string().optional().transform((v) => v || undefined),
   OPENAI_MODEL: z.string().optional().transform((v) => v || undefined),
+  /** Optional: the OpenAI model of the Hybrid AI pick decision only (its three answers, ADR 0013); OPENAI_MODEL when unset. Previews, pick notes and the shadow ranking keep OPENAI_MODEL. */
+  OPENAI_HYBRID_MODEL: z.string().optional().transform((v) => v || undefined),
   /**
    * Who makes the published pick (docs/adr/0010-hybrid-ai-picks.md):
    *  legacy - the rules (Dixon-Coles edge over the market); the Hybrid AI does not run

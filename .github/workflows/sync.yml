@@ -34,6 +34,8 @@ jobs:
       # docs/adr/0014-one-daily-pick-run.md)
       PICK_SCHEDULE: ${{ vars.PICK_SCHEDULE }}
       HYBRID_AI_MODEL: ${{ vars.HYBRID_AI_MODEL }}
+      # the OpenAI model of the pick decision only; OPENAI_MODEL when unset (previews and notes keep OPENAI_MODEL)
+      OPENAI_HYBRID_MODEL: ${{ vars.OPENAI_HYBRID_MODEL }}
       API_FOOTBALL_RPM: ${{ vars.API_FOOTBALL_RPM || '10' }}
       TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
       SEASON: ${{ vars.SEASON || '2026' }}

@@ -60,10 +60,14 @@ export interface HybridJobOptions {
   concurrency?: number;
 }
 
-/** OpenAI when OPENAI_API_KEY and OPENAI_MODEL are set, else Claude when ANTHROPIC_API_KEY is, else none. */
+/** The OpenAI model of the pick decision: OPENAI_HYBRID_MODEL, else the shared OPENAI_MODEL. */
+export const hybridOpenAIModel = (env: { OPENAI_MODEL?: string; OPENAI_HYBRID_MODEL?: string }) => env.OPENAI_HYBRID_MODEL ?? env.OPENAI_MODEL;
+
+/** OpenAI when OPENAI_API_KEY and a model (OPENAI_HYBRID_MODEL or OPENAI_MODEL) are set, else Claude when ANTHROPIC_API_KEY is, else none. */
 function defaultDecider(ctx: JobContext): HybridDecider | null {
-  const { OPENAI_API_KEY, OPENAI_MODEL, ANTHROPIC_API_KEY, HYBRID_AI_MODEL } = ctx.env;
-  if (OPENAI_API_KEY && OPENAI_MODEL) return createOpenAIHybridDecider({ apiKey: OPENAI_API_KEY, model: OPENAI_MODEL });
+  const { OPENAI_API_KEY, ANTHROPIC_API_KEY, HYBRID_AI_MODEL } = ctx.env;
+  const model = hybridOpenAIModel(ctx.env);
+  if (OPENAI_API_KEY && model) return createOpenAIHybridDecider({ apiKey: OPENAI_API_KEY, model });
   return ANTHROPIC_API_KEY ? createClaudeHybridDecider({ apiKey: ANTHROPIC_API_KEY, model: HYBRID_AI_MODEL }) : null;
 }
 

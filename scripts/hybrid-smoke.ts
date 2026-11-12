@@ -9,7 +9,7 @@ import { parseArgs } from 'node:util';
 import { createClaudeHybridDecider, createOpenAIHybridDecider, validateHybridOutput, type HybridDecider } from '@fp/ai';
 import { createPgDb, Repository, type JobContext } from '@fp/database';
 import { addHours, loadDotEnvFile, loadEnv } from '@fp/shared';
-import { collectHybridInput } from '../workers/analysis/src/hybrid-job.js';
+import { collectHybridInput, hybridOpenAIModel } from '../workers/analysis/src/hybrid-job.js';
 
 const { values } = parseArgs({ options: { fixtures: { type: 'string', default: '2' }, provider: { type: 'string', default: 'claude' } } });
 loadDotEnvFile();
@@ -20,7 +20,8 @@ const ctx = { env, db, repo } as unknown as JobContext;
 
 const deciders: Array<[string, HybridDecider]> = [];
 if (values.provider !== 'openai' && env.ANTHROPIC_API_KEY) deciders.push([`claude (${env.HYBRID_AI_MODEL ?? 'default'})`, createClaudeHybridDecider({ apiKey: env.ANTHROPIC_API_KEY, model: env.HYBRID_AI_MODEL })]);
-if (values.provider !== 'claude' && env.OPENAI_API_KEY && env.OPENAI_MODEL) deciders.push([`openai (${env.OPENAI_MODEL})`, createOpenAIHybridDecider({ apiKey: env.OPENAI_API_KEY, model: env.OPENAI_MODEL })]);
+const openaiModel = hybridOpenAIModel(env);
+if (values.provider !== 'claude' && env.OPENAI_API_KEY && openaiModel) deciders.push([`openai (${openaiModel})`, createOpenAIHybridDecider({ apiKey: env.OPENAI_API_KEY, model: openaiModel })]);
 if (!deciders.length) throw new Error('no AI key for the chosen provider');
 
 const now = new Date();
