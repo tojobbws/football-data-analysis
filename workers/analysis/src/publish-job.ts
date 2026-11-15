@@ -20,7 +20,7 @@
 import { buildHybridReason, buildReason, dailyRoundFor, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
 import { HYBRID_ENGINE_VERSION, HYBRID_PROMPT_VERSION } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
-import { addHours, footballDayHorizon, NATIONAL_TEAM_COMPETITIONS, pickRunAt } from '@fp/shared';
+import { addHours, footballDayHorizon, pickRunAt } from '@fp/shared';
 
 export type PickEngine = 'legacy' | 'shadow' | 'hybrid';
 export type PickSchedule = 'rounds' | 'daily';
@@ -60,16 +60,13 @@ export interface PublishOptions {
 export const HYBRID_PUBLISHED_MARKETS: readonly string[] = ['ASIAN_HANDICAP'];
 /** The no-pick text of a round whose Hybrid AI choice was Over/Under (ADR 0019); fog stays off the fan pages. */
 export const OU_SHADOW_SUMMARY_TH = 'คู่นี้ระบบเลือกตลาดสูง/ต่ำ ซึ่งอยู่ระหว่างการวัดผล จึงยังไม่เผยแพร่ตัวเลือก';
-/**
- * ADR 0019: every Hybrid AI choice in a national-team competition (NATIONAL_TEAM_COMPETITIONS) is a shadow decision too.
- * Their input is thin: form over a year back, almost no xG, no opponent table positions, friendlies mixed in.
- */
-export const NATIONAL_SHADOW_SUMMARY_TH = 'คู่ทีมชาติอยู่ระหว่างการวัดผล ระบบจึงยังไม่เผยแพร่ตัวเลือก';
 
-/** Why a valid Hybrid AI choice is kept as a shadow decision instead of published (ADR 0019); null = published. */
-export function hybridShadowReason(market: string | null, leagueId: number): 'NATIONAL_TEAM' | 'OVER_UNDER' | null {
+/**
+ * Why a valid Hybrid AI choice is kept as a shadow decision instead of published (ADR 0019); null = published.
+ * National-team matches were shadow too on 2026-11-15 only; the owner brought their picks back the same day.
+ */
+export function hybridShadowReason(market: string | null): 'OVER_UNDER' | null {
   if (market === null) return null;
-  if (NATIONAL_TEAM_COMPETITIONS.includes(leagueId)) return 'NATIONAL_TEAM';
   return HYBRID_PUBLISHED_MARKETS.includes(market) ? null : 'OVER_UNDER';
 }
 
@@ -173,9 +170,8 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
           continue;
         }
         const header = (await ctx.repo.fixtureHeader(f.id))!;
-        // ADR 0019: an Over/Under choice, and any choice in a national-team competition, stays in hybrid_decisions as a
-        // shadow decision; the round publishes no pick
-        const shadow = hybridShadowReason(d.market, header.leagueId);
+        // ADR 0019: an Over/Under choice stays in hybrid_decisions as a shadow decision; the round publishes no pick
+        const shadow = hybridShadowReason(d.market);
         const shadowOnly = shadow !== null;
         const isPick = !shadowOnly && d.side !== 'NO_PICK' && d.market !== null && d.selection !== null && d.line !== null;
         const label = isPick ? selectionLabel(d.market!, d.selection!, d.line, header.home, header.away) : null;
@@ -189,7 +185,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
           promptChanged: cause === 'PROMPT_CHANGED',
           label,
           // a shadow Over/Under text argues for that total: the published no-pick gets its own line and nothing more
-          summaryTh: shadow === 'NATIONAL_TEAM' ? NATIONAL_SHADOW_SUMMARY_TH : shadow === 'OVER_UNDER' ? OU_SHADOW_SUMMARY_TH : (d.summaryTh ?? ''),
+          summaryTh: shadowOnly ? OU_SHADOW_SUMMARY_TH : (d.summaryTh ?? ''),
           supporting: shadowOnly ? [] : (out.supporting_evidence ?? []),
           risks: shadowOnly ? [] : [...(out.risk_factors ?? []), ...(out.counter_evidence ?? [])],
           missing: shadowOnly ? [] : (out.missing_data ?? []),

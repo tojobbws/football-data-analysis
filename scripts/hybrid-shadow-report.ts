@@ -1,7 +1,8 @@
 /**
- * ADR 0019: the Hybrid AI's Over/Under choices and every choice in a national-team competition are shadow decisions
- * (stored in hybrid_decisions, never published). This report settles them on the 90-minute score and sets them beside
- * the published Asian handicap picks of club matches, for the same prompt versions. Read-only (no DB writes).
+ * ADR 0019: the Hybrid AI's Over/Under choices are shadow decisions (stored in hybrid_decisions, never published).
+ * National-team choices were shadow for the 15 Nov 2026 run only, and are published again, but stay a row of their
+ * own here. This report settles every DAILY decision on the 90-minute score, grouped by market and by clubs or
+ * national teams, for the same prompt versions. Read-only (no DB writes).
  *
  *   npx tsx scripts/hybrid-shadow-report.ts            # prompt hybrid-ai-v1.8 and later
  *   npx tsx scripts/hybrid-shadow-report.ts --from 1.6 # also earlier prompts, for comparison (published then)
@@ -78,7 +79,7 @@ for (const r of rows) {
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 console.log(`Hybrid AI DAILY decisions, prompt v${fromVersion} and later.`);
-console.log('From v1.8 (ADR 0019) only "AH clubs" is published; O/U and every national-team decision are shadow. Before v1.8 all were published.\n');
+console.log('From v1.8 (ADR 0019) O/U is shadow; AH is published (national teams were shadow on 15 Nov 2026 only). Before v1.8 all were published.\n');
 console.table(
   [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([group, t]) => {
     const hit = t.weight ? t.hits / t.weight : null;
@@ -97,5 +98,5 @@ console.table(
 const settled = (prefix: string) => [...groups.entries()].filter(([k]) => k.startsWith(prefix) && k.endsWith('(all)')).reduce((s, [, t]) => s + t.settled, 0);
 console.log(`\nADR 0019 review at ${REVIEW_AT} settled decisions per shadow group:`);
 console.log(`  O/U (clubs and national): ${settled('O/U')} of ${REVIEW_AT}`);
-console.log(`  AH national: ${settled('AH national')} of ${REVIEW_AT}`);
+console.log(`  AH national (published again, measured apart): ${settled('AH national')} of ${REVIEW_AT}`);
 await db.close();

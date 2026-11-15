@@ -1,6 +1,8 @@
 # Over/Under and national-team matches go to shadow; the AI input is corrected
 
 Status: accepted by the owner on 2026-11-15. Prompt `hybrid-ai-v1.8`. No migration.
+**Amended the same day:** the national-team shadow is withdrawn (see "Amendment, 2026-11-15" at the end). The
+Over/Under shadow and the input fixes stand.
 
 ## Problem
 
@@ -95,3 +97,17 @@ The AI is not asked for another choice in their place, so those matches show no 
 **Still open:**
 - Storing the missing domestic cups would cost API calls under the sync cap.
 - The national-team input would need a measure of opponent strength. API-Football's data has none we use today.
+
+## Amendment, 2026-11-15: national-team picks are published again
+
+The first v1.8 daily run (14:00 Thai, 15 Nov) fell in an international window: all nine matches were national-team
+games, so the site had no pick and no featured list that day. The owner chose to publish national-team picks again.
+
+- `hybridShadowReason` now takes the market only. Over/Under is still shadow; a national-team handicap pick is
+  published like a club one and can enter the featured list where ADR 0015/0018 allow it (UEFA Nations League only,
+  MEDIUM confidence or higher).
+- The rounds already published on 15 Nov stay as they are: `analysis_predictions` rejects updates and deletes, and the
+  daily round is final (ADR 0014). National picks are published from the 16 Nov run on.
+- The thin national-team input above still holds, and so does the caution: their record (52.3%, n=25 up to
+  15 Nov) proves nothing either way. `scripts/hybrid-shadow-report.ts` keeps "AH national" as its own row, so the
+  group is still measured apart; read it at 100 settled decisions with the club review.
