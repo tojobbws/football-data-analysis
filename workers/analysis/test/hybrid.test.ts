@@ -191,7 +191,7 @@ describe('hybridJob', () => {
     const starts = Object.fromEntries(rs.home.players.map((p: { player: string; starts: number }) => [p.player, p.starts]));
     expect(starts).toMatchObject({ 'Good 1': 5, 'Good 11': 4, 'Good 12': 1 });
     expect(rs.away).toMatchObject({ lineups: 0, players: [] });
-    expect(row!.input.injuries).toEqual([{ team: 'HOME', player: 'Good 11', type: 'Missing Fixture', reason: 'Hamstring', recent_starts: 4, recent_lineups: 5 }]);
+    expect(row!.input.injuries).toEqual([{ team: 'HOME', player: 'Good 11', type: 'Missing Fixture', reason: 'Hamstring', recent_starts: 4, recent_lineups: 5, season_figures: null }]);
     expect(row!.input.data_quality.missing).toContain('Away FC: only 0 stored lineups for recent_starters');
 
     // shadow mode: the rules engine still owns publishing (no rules run here, so nothing at all)

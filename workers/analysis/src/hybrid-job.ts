@@ -40,6 +40,7 @@ import { DEFAULT_RULES, hybridMarket, hybridOptions, regularStarters, type Hybri
 import { runJob, type JobContext } from '@fp/database';
 import { competitionKind } from '@fp/shared';
 import { injuriesCoverage, withOpponentRanksAsOf } from './hybrid-input-v2.js';
+import { collectV20, eloFor, withElo } from './hybrid-input-v20.js';
 import { decisionFresh, dueRound, pickFixtures, type PickEngine, type PickSchedule } from './publish-job.js';
 
 /** Daily pick run: matches decided at the same time (each asks the AI HYBRID_VOTES times in parallel). */
@@ -118,7 +119,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
       const existing = await ctx.repo.latestHybridDecision(f.id, round, HYBRID_ENGINE_VERSION);
       if (existing && !(await decisionFresh(ctx, f.id, round, existing.decidedAt, now))) return;
 
-      const { header, input, inputHash, options, legacy } = await collectHybridInput(ctx, f, round, now, { inputV2: true });
+      const { header, input, inputHash, options, legacy } = await collectHybridInput(ctx, f, round, now, { inputV2: true, v20: true });
       const base = { fixture_id: f.id, publish_round: round, engine_mode: engine, engine_version: HYBRID_ENGINE_VERSION, prompt_version: HYBRID_PROMPT_VERSION, input, input_hash: inputHash, legacy };
       const match = `${header.home} vs ${header.away} (${round})`;
 
@@ -256,7 +257,7 @@ export function combineVotes(answers: readonly Answer[]): Record<string, unknown
  * at `now` (since prompt v1.6 no Dixon-Coles prices);
  * plus the rules' decision of the moment, which is stored beside the AI's for comparison and never shown to it.
  */
-export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date, opts: { inputV2?: boolean } = {}) {
+export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date, opts: { inputV2?: boolean; v20?: boolean } = {}) {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
   const quotes = await ctx.repo.latestQuotes(f.id, now);
   const market = hybridMarket(quotes, now);
@@ -290,12 +291,22 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     const s = standings.get(teamId);
     return s ? { rank: s.rank, tableSize: s.teams ?? null, played: s.played, points: s.points, goalDiff: s.goalDiff } : null;
   };
+  const rsHome = regularStarters(lineupsHome, target);
+  const rsAway = regularStarters(lineupsAway, target);
+  // prompt v2.0 (ADR 0020): the owner's added context, and both Elo ratings beside every recent match
+  const v20 = opts.v20
+    ? await collectV20(ctx, { header, now, market, standings, injuries, regularStarters: { home: rsHome, away: rsAway } })
+    : undefined;
+  const elo = opts.v20 ? await eloFor(ctx, now) : null;
+  const recentH = v2 ? v2.recentHome : recentHome;
+  const recentA = v2 ? v2.recentAway : recentAway;
   const src: HybridSource = {
     fixture: { id: f.id, home: header.home, away: header.away, league: header.league, kickoffAt: f.kickoffAt },
     predictionAt: now,
     publishRound: round,
-    recent: { home: v2 ? v2.recentHome : recentHome, away: v2 ? v2.recentAway : recentAway },
+    recent: { home: elo ? withElo(recentH, elo) : recentH, away: elo ? withElo(recentA, elo) : recentA },
     standings: { home: standing(f.homeTeamId), away: standing(f.awayTeamId) },
+    ...(v20 ? { v20 } : {}),
     injuries: injuries.map((i) => ({
       team: side(i.team_id),
       player: i.player_name == null ? null : String(i.player_name),
@@ -303,7 +314,7 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
       reason: i.reason == null ? null : String(i.reason),
       playerId: i.player_id == null ? null : Number(i.player_id),
     })),
-    regularStarters: { kind, home: regularStarters(lineupsHome, target), away: regularStarters(lineupsAway, target) },
+    regularStarters: { kind, home: rsHome, away: rsAway },
     nextMatch: { home: nextHome, away: nextAway },
     // prompt v1.5: xG difference, npxG, shooting performance, xPTS and goals prevented beside every recent match and window
     xgMetrics: true,

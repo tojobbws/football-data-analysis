@@ -14,6 +14,7 @@ import {
   HYBRID_SYSTEM_PROMPT,
   HYBRID_VOTES,
   majorityVote,
+  matchExtras,
   PENALTY_XG,
   validateHybridOutput,
   type HybridSource,
@@ -131,7 +132,7 @@ describe('buildHybridInput', () => {
   });
 
   it('asks an Over/Under choice for agreeing chance figures, not recent goal counts alone (v1.9)', () => {
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.9');
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v2.0');
     expect(HYBRID_SYSTEM_PROMPT).toContain('never justify going against that line');
     expect(HYBRID_SYSTEM_PROMPT).toContain('npxg_for, npxg_against');
   });
@@ -428,5 +429,29 @@ describe('prompt v1.7 (ADR 0016): recent starters before the lineup', () => {
     const plain = buildHybridInput({ ...src }) as { injuries: unknown[] };
     expect(plain).not.toHaveProperty('recent_starters');
     expect(plain.injuries).toEqual([{ team: 'AWAY', player: 'J. Doe', type: 'Missing Fixture', reason: 'Knee Injury' }]);
+  });
+});
+
+describe('matchExtras (prompt v2.0)', () => {
+  const base = {
+    kickoffAt: '2026-11-01T15:00:00Z', competition: 'L', venue: 'HOME' as const, opponent: 'X', opponentRank: null, opponentTableSize: null,
+    goalsFor: 2, goalsAgainst: 1, xgFor: 1.2, xgAgainst: 0.9, shotsOnTargetFor: 5, shotsOnTargetAgainst: 3, shotsFor: 12, shotsAgainst: 8,
+  };
+
+  it('scores a match against the closing line: goal difference plus the team line, the same with xG, and totals minus the line', () => {
+    const x = matchExtras({ ...base, closingHandicapLine: -1.25, closingTotalLine: 2.75, redCardMinutesFor: [], redCardMinutesAgainst: [63] });
+    // won by 1 when the market expected about 1.25: just under its expectation; xG +0.3 against −1.25 well under
+    expect(x.goal_diff_vs_closing_line).toBe(-0.25);
+    expect(x.xg_diff_vs_closing_line).toBe(-0.95);
+    expect(x.total_goals_vs_closing_line).toBe(0.25);
+    expect(x.xg_total_vs_closing_line).toBe(-0.65);
+    expect(x.red_card_minutes_against).toEqual([63]);
+  });
+
+  it('leaves every market figure null without a closing line', () => {
+    const x = matchExtras(base);
+    expect(x.goal_diff_vs_closing_line).toBeNull();
+    expect(x.total_goals_vs_closing_line).toBeNull();
+    expect(x.red_card_minutes_for).toBeNull();
   });
 });

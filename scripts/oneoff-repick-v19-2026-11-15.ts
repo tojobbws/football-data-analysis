@@ -18,7 +18,7 @@ import { publishJob } from '../workers/analysis/src/publish-job.js';
 const FIXTURES = [1528979, 1528980, 1528981, 1528982, 1528983, 1528984, 1528985, 1545616, 1644696];
 
 loadDotEnvFile();
-if (HYBRID_PROMPT_VERSION !== 'hybrid-ai-v1.9') throw new Error(`this checkout has ${HYBRID_PROMPT_VERSION}, not hybrid-ai-v1.9`);
+if ((HYBRID_PROMPT_VERSION as string) !== 'hybrid-ai-v1.9') throw new Error(`this checkout has ${HYBRID_PROMPT_VERSION}, not hybrid-ai-v1.9`);
 const ctx = createJobContext();
 const all = ctx.repo.fixturesForCandidates.bind(ctx.repo);
 ctx.repo.fixturesForCandidates = async (...a: Parameters<typeof all>) => (await all(...a)).filter((f) => FIXTURES.includes(f.id));

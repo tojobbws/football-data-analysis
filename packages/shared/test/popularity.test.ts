@@ -103,7 +103,9 @@ describe('popularity never touches probabilities, edges, picks or the featured l
         })
       : [];
   const sources = dirs.flatMap((d) => files(join(root, d)));
-  const FORBIDDEN = /popularity|rankBigMatches|scoreMatch|team_popularity|league_importance|rivalr|big[_ -]?match/i;
+  // ADR 0020: the Hybrid AI input names a derby (rivalries.name only, never its weight or a popularity score), so the
+  // rivalries table itself is no longer forbidden here; the popularity registry and its scores still are.
+  const FORBIDDEN = /popularity|rankBigMatches|scoreMatch|team_popularity|league_importance|big[_ -]?match/i;
 
   it('scans the model, pick, featured and AI code', () => {
     expect(sources.length).toBeGreaterThan(30);

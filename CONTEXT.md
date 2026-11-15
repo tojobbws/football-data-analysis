@@ -156,7 +156,7 @@ A match ranked high by its popularity score, shown for reader interest whether o
 _Avoid_: calling it a best signal or a recommended match
 
 **Popularity score**:
-A number from team popularity, league and competition importance and derby or rivalry, kept in an admin-editable registry keyed by provider ids. It only orders what is shown; it never enters a probability, an edge, a pick or the daily featured list.
+A number from team popularity, league and competition importance and derby or rivalry, kept in an admin-editable registry keyed by provider ids. It only orders what is shown; it never enters a probability, an edge, a pick or the daily featured list. One exception (ADR 0020): the Hybrid AI input names a derby (the rivalry's name only, never its weight or a score).
 _Avoid_: confidence, strength
 
 **Tie**:

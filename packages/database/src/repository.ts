@@ -1046,7 +1046,7 @@ export class Repository {
    */
   async teamRecentMatches(teamId: number, before: Date, n = 10) {
     const res = await this.db.query<Record<string, unknown>>(
-      `select f.kickoff_at, f.home_team_id, l.name as competition, th.name as home_name, ta.name as away_name,
+      `select f.id as fixture_id, f.kickoff_at, f.home_team_id, l.name as competition, th.name as home_name, ta.name as away_name,
               f.league_id, f.season, l.type as league_type,
               case when f.home_team_id = $1 then f.away_team_id else f.home_team_id end as opp_id,
               coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga,
@@ -1058,6 +1058,16 @@ export class Repository {
               max(s.value_num) filter (where s.type = 'total_shots' and s.team_id = f.away_team_id) as sh_a,
               max(s.value_num) filter (where s.type = 'goals_prevented' and s.team_id = f.home_team_id) as gp_h,
               max(s.value_num) filter (where s.type = 'goals_prevented' and s.team_id = f.away_team_id) as gp_a,
+              -- prompt v2.0: possession, corners and yellow cards
+              max(s.value_num) filter (where s.type = 'ball_possession' and s.team_id = f.home_team_id) as pos_h,
+              max(s.value_num) filter (where s.type = 'ball_possession' and s.team_id = f.away_team_id) as pos_a,
+              max(s.value_num) filter (where s.type = 'corner_kicks' and s.team_id = f.home_team_id) as cor_h,
+              max(s.value_num) filter (where s.type = 'corner_kicks' and s.team_id = f.away_team_id) as cor_a,
+              max(s.value_num) filter (where s.type = 'yellow_cards' and s.team_id = f.home_team_id) as yc_h,
+              max(s.value_num) filter (where s.type = 'yellow_cards' and s.team_id = f.away_team_id) as yc_a,
+              -- prompt v2.0: the market's main lines at kickoff (market_closing, kept from 2026-10-04); AH from the home side
+              (select c.line from market_closing c where c.fixture_id = f.id and c.market = 'ASIAN_HANDICAP' and c.selection = 'HOME' limit 1) as close_ah_home,
+              (select c.line from market_closing c where c.fixture_id = f.id and c.market = 'OVER_UNDER' limit 1) as close_ou,
               f.status_short, f.goals_home as full_h, f.goals_away as full_a,
               -- penalties taken in play (scored or missed, never the shootout) and own goals; an own goal is filed under
               -- the team it counts for (checked on the stored data, 2026-11-04). Null when the match has no events stored.
@@ -1065,7 +1075,10 @@ export class Repository {
                         'pen_h', count(*) filter (where e.type = 'Goal' and e.detail in ('Penalty', 'Missed Penalty') and coalesce(e.comments, '') <> 'Penalty Shootout' and e.team_id = f.home_team_id),
                         'pen_a', count(*) filter (where e.type = 'Goal' and e.detail in ('Penalty', 'Missed Penalty') and coalesce(e.comments, '') <> 'Penalty Shootout' and e.team_id = f.away_team_id),
                         'og_h', count(*) filter (where e.type = 'Goal' and e.detail = 'Own Goal' and e.team_id = f.home_team_id),
-                        'og_a', count(*) filter (where e.type = 'Goal' and e.detail = 'Own Goal' and e.team_id = f.away_team_id))
+                        'og_a', count(*) filter (where e.type = 'Goal' and e.detail = 'Own Goal' and e.team_id = f.away_team_id),
+                        -- prompt v2.0: the minute of each red card (a second yellow is stored as a red card)
+                        'red_h', coalesce(json_agg(e.elapsed order by e.elapsed) filter (where e.type = 'Card' and e.detail = 'Red Card' and e.team_id = f.home_team_id), '[]'::json),
+                        'red_a', coalesce(json_agg(e.elapsed order by e.elapsed) filter (where e.type = 'Card' and e.detail = 'Red Card' and e.team_id = f.away_team_id), '[]'::json))
                  from fixture_events e where e.fixture_id = f.id having count(*) > 0) as ev,
               (select st.rank from standings st where st.league_id = f.league_id and st.season = f.season
                   and st.team_id = case when f.home_team_id = $1 then f.away_team_id else f.home_team_id end limit 1) as opp_rank,
@@ -1076,7 +1089,8 @@ export class Repository {
          join leagues l on l.id = f.league_id
          join teams th on th.id = f.home_team_id
          join teams ta on ta.id = f.away_team_id
-         left join fixture_statistics s on s.fixture_id = f.id and s.type in ('expected_goals', 'shots_on_goal', 'total_shots', 'goals_prevented')
+         left join fixture_statistics s on s.fixture_id = f.id
+              and s.type in ('expected_goals', 'shots_on_goal', 'total_shots', 'goals_prevented', 'ball_possession', 'corner_kicks', 'yellow_cards')
         where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at < $2
           and coalesce(f.ft_home, f.goals_home) is not null
         group by f.id, l.name, l.type, th.name, ta.name
@@ -1088,7 +1102,10 @@ export class Repository {
       const home = Number(r.home_team_id) === teamId;
       const rank = num(r.opp_rank);
       const ev = (typeof r.ev === 'string' ? JSON.parse(r.ev) : r.ev) as Record<string, unknown> | null;
+      const reds = (v: unknown) => (Array.isArray(v) ? v.map((x) => (x == null ? null : Number(x))) : []);
+      const closeAh = num(r.close_ah_home);
       return {
+        fixtureId: Number(r.fixture_id),
         kickoffAt: new Date(r.kickoff_at as string).toISOString(),
         competition: String(r.competition),
         venue: (home ? 'HOME' : 'AWAY') as 'HOME' | 'AWAY',
@@ -1116,8 +1133,135 @@ export class Repository {
         penaltiesAgainst: ev ? Number(home ? ev.pen_a : ev.pen_h) : null,
         ownGoalsFor: ev ? Number(home ? ev.og_h : ev.og_a) : null,
         goalsPreventedFor: num(home ? r.gp_h : r.gp_a),
+        // prompt v2.0
+        possessionFor: num(home ? r.pos_h : r.pos_a),
+        cornersFor: num(home ? r.cor_h : r.cor_a),
+        cornersAgainst: num(home ? r.cor_a : r.cor_h),
+        yellowCardsFor: num(home ? r.yc_h : r.yc_a),
+        yellowCardsAgainst: num(home ? r.yc_a : r.yc_h),
+        redCardMinutesFor: ev ? reds(home ? ev.red_h : ev.red_a) : null,
+        redCardMinutesAgainst: ev ? reds(home ? ev.red_a : ev.red_h) : null,
+        // the team's own handicap line at kickoff: the home line, or its mirror for the away side
+        closingHandicapLine: closeAh === null ? null : home ? closeAh : closeAh === 0 ? 0 : -closeAh,
+        closingTotalLine: num(r.close_ou),
       };
     });
+  }
+
+  // ---------- Hybrid AI input v2.0 (docs/adr/0020-hybrid-input-v20.md) ----------
+
+  /** Every finished result before a date, oldest first: the input of the Elo ratings (all stored competitions). */
+  async allResultsForElo(before: Date) {
+    const res = await this.db.query<{ id: string; kickoff_at: Date; home_team_id: number; away_team_id: number; gh: number; ga: number }>(
+      `select id, kickoff_at, home_team_id, away_team_id, coalesce(ft_home, goals_home) as gh, coalesce(ft_away, goals_away) as ga
+         from fixtures
+        where status_short in ('FT','AET','PEN') and kickoff_at < $1 and coalesce(ft_home, goals_home) is not null
+        order by kickoff_at, id`,
+      [before.toISOString()],
+    );
+    return res.rows.map((r) => ({ id: Number(r.id), kickoffAt: new Date(r.kickoff_at), homeTeamId: Number(r.home_team_id), awayTeamId: Number(r.away_team_id), homeGoals: Number(r.gh), awayGoals: Number(r.ga) }));
+  }
+
+  /** The time this system first stored a quote for the fixture (the market's opening as we saw it), or null. */
+  async firstQuoteAt(fixtureId: number): Promise<Date | null> {
+    const res = await this.db.query<{ t: Date | null }>(
+      `select min(collected_at) as t from odds_history where fixture_id = $1 and market in ('ASIAN_HANDICAP','OVER_UNDER','MATCH_WINNER')`,
+      [fixtureId],
+    );
+    return res.rows[0]?.t ? new Date(res.rows[0].t) : null;
+  }
+
+  /** Each group's full table of a league season: rank, points, played and zone (the provider's description). */
+  async leagueTable(leagueId: number, season: number) {
+    const res = await this.db.query<Record<string, unknown>>(
+      'select team_id, group_name, rank, points, played, description from standings where league_id = $1 and season = $2 order by group_name, rank',
+      [leagueId, season],
+    );
+    return res.rows.map((r) => ({
+      teamId: Number(r.team_id),
+      group: r.group_name == null ? '' : String(r.group_name),
+      rank: Number(r.rank),
+      points: Number(r.points),
+      played: Number(r.played),
+      zone: r.description == null ? null : String(r.description),
+    }));
+  }
+
+  /** Per team: its league fixtures of the season from `from` on that are not played, postponed or cancelled. */
+  async leagueMatchesLeft(leagueId: number, season: number, teamIds: number[], from: Date): Promise<Map<number, number>> {
+    const res = await this.db.query<{ team_id: number; n: string }>(
+      `select t.team_id, count(f.id) as n
+         from unnest($3::int[]) as t(team_id)
+         left join fixtures f on f.league_id = $1 and f.season = $2 and f.kickoff_at >= $4 and f.status_short in ('NS','TBD')
+              and (f.home_team_id = t.team_id or f.away_team_id = t.team_id)
+        group by t.team_id`,
+      [leagueId, season, teamIds, from.toISOString()],
+    );
+    return new Map(res.rows.map((r) => [Number(r.team_id), Number(r.n)]));
+  }
+
+  /**
+   * Per player of a team in one season (every stored competition, matches before `before`): appearances, minutes,
+   * goals, assists and average rating, plus the team's totals over the same rows.
+   */
+  async playerSeasonFigures(teamId: number, season: number, before: Date) {
+    const res = await this.db.query<Record<string, unknown>>(
+      `select ps.player_id, count(*) filter (where coalesce(ps.minutes, 0) > 0) as apps, coalesce(sum(ps.minutes), 0) as minutes,
+              coalesce(sum(ps.goals), 0) as goals, coalesce(sum(ps.assists), 0) as assists,
+              avg(ps.rating) filter (where ps.rating is not null and coalesce(ps.minutes, 0) > 0) as rating
+         from fixture_player_stats ps join fixtures f on f.id = ps.fixture_id
+        where ps.team_id = $1 and f.season = $2 and f.kickoff_at < $3 and f.status_short in ('FT','AET','PEN')
+        group by ps.player_id`,
+      [teamId, season, before.toISOString()],
+    );
+    return res.rows.map((r) => ({
+      playerId: Number(r.player_id),
+      appearances: Number(r.apps),
+      minutes: Number(r.minutes),
+      goals: Number(r.goals),
+      assists: Number(r.assists),
+      rating: r.rating == null ? null : Number(r.rating),
+    }));
+  }
+
+  /** Minutes each listed player played for the team in matches that kicked off in [from, before). */
+  async playerMinutesBetween(teamId: number, playerIds: number[], from: Date, before: Date): Promise<Map<number, number>> {
+    if (!playerIds.length) return new Map();
+    const res = await this.db.query<{ player_id: number; minutes: string }>(
+      `select ps.player_id, coalesce(sum(ps.minutes), 0) as minutes
+         from fixture_player_stats ps join fixtures f on f.id = ps.fixture_id
+        where ps.team_id = $1 and ps.player_id = any($2::int[]) and f.kickoff_at >= $3 and f.kickoff_at < $4
+        group by ps.player_id`,
+      [teamId, playerIds, from.toISOString(), before.toISOString()],
+    );
+    return new Map(res.rows.map((r) => [Number(r.player_id), Number(r.minutes)]));
+  }
+
+  /** The team's finished matches that kicked off in [from, before), each with how many of its players have minutes stored. */
+  async teamMatchesWithMinutes(teamId: number, from: Date, before: Date) {
+    const res = await this.db.query<{ id: string; kickoff_at: Date; n: string }>(
+      `select f.id, f.kickoff_at, (select count(ps.minutes) from fixture_player_stats ps where ps.fixture_id = f.id and ps.team_id = $1) as n
+         from fixtures f
+        where (f.home_team_id = $1 or f.away_team_id = $1) and f.status_short in ('FT','AET','PEN') and f.kickoff_at >= $2 and f.kickoff_at < $3`,
+      [teamId, from.toISOString(), before.toISOString()],
+    );
+    return res.rows.map((r) => ({ fixtureId: Number(r.id), kickoffAt: new Date(r.kickoff_at), playersWithMinutes: Number(r.n) }));
+  }
+
+  /** The name of the two teams' rivalry, either order, or null. Only the name: its weight is a popularity input (ADR 0020). */
+  async rivalry(teamA: number, teamB: number): Promise<{ name: string } | null> {
+    const res = await this.db.query<{ name: string }>(
+      `select name from rivalries where (team_a_id = $1 and team_b_id = $2) or (team_a_id = $2 and team_b_id = $1) limit 1`,
+      [teamA, teamB],
+    );
+    const r = res.rows[0];
+    return r ? { name: String(r.name) } : null;
+  }
+
+  /** The fixture's round name as the provider gives it (e.g. "Round of 16", "Regular Season - 12"). */
+  async fixtureRound(fixtureId: number): Promise<string | null> {
+    const res = await this.db.query<{ round: string | null }>('select round from fixtures where id = $1', [fixtureId]);
+    return res.rows[0]?.round ?? null;
   }
 
   /**
