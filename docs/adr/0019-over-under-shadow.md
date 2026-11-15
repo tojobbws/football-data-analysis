@@ -106,8 +106,12 @@ games, so the site had no pick and no featured list that day. The owner chose to
 - `hybridShadowReason` now takes the market only. Over/Under is still shadow; a national-team handicap pick is
   published like a club one and can enter the featured list where ADR 0015/0018 allow it (UEFA Nations League only,
   MEDIUM confidence or higher).
-- The rounds already published on 15 Nov stay as they are: `analysis_predictions` rejects updates and deletes, and the
-  daily round is final (ADR 0014). National picks are published from the 16 Nov run on.
+- The DAILY rounds already published on 15 Nov stay as they are: `analysis_predictions` rejects updates and deletes.
+  At the owner's request the same afternoon, `scripts/oneoff-national-early-2026-11-15.ts` added an EARLY round to
+  the four matches whose handicap choice had been shadowed. The AI decided them afresh at 15:36 Thai, and two picks
+  came out: Montenegro −0.25 and Türkiye +2.25. Belarus–Albania came out a no-pick, and Panama–Curaçao an
+  Over/Under shadow. The pick day's featured list was then chosen from those two picks. From the 16 Nov run on,
+  national picks go out through the normal DAILY round.
 - The thin national-team input above still holds, and so does the caution: their record (52.3%, n=25 up to
   15 Nov) proves nothing either way. `scripts/hybrid-shadow-report.ts` keeps "AH national" as its own row, so the
   group is still measured apart; read it at 100 settled decisions with the club review.
