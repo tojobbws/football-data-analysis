@@ -75,7 +75,7 @@ owner decides otherwise.
 
 ## Consequences
 
-**Review at 100 settled decisions in each shadow group.** A group comes back to the site only if its fair hit beats
+**Review at 100 settled decisions in each shadow group** (Over/Under: 30 from v1.8, amendment 2). A group comes back to the site only if its fair hit beats
 the market's expectation over those decisions. At the same review:
 - read the club handicap record of v1.8 with a 95% interval
 - read its CLV (DAILY handicap picks beat the close 58 of 92 times up to 2026-11-15)
@@ -115,3 +115,24 @@ games, so the site had no pick and no featured list that day. The owner chose to
 - The thin national-team input above still holds, and so does the caution: their record (52.3%, n=25 up to
   15 Nov) proves nothing either way. `scripts/hybrid-shadow-report.ts` keeps "AH national" as its own row, so the
   group is still measured apart; read it at 100 settled decisions with the club review.
+
+## Amendment 2, 2026-11-15: prompt v1.9, why the Over/Under picks missed
+
+The owner asked why Over/Under was failing rather than waiting for 100 decisions. All 28 settled DAILY O/U decisions
+(v1.6–v1.7) were read one by one, at 8-19-1:
+- 20 were on a line other than 2.5 while the input counted totals at 2.5 (the bug fixed in v1.8): 5-14-1.
+- Lines of 3.25 or more: 1 win in 9. The line already priced an open match; the AI argued against it from recent counts.
+- Under in mismatched national matches (no opponent strength in the input): 0 of 4 (5-1, 4-2, 1-3, 2-2).
+- The evidence was nearly always recent goal counts, which the market already sees. 3/3 agreement did not help (3-7-1).
+
+**Prompt `hybrid-ai-v1.9`:** an Over/Under choice needs both teams' chance figures (npxG for and against, shots on
+target) to agree with the counts at the line. A line far from 2.5, or a gap in strength, is not argued against on
+recent goal counts alone. Without xG for most recent matches, the AI chooses the handicap or no pick. The prompt is
+shared, so handicap choices can change too; the owner approved that.
+
+**Review:** Over/Under stays shadow. It is reviewed at 30 settled v1.8+ decisions, not 100, and each miss is read
+again as above.
+
+**15 Nov, at the owner's request:** `scripts/oneoff-repick-v19-2026-11-15.ts` had the AI choose again for the day's
+nine matches under v1.9. It added an EARLY round where only DAILY existed and a PREMATCH round where EARLY came from
+v1.8 (the prompt-change round, ADR 0013). The day's featured list was already locked, so it kept its two matches.

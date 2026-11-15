@@ -128,7 +128,12 @@ describe('buildHybridInput', () => {
     expect(b.home_team.last_10.total_goals_vs_line).toEqual({ line: 2.5, over: 4, under: 6 });
     expect(b.data_quality.total_goals_vs_line).toContain('2.5');
     expect(HYBRID_SYSTEM_PROMPT).toContain('total_goals_vs_line');
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.8');
+  });
+
+  it('asks an Over/Under choice for agreeing chance figures, not recent goal counts alone (v1.9)', () => {
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.9');
+    expect(HYBRID_SYSTEM_PROMPT).toContain('never justify going against that line');
+    expect(HYBRID_SYSTEM_PROMPT).toContain('npxg_for, npxg_against');
   });
 
   it('counts rest days and the 14-day congestion to the kickoff, not to the decision time (v1.8)', () => {

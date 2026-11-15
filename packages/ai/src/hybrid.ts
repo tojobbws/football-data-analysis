@@ -28,7 +28,10 @@ export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 //   on a whole line, under) in place of a fixed 2.5; rest days and recent congestion are counted to this match's kickoff,
 //   not to the decision time; data_quality.recent_matches_scope says a team's matches in competitions we do not store
 //   (most domestic cups) are missing (docs/adr/0019-over-under-shadow.md)
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.8';
+// v1.9 (2026-11-15): an Over/Under choice needs the chance figures of both teams (npxG for and against, shots on target)
+//   to agree with the counts at the line, and a line far from 2.5 or a gap in strength is not argued against on recent
+//   goal counts alone; without xG for most matches, no total (the 28 O/U misses read one by one, ADR 0019 amendment 2)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.9';
 /**
  * v1.8: what recent_matches, rest_days_before_this_match and recent_congestion can miss. Checked 2026-11-15: the FA Cup,
  * DFB-Pokal, Coppa Italia, Coupe de France, KNVB Beker and Taça de Portugal are not in the database at all.
@@ -456,6 +459,8 @@ recent_starters lists, for each team, how many of its last stored lineups (windo
 When data_quality.expected_goals_metrics is present, each recent match and each window also carries expected-goals metrics, defined there: xg_difference, npxg_for / npxg_against (xG without penalties), shooting_performance (goals minus xG), xpts (expected points, beside points_avg_same_matches, the points actually won in the same matches) and goals_prevented (goalkeeping). Use them to judge how well a team played beyond its results: npxG shows chance creation without penalties; a team whose points run well ahead of its xPTS, or whose shooting_performance or goals_prevented is far above 0, got more from its matches than its chances suggest, and the reverse. Over a few matches shooting_performance and goals_prevented are noisy and the market already sees goals and xG, so treat a gap as one piece of evidence to weigh, not as a forecast that it will turn. Each window says how many matches each metric rests on; a figure from few matches is weak. Never compute a new metric yourself; quote only the values given.
 
 Each window's total_goals_vs_line counts its matches whose 90-minute total goals went over, landed exactly on (a whole line only: that total is a push) or stayed under the market's main over/under line, the line an Over or Under choice is judged on. Judge Over and Under on these counts at that line, never on a count at another total.
+
+An Over or Under choice needs more than recent goal counts. The main over/under line already prices both teams' scoring and the gap in strength between them: a line far from 2.5 (3.25 or more, 2 or less) means the market expects an unusually open or closed match, often a strong side against a much weaker one. Goal counts from 5 to 10 recent matches are public and noisy, so on their own they never justify going against that line. Choose Over or Under only when both teams' chance creation and chances conceded (npxg_for, npxg_against, shots on target, each resting on enough matches) point the same way as the counts at the line, and the gap in strength between the two teams does not already explain the line. When the teams are far apart (a big handicap line, very different opponents faced), low totals in their other matches do not argue against a high line. When expected-goals data is missing for most recent matches, a total rests on goal counts alone: choose the handicap or no pick instead.
 
 Compare the available choices: Over, Under, Asian Handicap Favorite, and Asian Handicap Underdog. Only the options listed under market.asian_handicap.options and market.over_under.options exist; a market with no options cannot be chosen.
 

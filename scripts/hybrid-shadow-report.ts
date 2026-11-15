@@ -23,6 +23,7 @@ const db = createPgDb(env.DATABASE_URL!, { max: 1 });
 const fromArg = process.argv.indexOf('--from');
 const fromVersion = fromArg > 0 ? String(process.argv[fromArg + 1]) : '1.8';
 const REVIEW_AT = 100;
+const OU_REVIEW_AT = 30; // amendment 2: Over/Under from v1.8
 
 /** Major and minor compared apart: as numbers, v1.10 would sort below v1.8. */
 function versionAtLeast(prompt: string, min: string): boolean {
@@ -97,6 +98,6 @@ console.table(
 );
 const settled = (prefix: string) => [...groups.entries()].filter(([k]) => k.startsWith(prefix) && k.endsWith('(all)')).reduce((s, [, t]) => s + t.settled, 0);
 console.log(`\nADR 0019 review at ${REVIEW_AT} settled decisions per shadow group:`);
-console.log(`  O/U (clubs and national): ${settled('O/U')} of ${REVIEW_AT}`);
+console.log(`  O/U (clubs and national, count from v1.8): ${settled('O/U')} of ${OU_REVIEW_AT}`);
 console.log(`  AH national (published again, measured apart): ${settled('AH national')} of ${REVIEW_AT}`);
 await db.close();
