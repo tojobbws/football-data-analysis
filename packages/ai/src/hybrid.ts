@@ -25,8 +25,16 @@ export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 // v1.7 (2026-11-10): recent_starters, how many of each team's last stored lineups each player started (a domestic cup also
 //   marks the previous round's XI), and each injury's recent starts (docs/adr/0016-regular-starters.md)
 // v1.8 (2026-11-15): total_goals_vs_line counts recent totals against the market's main over/under line (over, exactly
-//   on a whole line, under) in place of a fixed 2.5 (docs/adr/0019-over-under-shadow.md)
+//   on a whole line, under) in place of a fixed 2.5; rest days and recent congestion are counted to this match's kickoff,
+//   not to the decision time; data_quality.recent_matches_scope says a team's matches in competitions we do not store
+//   (most domestic cups) are missing (docs/adr/0019-over-under-shadow.md)
 export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.8';
+/**
+ * v1.8: what recent_matches, rest_days_before_this_match and recent_congestion can miss. Checked 2026-11-15: the FA Cup,
+ * DFB-Pokal, Coppa Italia, Coupe de France, KNVB Beker and Taça de Portugal are not in the database at all.
+ */
+export const RECENT_MATCHES_SCOPE =
+  'competitions we store only: a team\'s matches in competitions we do not store (most domestic cups, such as the FA Cup, DFB-Pokal, Coppa Italia and Coupe de France) are missing, so a team may have played more recently and more often than recent_matches, rest_days_before_this_match and recent_congestion show';
 /** The total the recent matches are counted against when the market has no usable main over/under line. */
 export const FALLBACK_TOTAL_LINE = 2.5;
 /**
@@ -261,9 +269,10 @@ function summary(ms: readonly TeamMatch[], totalLine: number, xgMetrics = false)
   };
 }
 
-function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, at: Date, totalLine: number, next?: { match: NextMatch | null; from: Date }, xgMetrics = false) {
+function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, kickoffAt: Date, totalLine: number, next?: { match: NextMatch | null; from: Date }, xgMetrics = false) {
   const last = ms[0];
-  const days = (iso: string) => (at.getTime() - Date.parse(iso)) / 86_400_000;
+  // v1.8: days counted to this match's kickoff, not to the decision time (a DAILY decision can come a day before it)
+  const days = (iso: string) => (kickoffAt.getTime() - Date.parse(iso)) / 86_400_000;
   return {
     name,
     recent_matches: ms.map((m) => ({
@@ -363,8 +372,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   return {
     match: { home: fx.home, away: fx.away, competition: fx.league, kickoff_utc: fx.kickoffAt.toISOString(), publish_round: src.publishRound },
     prediction_timestamp_utc: src.predictionAt.toISOString(),
-    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt, totalLine, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }, src.xgMetrics),
-    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt, totalLine, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }, src.xgMetrics),
+    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, fx.kickoffAt, totalLine, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }, src.xgMetrics),
+    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, fx.kickoffAt, totalLine, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }, src.xgMetrics),
     injuries: src.injuries.map(({ playerId, ...i }) => {
       if (!rs) return i;
       const starters = i.team === 'HOME' ? rs.home : i.team === 'AWAY' ? rs.away : null;
@@ -413,6 +422,7 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
           ? 'recent 90-minute totals counted against market.over_under.line: over, exactly (a whole line only, a push) and under'
           : `no usable main over/under line: recent 90-minute totals counted against ${FALLBACK_TOTAL_LINE}`,
       injuries_reported: src.injuries.length,
+      recent_matches_scope: RECENT_MATCHES_SCOPE,
       ...(src.nextMatch ? { next_match_scope: 'competitions we track only: a missing next_match does not mean the team has no fixture' } : {}),
       ...(src.injuriesCoverage ? { injuries_coverage: src.injuriesCoverage } : {}),
       ...(src.opponentRankBasis ? { opponent_rank_basis: src.opponentRankBasis } : {}),
@@ -438,6 +448,8 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
 export const HYBRID_SYSTEM_PROMPT = `You are a football match analyst for a Thai football analysis site. Analyze the match using only the supplied, verified pre-match data (JSON). Review each team's recent form (up to 10 matches, the last 5 separately), home/away performance, opponent quality (table position of each opponent), scoring patterns (goals, xG, shots on target), rest schedule, available player information (injuries, confirmed lineups), and the current main market lines.
 
 Each team may carry next_match: its next scheduled fixture after this one (days after this match, competition and venue), from the competitions we track only. A near fixture in a bigger competition can point to squad rotation or fatigue, but treat it as weak context: never state that a team will rotate or rest players, and a missing next_match only means we track no such fixture, not that none exists.
+
+rest_days_before_this_match and recent_congestion are counted to this match's kickoff. They and recent_matches hold only the competitions we store (data_quality.recent_matches_scope): a team may also have played a domestic cup match we do not have, so treat a long rest or a quiet schedule as uncertain, never as a fact.
 
 recent_starters lists, for each team, how many of its last stored lineups (window_lineups, any competition) each player started, and each injury carries recent_starts out of recent_lineups. Use it to judge how much an absence matters: a missing player who started most recent matches is a bigger loss than one who rarely started. It is a count of past matches, not the coming lineup: never state or guess who will start. In a domestic cup teams often rotate; started_previous_cup_round shows who started the previous round of the same cup this season. A team with few stored lineups gives a weak count.
 

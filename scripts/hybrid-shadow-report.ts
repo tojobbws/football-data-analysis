@@ -1,19 +1,19 @@
 /**
- * ADR 0019: the Hybrid AI's Over/Under choices are shadow decisions (stored in hybrid_decisions, never published).
- * This report settles them on the 90-minute score and sets them beside the published Asian handicap picks of the same
- * prompt versions. Read-only (no DB writes).
+ * ADR 0019: the Hybrid AI's Over/Under choices and every choice in a national-team competition are shadow decisions
+ * (stored in hybrid_decisions, never published). This report settles them on the 90-minute score and sets them beside
+ * the published Asian handicap picks of club matches, for the same prompt versions. Read-only (no DB writes).
  *
- *   npx tsx scripts/hybrid-ou-shadow-report.ts            # prompt hybrid-ai-v1.8 and later
- *   npx tsx scripts/hybrid-ou-shadow-report.ts --from 1.6 # also earlier prompts, for comparison
+ *   npx tsx scripts/hybrid-shadow-report.ts            # prompt hybrid-ai-v1.8 and later
+ *   npx tsx scripts/hybrid-shadow-report.ts --from 1.6 # also earlier prompts, for comparison (published then)
  *
  * Per row: the latest OK decision of each fixture's DAILY round. Hit = fair hit (WIN 1, HALF_WIN ½ weight counted as a
  * hit, HALF_LOSS ½ weight, LOSS 1, PUSH out), the same measure as /admin/review, against the mean no-vig market
  * probability of the chosen side. The 95% interval is the normal approximation on the fair weights.
- * ADR 0019 reviews Over/Under at 100 settled shadow decisions.
+ * ADR 0019 reviews each shadow group at 100 settled decisions.
  */
 import { settle, type Outcome } from '@fp/analysis';
 import { createPgDb } from '@fp/database';
-import { loadDotEnvFile, loadEnv } from '@fp/shared';
+import { loadDotEnvFile, loadEnv, NATIONAL_TEAM_COMPETITIONS } from '@fp/shared';
 
 loadDotEnvFile();
 const env = loadEnv();
@@ -34,10 +34,10 @@ function versionAtLeast(prompt: string, min: string): boolean {
 }
 
 const { rows } = await db.query<{
-  fixture_id: string; prompt_version: string; side: string; market: string; selection: string; line: string;
+  fixture_id: string; league_id: number; prompt_version: string; side: string; market: string; selection: string; line: string;
   market_probability: string | null; gh: number | null; ga: number | null; status_short: string;
 }>(`
-  select distinct on (h.fixture_id) h.fixture_id, h.prompt_version, h.side, h.market, h.selection, h.line, h.market_probability,
+  select distinct on (h.fixture_id) h.fixture_id, f.league_id, h.prompt_version, h.side, h.market, h.selection, h.line, h.market_probability,
          coalesce(f.ft_home, f.goals_home) as gh, coalesce(f.ft_away, f.goals_away) as ga, f.status_short
     from hybrid_decisions h join fixtures f on f.id = h.fixture_id
    where h.publish_round = 'DAILY' and h.status = 'OK' and h.side in ('FAVORITE', 'UNDERDOG', 'OVER', 'UNDER')
@@ -69,14 +69,16 @@ for (const r of rows) {
       : settle({ market: 'ASIAN_HANDICAP', selection: r.selection as 'HOME' | 'AWAY', line }, r.gh!, r.ga!)
     : null;
   const mp = r.market_probability === null ? null : Number(r.market_probability);
-  const kind = r.market === 'OVER_UNDER' ? 'O/U' : 'AH';
+  const scope = NATIONAL_TEAM_COMPETITIONS.includes(Number(r.league_id)) ? 'national' : 'clubs';
+  const kind = `${r.market === 'OVER_UNDER' ? 'O/U' : 'AH'} ${scope}`;
   add(`${kind} (all)`, outcome, mp);
   add(`${kind} ${r.side}`, outcome, mp);
   add(`${kind} ${r.prompt_version}`, outcome, mp);
 }
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
-console.log(`Hybrid AI DAILY decisions, prompt v${fromVersion} and later. AH = published; O/U = shadow from v1.8 (ADR 0019), published before\n`);
+console.log(`Hybrid AI DAILY decisions, prompt v${fromVersion} and later.`);
+console.log('From v1.8 (ADR 0019) only "AH clubs" is published; O/U and every national-team decision are shadow. Before v1.8 all were published.\n');
 console.table(
   [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([group, t]) => {
     const hit = t.weight ? t.hits / t.weight : null;
@@ -92,6 +94,8 @@ console.table(
     };
   }),
 );
-const ou = groups.get('O/U (all)');
-console.log(`\nO/U shadow: ${ou?.settled ?? 0} of ${REVIEW_AT} settled decisions needed for the ADR 0019 review.`);
+const settled = (prefix: string) => [...groups.entries()].filter(([k]) => k.startsWith(prefix) && k.endsWith('(all)')).reduce((s, [, t]) => s + t.settled, 0);
+console.log(`\nADR 0019 review at ${REVIEW_AT} settled decisions per shadow group:`);
+console.log(`  O/U (clubs and national): ${settled('O/U')} of ${REVIEW_AT}`);
+console.log(`  AH national: ${settled('AH national')} of ${REVIEW_AT}`);
 await db.close();

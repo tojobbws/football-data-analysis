@@ -85,7 +85,9 @@ describe('buildHybridInput', () => {
     expect(home.last_5.matches).toBe(5);
     expect(home.home_matches_in_last_10.matches).toBe(5);
     expect(away.last_10).toMatchObject({ matches: 7, xg_for_avg: null });
-    expect(away.rest_days_before_this_match).toBe(7);
+    // v1.8: counted to the kickoff (14:00), 6 hours after the decision time (08:00), whose last match was 7 days before
+    expect(away.rest_days_before_this_match).toBe(7.3);
+    expect(String((input.data_quality as { recent_matches_scope: string }).recent_matches_scope)).toContain('domestic cups');
     const missing = (input.data_quality as { missing: string[] }).missing;
     expect(missing).toContain('Everton: 7 of 10 recent matches');
     expect(missing).toContain('no xG for 7 recent matches');
@@ -127,6 +129,17 @@ describe('buildHybridInput', () => {
     expect(b.data_quality.total_goals_vs_line).toContain('2.5');
     expect(HYBRID_SYSTEM_PROMPT).toContain('total_goals_vs_line');
     expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.8');
+  });
+
+  it('counts rest days and the 14-day congestion to the kickoff, not to the decision time (v1.8)', () => {
+    // a DAILY decision a day before kickoff: the match 13.5 days before the decision is 14.5 days before the kickoff
+    const at = (days: number) => new Date(NOW.getTime() - days * 86_400_000).toISOString();
+    const recent = { home: [match(0, { kickoffAt: at(2) }), match(1, { kickoffAt: at(13.5) })], away: src.recent.away };
+    const kickoffAt = new Date(NOW.getTime() + 86_400_000);
+    const b = buildHybridInput({ ...src, recent, fixture: { ...src.fixture, kickoffAt } }) as unknown as { home_team: { rest_days_before_this_match: number; recent_congestion: { days: number; matches: number } } };
+    expect(b.home_team.rest_days_before_this_match).toBe(3);
+    expect(b.home_team.recent_congestion).toEqual({ days: 14, matches: 1 });
+    expect(HYBRID_SYSTEM_PROMPT).toContain('recent_matches_scope');
   });
 
   it('gives the four options on the main lines with their prices and no-vig probability', () => {

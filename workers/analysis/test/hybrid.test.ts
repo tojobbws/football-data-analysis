@@ -15,7 +15,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { hybridJob } from '../src/hybrid-job.js';
-import { OU_SHADOW_SUMMARY_TH, publishJob } from '../src/publish-job.js';
+import { hybridShadowReason, NATIONAL_SHADOW_SUMMARY_TH, OU_SHADOW_SUMMARY_TH, publishJob } from '../src/publish-job.js';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -282,6 +282,29 @@ describe('hybridJob', () => {
     expect(p!.reason).not.toContain('สองทีมยิงกันเปิดเกมบ่อย');
   });
 
+  it('keeps a handicap choice in a national-team competition as a shadow decision (ADR 0019)', async () => {
+    const saved = ctx.env;
+    ctx.env = { ...saved, TRACKED_LEAGUES: [39, 5] };
+    try {
+      await q(`insert into leagues (id, name, type, country) values (5, 'UEFA Nations League', 'Cup', 'World')`);
+      await q(`insert into teams (id, name) values (308, 'Nation A'), (309, 'Nation B')`);
+      await q(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values (308, 5, 2026, $1, 308, 309, 'NS')`, [KO.toISOString()]);
+      await odds(308);
+      const d = fakeDecider({ ...answers, 'Nation A': () => ({ output: pick() }) });
+      await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d });
+      const [dec] = await q<{ side: string; market: string }>(`select side, market from hybrid_decisions where fixture_id = 308 and status = 'OK'`);
+      expect(dec).toMatchObject({ side: 'UNDERDOG', market: 'ASIAN_HANDICAP' });
+
+      await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
+      const [p] = await q<{ kind: string; market: string | null; reason: string }>(`select kind, market, reason from analysis_predictions where fixture_id = 308`);
+      expect(p).toMatchObject({ kind: 'NO_CLEAR_SIGNAL', market: null });
+      expect(p!.reason).toContain(NATIONAL_SHADOW_SUMMARY_TH);
+      expect(p!.reason).not.toContain('ทีมเยือนรับได้แน่นกว่าที่ราคาสะท้อน');
+    } finally {
+      ctx.env = saved;
+    }
+  });
+
   it('stops calling the AI for the rest of the run on an error the next call would hit too', async () => {
     const before = await count('select count(*) n from hybrid_decisions');
     const calls: string[] = [];
@@ -311,5 +334,16 @@ describe('hybrid_decisions and the record', () => {
     await expect(
       q(`insert into analysis_predictions (fixture_id, publish_round, kind, market, selection, line, decision_rule_version) values (303, 'LINEUP', 'SIGNAL', 'ASIAN_HANDICAP', 'HOME', -0.75, 'rules-v0.6')`),
     ).rejects.toThrow(/analysis_predictions_check/);
+  });
+});
+
+describe('hybridShadowReason (ADR 0019)', () => {
+  it('publishes only a handicap choice outside the national-team competitions', () => {
+    expect(hybridShadowReason('ASIAN_HANDICAP', 39)).toBeNull();
+    expect(hybridShadowReason('OVER_UNDER', 39)).toBe('OVER_UNDER');
+    for (const league of [5, 536, 36, 7]) expect(hybridShadowReason('ASIAN_HANDICAP', league)).toBe('NATIONAL_TEAM');
+    // club cups between countries are not national-team competitions
+    expect(hybridShadowReason('ASIAN_HANDICAP', 2)).toBeNull();
+    expect(hybridShadowReason(null, 5)).toBeNull();
   });
 });
