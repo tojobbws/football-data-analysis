@@ -54,10 +54,11 @@ export interface PublishOptions {
 }
 
 /**
- * The markets whose Hybrid AI choice is published (docs/adr/0019-over-under-shadow.md). An Over/Under choice is kept
- * in hybrid_decisions and measured there (scripts/hybrid-shadow-report.ts); its round publishes no pick.
+ * The markets whose Hybrid AI choice is published. Over/Under was shadow from v1.8 (docs/adr/0019-over-under-shadow.md)
+ * and is published again from v2.0 (docs/adr/0020-hybrid-input-v20.md), measured with the handicap at 100 settled picks.
+ * A market left out of this list is kept in hybrid_decisions only, and its round publishes no pick.
  */
-export const HYBRID_PUBLISHED_MARKETS: readonly string[] = ['ASIAN_HANDICAP'];
+export const HYBRID_PUBLISHED_MARKETS: readonly string[] = ['ASIAN_HANDICAP', 'OVER_UNDER'];
 /** The no-pick text of a round whose Hybrid AI choice was Over/Under (ADR 0019); fog stays off the fan pages. */
 export const OU_SHADOW_SUMMARY_TH = 'คู่นี้ระบบเลือกตลาดสูง/ต่ำ ซึ่งอยู่ระหว่างการวัดผล จึงยังไม่เผยแพร่ตัวเลือก';
 

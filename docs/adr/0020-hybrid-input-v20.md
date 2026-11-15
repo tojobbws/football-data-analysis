@@ -78,7 +78,22 @@ The Over/Under rule of v1.9, the number guard and the three-answer majority are 
   - CLV
   - the share of no-picks
   - Use `npx tsx scripts/hybrid-shadow-report.ts --from 2.0` and `/admin/review`.
-- The review of ADR 0019 (Over/Under shadow at 30 settled from v1.8, the club handicap record) goes on. The v1.8 club handicap freeze it declared ends here at the owner's request; v1.8–v1.9 and v2.0 are counted apart by prompt version.
+- The v1.8 club handicap freeze of ADR 0019 ends here at the owner's request; v1.8–v1.9 and v2.0 are counted apart by prompt version.
 - A v2.0 pick may differ from what v1.9 would have chosen on the same match: the input of every decision changed.
 - No redo: matches already decided keep their pick (ADR 0014).
 - Rollback: pass `v20: false` in the hybrid job's `collectHybridInput` call and set the prompt version back. Stored decisions are untouched.
+
+## Amendment, 2026-11-15: Over/Under is published again
+
+The owner chose to publish the AI's Over/Under choices again from v2.0, instead of keeping them as shadow until 30
+settled decisions (ADR 0019 amendment 2). Both markets are then judged together at the same review: 100 settled v2.0
+picks, Over/Under and handicap each also read on its own row.
+
+- `HYBRID_PUBLISHED_MARKETS` = `['ASIAN_HANDICAP', 'OVER_UNDER']`; `hybridShadowReason` returns null for both.
+- An Over/Under pick is again a pick like any other: it shows on the site, and it can enter the featured list,
+  previews, pick notes and films where their own rules allow (MEDIUM or higher for the list).
+- The Over/Under rule of prompt v1.9 stays in the prompt: a total needs both teams' chance figures to agree.
+- Known risk, stated before the review: the 28 Over/Under decisions of v1.6–v1.7 went 8-19-1 (fair hit 28.8%,
+  market expected 50.7%). Most misses came from the fixed 2.5 count fixed in v1.8. Too few Over/Under decisions of
+  v1.8–v1.9 had settled by this date to tell whether the fixes work.
+- Rollback: take `OVER_UNDER` out of `HYBRID_PUBLISHED_MARKETS`.

@@ -80,7 +80,7 @@ for (const r of rows) {
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 console.log(`Hybrid AI DAILY decisions, prompt v${fromVersion} and later.`);
-console.log('From v1.8 (ADR 0019) O/U is shadow; AH is published (national teams were shadow on 15 Nov 2026 only). Before v1.8 all were published.\n');
+console.log('O/U was shadow in v1.8–v1.9 (ADR 0019) and is published again from v2.0 (ADR 0020); AH is published (national teams were shadow on 15 Nov 2026 only). Before v1.8 all were published.\n');
 console.table(
   [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([group, t]) => {
     const hit = t.weight ? t.hits / t.weight : null;
@@ -100,4 +100,5 @@ const settled = (prefix: string) => [...groups.entries()].filter(([k]) => k.star
 console.log(`\nADR 0019 review at ${REVIEW_AT} settled decisions per shadow group:`);
 console.log(`  O/U (clubs and national, count from v1.8): ${settled('O/U')} of ${OU_REVIEW_AT}`);
 console.log(`  AH national (published again, measured apart): ${settled('AH national')} of ${REVIEW_AT}`);
+console.log(`ADR 0020 review: ${REVIEW_AT} settled v2.0 picks, AH and O/U together (run with --from 2.0): ${settled('')} so far in this run's range`);
 await db.close();

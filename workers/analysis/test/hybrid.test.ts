@@ -265,7 +265,7 @@ describe('hybridJob', () => {
     expect(await count(`select count(*) n from analysis_predictions where fixture_id = 306`)).toBe(2);
   });
 
-  it('keeps an Over/Under choice as a shadow decision and publishes no pick for it (ADR 0019)', async () => {
+  it('publishes an Over/Under choice again (ADR 0020, the shadow of ADR 0019 ended)', async () => {
     await q(`insert into teams (id, name) values (307, 'Totals FC')`);
     await q(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values (307, 39, 2026, $1, 307, 999, 'NS')`, [KO.toISOString()]);
     await odds(307);
@@ -277,9 +277,8 @@ describe('hybridJob', () => {
 
     await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
     const [p] = await q<{ kind: string; market: string | null; selection: string | null; reason: string }>(`select kind, market, selection, reason from analysis_predictions where fixture_id = 307`);
-    expect(p).toMatchObject({ kind: 'NO_CLEAR_SIGNAL', market: null, selection: null });
-    expect(p!.reason).toContain(OU_SHADOW_SUMMARY_TH);
-    expect(p!.reason).not.toContain('สองทีมยิงกันเปิดเกมบ่อย');
+    expect(p).toMatchObject({ kind: 'SIGNAL', market: 'OVER_UNDER', selection: 'OVER' });
+    expect(p!.reason).not.toContain(OU_SHADOW_SUMMARY_TH);
   });
 
   it('publishes a handicap choice in a national-team competition (ADR 0019, national shadow withdrawn)', async () => {
@@ -337,10 +336,10 @@ describe('hybrid_decisions and the record', () => {
   });
 });
 
-describe('hybridShadowReason (ADR 0019)', () => {
-  it('publishes a handicap choice and keeps an Over/Under choice as shadow', () => {
+describe('hybridShadowReason (ADR 0019, ended by ADR 0020)', () => {
+  it('publishes both a handicap and an Over/Under choice', () => {
     expect(hybridShadowReason('ASIAN_HANDICAP')).toBeNull();
-    expect(hybridShadowReason('OVER_UNDER')).toBe('OVER_UNDER');
+    expect(hybridShadowReason('OVER_UNDER')).toBeNull();
     expect(hybridShadowReason(null)).toBeNull();
   });
 });
