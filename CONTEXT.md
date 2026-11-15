@@ -71,7 +71,7 @@ What makes the published pick, set per run by PICK_ENGINE (ADR 0010): `legacy` =
 _Avoid_: calling an AI pick "the model's pick"; showing a model probability for it
 
 **Hybrid AI decision**:
-The Hybrid AI's choice for one publish round — AH favourite, AH underdog, Over, Under on the market's main lines, or no pick — from verified pre-match data and the market at that moment, with the evidence for and against. Its confidence is the strength of the evidence, not a probability. Stored whatever its validity; published only when valid and the engine is `hybrid`.
+The Hybrid AI's choice for one publish round — AH favourite, AH underdog, Over, Under on the market's main lines, or no pick — from verified pre-match data and the market at that moment, with the evidence for and against. Its confidence is the strength of the evidence, not a probability. Stored whatever its validity; published only when valid and the engine is `hybrid`. Since ADR 0019 an Over/Under choice is a shadow decision: stored and measured, its round published as no pick.
 _Avoid_: treating its confidence as a chance of winning
 
 **Market benchmark (เทียบกับตลาด)**:

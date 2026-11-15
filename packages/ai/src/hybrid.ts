@@ -24,7 +24,11 @@ export const HYBRID_ENGINE_VERSION = 'hybrid-ai-v1';
 //   same input, a choice being used only when HYBRID_MAJORITY answers agree (docs/adr/0013-hybrid-majority-of-three.md)
 // v1.7 (2026-11-10): recent_starters, how many of each team's last stored lineups each player started (a domestic cup also
 //   marks the previous round's XI), and each injury's recent starts (docs/adr/0016-regular-starters.md)
-export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.7';
+// v1.8 (2026-11-15): total_goals_vs_line counts recent totals against the market's main over/under line (over, exactly
+//   on a whole line, under) in place of a fixed 2.5 (docs/adr/0019-over-under-shadow.md)
+export const HYBRID_PROMPT_VERSION = 'hybrid-ai-v1.8';
+/** The total the recent matches are counted against when the market has no usable main over/under line. */
+export const FALLBACK_TOTAL_LINE = 2.5;
 /**
  * The provider's xG of one penalty: API-Football's xG counts penalties at exactly this value (a team whose only shot
  * was a penalty has xG 0.79; checked on the stored matches 2026-11-04). npxG takes it off once per penalty taken.
@@ -216,8 +220,23 @@ function metricsSummary(ms: readonly TeamMatch[]) {
   };
 }
 
+/**
+ * Prompt v1.8: how many matches' 90-minute total went over, landed exactly on, or stayed under `line` (the market's
+ * main over/under line). `exactly` exists only on a whole line, where that total is a push; on a quarter line a total
+ * next to the line counts on its side (3 goals is over 2.75, a half win).
+ */
+export function totalGoalsVsLine(ms: readonly TeamMatch[], line: number) {
+  const totals = ms.map((m) => m.goalsFor + m.goalsAgainst);
+  return {
+    line,
+    over: totals.filter((t) => t > line).length,
+    ...(Number.isInteger(line) ? { exactly: totals.filter((t) => t === line).length } : {}),
+    under: totals.filter((t) => t < line).length,
+  };
+}
+
 /** Averages over the matches that have the value, with how many had it. */
-function summary(ms: readonly TeamMatch[], xgMetrics = false) {
+function summary(ms: readonly TeamMatch[], totalLine: number, xgMetrics = false) {
   const pick = (f: (m: TeamMatch) => number | null) => ms.map(f).filter((x): x is number => x !== null);
   const xgF = pick((m) => m.xgFor);
   const xgA = pick((m) => m.xgAgainst);
@@ -231,7 +250,7 @@ function summary(ms: readonly TeamMatch[], xgMetrics = false) {
     goals_for_avg: avg(ms.map((m) => m.goalsFor)),
     goals_against_avg: avg(ms.map((m) => m.goalsAgainst)),
     // the line is a value, not only part of a key: the AI may then quote it (number guard)
-    total_goals_over: { line: 2.5, matches: ms.filter((m) => m.goalsFor + m.goalsAgainst > 2.5).length },
+    total_goals_vs_line: totalGoalsVsLine(ms, totalLine),
     xg_for_avg: avg(xgF),
     xg_against_avg: avg(xgA),
     xg_matches: xgF.length,
@@ -242,7 +261,7 @@ function summary(ms: readonly TeamMatch[], xgMetrics = false) {
   };
 }
 
-function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, at: Date, next?: { match: NextMatch | null; from: Date }, xgMetrics = false) {
+function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', standing: TeamStanding | null, at: Date, totalLine: number, next?: { match: NextMatch | null; from: Date }, xgMetrics = false) {
   const last = ms[0];
   const days = (iso: string) => (at.getTime() - Date.parse(iso)) / 86_400_000;
   return {
@@ -260,9 +279,9 @@ function team(name: string, ms: readonly TeamMatch[], venue: 'HOME' | 'AWAY', st
       shots_on_target_against: m.shotsOnTargetAgainst,
       ...(xgMetrics ? expectedMetrics(m) : {}),
     })),
-    last_10: summary(ms.slice(0, 10), xgMetrics),
-    last_5: summary(ms.slice(0, 5), xgMetrics),
-    [venue === 'HOME' ? 'home_matches_in_last_10' : 'away_matches_in_last_10']: summary(ms.slice(0, 10).filter((m) => m.venue === venue), xgMetrics),
+    last_10: summary(ms.slice(0, 10), totalLine, xgMetrics),
+    last_5: summary(ms.slice(0, 5), totalLine, xgMetrics),
+    [venue === 'HOME' ? 'home_matches_in_last_10' : 'away_matches_in_last_10']: summary(ms.slice(0, 10).filter((m) => m.venue === venue), totalLine, xgMetrics),
     rest_days_before_this_match: last ? r(days(last.kickoffAt), 1) : null,
     // the window is a value, not only part of a key: the AI may then quote it (number guard)
     recent_congestion: { days: 14, matches: ms.filter((m) => days(m.kickoffAt) <= 14).length },
@@ -339,12 +358,13 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   if (src.injuriesCoverage === 'unavailable_for_league') missing.push('this league provides no injury data: an empty injuries list does not mean nobody is out');
   if (m.ah.status !== 'OK') missing.push(`no usable main Asian handicap line (${m.ah.status})`);
   if (m.ou.status !== 'OK') missing.push(`no usable main over/under line (${m.ou.status})`);
+  const totalLine = m.ou.status === 'OK' && m.ou.line !== null ? m.ou.line : FALLBACK_TOTAL_LINE;
 
   return {
     match: { home: fx.home, away: fx.away, competition: fx.league, kickoff_utc: fx.kickoffAt.toISOString(), publish_round: src.publishRound },
     prediction_timestamp_utc: src.predictionAt.toISOString(),
-    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }, src.xgMetrics),
-    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }, src.xgMetrics),
+    home_team: team(fx.home, recentHome, 'HOME', src.standings.home, src.predictionAt, totalLine, src.nextMatch && { match: src.nextMatch.home, from: fx.kickoffAt }, src.xgMetrics),
+    away_team: team(fx.away, recentAway, 'AWAY', src.standings.away, src.predictionAt, totalLine, src.nextMatch && { match: src.nextMatch.away, from: fx.kickoffAt }, src.xgMetrics),
     injuries: src.injuries.map(({ playerId, ...i }) => {
       if (!rs) return i;
       const starters = i.team === 'HOME' ? rs.home : i.team === 'AWAY' ? rs.away : null;
@@ -388,6 +408,10 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
       home_recent_matches: recentHome.length,
       away_recent_matches: recentAway.length,
       lineups_confirmed: Boolean(src.lineup),
+      total_goals_vs_line:
+        m.ou.status === 'OK' && m.ou.line !== null
+          ? 'recent 90-minute totals counted against market.over_under.line: over, exactly (a whole line only, a push) and under'
+          : `no usable main over/under line: recent 90-minute totals counted against ${FALLBACK_TOTAL_LINE}`,
       injuries_reported: src.injuries.length,
       ...(src.nextMatch ? { next_match_scope: 'competitions we track only: a missing next_match does not mean the team has no fixture' } : {}),
       ...(src.injuriesCoverage ? { injuries_coverage: src.injuriesCoverage } : {}),
@@ -418,6 +442,8 @@ Each team may carry next_match: its next scheduled fixture after this one (days 
 recent_starters lists, for each team, how many of its last stored lineups (window_lineups, any competition) each player started, and each injury carries recent_starts out of recent_lineups. Use it to judge how much an absence matters: a missing player who started most recent matches is a bigger loss than one who rarely started. It is a count of past matches, not the coming lineup: never state or guess who will start. In a domestic cup teams often rotate; started_previous_cup_round shows who started the previous round of the same cup this season. A team with few stored lineups gives a weak count.
 
 When data_quality.expected_goals_metrics is present, each recent match and each window also carries expected-goals metrics, defined there: xg_difference, npxg_for / npxg_against (xG without penalties), shooting_performance (goals minus xG), xpts (expected points, beside points_avg_same_matches, the points actually won in the same matches) and goals_prevented (goalkeeping). Use them to judge how well a team played beyond its results: npxG shows chance creation without penalties; a team whose points run well ahead of its xPTS, or whose shooting_performance or goals_prevented is far above 0, got more from its matches than its chances suggest, and the reverse. Over a few matches shooting_performance and goals_prevented are noisy and the market already sees goals and xG, so treat a gap as one piece of evidence to weigh, not as a forecast that it will turn. Each window says how many matches each metric rests on; a figure from few matches is weak. Never compute a new metric yourself; quote only the values given.
+
+Each window's total_goals_vs_line counts its matches whose 90-minute total goals went over, landed exactly on (a whole line only: that total is a push) or stayed under the market's main over/under line, the line an Over or Under choice is judged on. Judge Over and Under on these counts at that line, never on a count at another total.
 
 Compare the available choices: Over, Under, Asian Handicap Favorite, and Asian Handicap Underdog. Only the options listed under market.asian_handicap.options and market.over_under.options exist; a market with no options cannot be chosen.
 

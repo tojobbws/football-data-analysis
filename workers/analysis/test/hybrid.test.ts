@@ -15,7 +15,7 @@ import { ApiFootball, ApiFootballClient } from '@fp/football';
 import { createLogger, type Env } from '@fp/shared';
 import { createTestDb } from '../../../packages/database/test/helpers.js';
 import { hybridJob } from '../src/hybrid-job.js';
-import { publishJob } from '../src/publish-job.js';
+import { OU_SHADOW_SUMMARY_TH, publishJob } from '../src/publish-job.js';
 
 let db: Awaited<ReturnType<typeof createTestDb>>;
 let ctx: JobContext;
@@ -263,6 +263,23 @@ describe('hybridJob', () => {
     await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
     expect(again.calls).not.toContain('Old Prompt FC');
     expect(await count(`select count(*) n from analysis_predictions where fixture_id = 306`)).toBe(2);
+  });
+
+  it('keeps an Over/Under choice as a shadow decision and publishes no pick for it (ADR 0019)', async () => {
+    await q(`insert into teams (id, name) values (307, 'Totals FC')`);
+    await q(`insert into fixtures (id, league_id, season, kickoff_at, home_team_id, away_team_id, status_short) values (307, 39, 2026, $1, 307, 999, 'NS')`, [KO.toISOString()]);
+    await odds(307);
+    const over = pick({ market: 'OU', side: 'OVER', main_line: 2.5, summary_th: 'สองทีมยิงกันเปิดเกมบ่อย' });
+    const d = fakeDecider({ ...answers, 'Totals FC': () => ({ output: over }) });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d });
+    const [dec] = await q<{ side: string; market: string; line: string }>(`select side, market, line from hybrid_decisions where fixture_id = 307 and status = 'OK'`);
+    expect(dec).toMatchObject({ side: 'OVER', market: 'OVER_UNDER' });
+
+    await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
+    const [p] = await q<{ kind: string; market: string | null; selection: string | null; reason: string }>(`select kind, market, selection, reason from analysis_predictions where fixture_id = 307`);
+    expect(p).toMatchObject({ kind: 'NO_CLEAR_SIGNAL', market: null, selection: null });
+    expect(p!.reason).toContain(OU_SHADOW_SUMMARY_TH);
+    expect(p!.reason).not.toContain('สองทีมยิงกันเปิดเกมบ่อย');
   });
 
   it('stops calling the AI for the rest of the run on an error the next call would hit too', async () => {

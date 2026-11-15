@@ -108,6 +108,27 @@ describe('buildHybridInput', () => {
     expect(named.filter((n) => !allowed.includes(n))).toEqual([]);
   });
 
+  it("counts recent totals against the market's main over/under line, not a fixed 2.5 (v1.8, ADR 0019)", () => {
+    type Win = { total_goals_vs_line: Record<string, number> };
+    const home = input.home_team as { last_10: Win; last_5: Win };
+    // home totals: 3 (i % 3 === 0) or 2; the main line is 2.75, a quarter line, so no `exactly`
+    expect(home.last_10.total_goals_vs_line).toEqual({ line: 2.75, over: 4, under: 6 });
+    expect(home.last_5.total_goals_vs_line).toEqual({ line: 2.75, over: 2, under: 3 });
+
+    // a whole line counts the totals that land on it (a push) apart
+    const at3 = hybridMarket(quotes.map((q) => (q.market === 'OVER_UNDER' ? { ...q, line: 3 } : q)), NOW);
+    const b3 = buildHybridInput({ ...src, market: at3 }) as unknown as { home_team: { last_10: Win } };
+    expect(b3.home_team.last_10.total_goals_vs_line).toEqual({ line: 3, over: 0, exactly: 4, under: 6 });
+
+    // no usable over/under line: 2.5, and the input says so
+    const noOu = hybridMarket(quotes.filter((q) => q.market !== 'OVER_UNDER'), NOW);
+    const b = buildHybridInput({ ...src, market: noOu }) as unknown as { home_team: { last_10: Win }; data_quality: { total_goals_vs_line: string } };
+    expect(b.home_team.last_10.total_goals_vs_line).toEqual({ line: 2.5, over: 4, under: 6 });
+    expect(b.data_quality.total_goals_vs_line).toContain('2.5');
+    expect(HYBRID_SYSTEM_PROMPT).toContain('total_goals_vs_line');
+    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.8');
+  });
+
   it('gives the four options on the main lines with their prices and no-vig probability', () => {
     const ahView = (input.market as { asian_handicap: { favourite: string; options: Array<{ option: string; team_or_total: string; line: number; odds_median: number }> } }).asian_handicap;
     expect(ahView.favourite).toBe('Arsenal');
@@ -353,8 +374,7 @@ describe('prompt v1.7 (ADR 0016): recent starters before the lineup', () => {
   const withStarters = (kind: StartersCompetitionKind, home: RegularStarters, away: RegularStarters) =>
     buildHybridInput({ ...src, injuries: [{ team: 'AWAY', player: 'J. Doe', type: 'Missing Fixture', reason: 'Knee Injury', playerId: 77 }], regularStarters: { kind, home, away } }) as unknown as Built;
 
-  it('the prompt version is v1.7, and the prompt explains the block and that it is not the coming lineup', () => {
-    expect(HYBRID_PROMPT_VERSION).toBe('hybrid-ai-v1.7');
+  it('the prompt explains the block and that it is not the coming lineup', () => {
     for (const k of ['recent_starters', 'recent_starts', 'started_previous_cup_round', 'never state or guess who will start']) expect(HYBRID_SYSTEM_PROMPT).toContain(k);
   });
 

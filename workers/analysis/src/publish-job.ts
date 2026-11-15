@@ -53,6 +53,14 @@ export interface PublishOptions {
   schedule?: PickSchedule;
 }
 
+/**
+ * The markets whose Hybrid AI choice is published (docs/adr/0019-over-under-shadow.md). An Over/Under choice is kept
+ * in hybrid_decisions and measured there (scripts/hybrid-ou-shadow-report.ts); its round publishes no pick.
+ */
+export const HYBRID_PUBLISHED_MARKETS: readonly string[] = ['ASIAN_HANDICAP'];
+/** The no-pick text of a round whose Hybrid AI choice was Over/Under (ADR 0019); fog stays off the fan pages. */
+export const OU_SHADOW_SUMMARY_TH = 'คู่นี้ระบบเลือกตลาดสูง/ต่ำ ซึ่งอยู่ระหว่างการวัดผล จึงยังไม่เผยแพร่ตัวเลือก';
+
 /** How old a decision may be when its round is published (minutes). DAILY: also not from before the day's run. */
 export const MAX_DECISION_AGE_MINUTES: Record<PublishRound, number> = { EARLY: 240, PREMATCH: 240, LINEUP: 75, DAILY: 120 };
 
@@ -153,7 +161,9 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
           continue;
         }
         const header = (await ctx.repo.fixtureHeader(f.id))!;
-        const isPick = d.side !== 'NO_PICK' && d.market !== null && d.selection !== null && d.line !== null;
+        // ADR 0019: an Over/Under choice stays in hybrid_decisions as a shadow decision; the round publishes no pick
+        const shadowOnly = d.market !== null && !HYBRID_PUBLISHED_MARKETS.includes(d.market);
+        const isPick = !shadowOnly && d.side !== 'NO_PICK' && d.market !== null && d.selection !== null && d.line !== null;
         const label = isPick ? selectionLabel(d.market!, d.selection!, d.line, header.home, header.away) : null;
         const out = (d.output ?? {}) as { supporting_evidence?: string[]; counter_evidence?: string[]; risk_factors?: string[]; missing_data?: string[] };
         const input = d.input as { home_team?: unknown; away_team?: unknown; injuries?: unknown; confirmed_lineup?: unknown; market?: { asian_handicap?: { bookmakers?: number }; over_under?: { bookmakers?: number } } };
@@ -164,10 +174,11 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
           engineChanged: cause === 'RULES_CHANGED',
           promptChanged: cause === 'PROMPT_CHANGED',
           label,
-          summaryTh: d.summaryTh ?? '',
-          supporting: out.supporting_evidence ?? [],
-          risks: [...(out.risk_factors ?? []), ...(out.counter_evidence ?? [])],
-          missing: out.missing_data ?? [],
+          // a shadow Over/Under text argues for that total: the published no-pick gets its own line and nothing more
+          summaryTh: shadowOnly ? OU_SHADOW_SUMMARY_TH : (d.summaryTh ?? ''),
+          supporting: shadowOnly ? [] : (out.supporting_evidence ?? []),
+          risks: shadowOnly ? [] : [...(out.risk_factors ?? []), ...(out.counter_evidence ?? [])],
+          missing: shadowOnly ? [] : (out.missing_data ?? []),
           confidence: d.confidence,
           odds: d.odds,
           nBookmakers: nBookmakers ?? null,
@@ -206,7 +217,7 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
         };
         const res = await ctx.repo.publishPrediction(prediction, snapshot);
         published++;
-        report.push({ fixture: f.id, match: `${header.home} vs ${header.away}`, round, result: isPick ? `🧭 ${label} (AI)` : '🌫️ หมอกข้อมูล (AI)', strength: prediction.signal_strength ?? '-', id: res.publicId, hash: res.recordHash.slice(0, 12) });
+        report.push({ fixture: f.id, match: `${header.home} vs ${header.away}`, round, result: isPick ? `🧭 ${label} (AI)` : shadowOnly ? `🌫️ (AI chose ${d.selection} ${d.line}: shadow, ADR 0019)` : '🌫️ หมอกข้อมูล (AI)', strength: prediction.signal_strength ?? '-', id: res.publicId, hash: res.recordHash.slice(0, 12) });
         continue;
       }
 
