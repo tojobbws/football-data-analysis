@@ -96,24 +96,46 @@ export function allowedNumbers(input: unknown): number[] {
 const NUM = /\d+(?:[.,]\d+)?/g;
 
 /**
+ * One number as written in text: digits grouped by thousands ("1,474", "12,345,678", "1,474.5"; groups of exactly
+ * three digits, not followed by another digit or comma), else digits with at most one decimal mark ("1.95", "1,5").
+ */
+const NUMBER_IN_TEXT = /(?:(\d{1,3}(?:,\d{3})+(?![\d,])(?:\.\d+)?)|(\d+(?:[.,]\d+)?))(\s*%)?/g;
+
+/**
+ * The values a written number can stand for, each with its decimal places. A dot is always a decimal mark ("1.474"
+ * is 1.474, never 1474). A comma between well-formed digit groups of three (`grouped`) may be a thousands separator
+ * ("1,474" = 1474, an Elo rating) or, as before, a decimal comma ("1,474" = 1.474): both readings are kept and either
+ * must be in the input. A number cut from a malformed group ("12,345" of "12,345,67") keeps the decimal reading only.
+ */
+function readings(raw: string, grouped: boolean): Array<{ n: number; decimals: number }> {
+  const out: Array<{ n: number; decimals: number }> = [];
+  if (grouped) out.push({ n: Number(raw.replace(/,/g, '')), decimals: raw.split('.')[1]?.length ?? 0 });
+  if (!raw.includes('.') && (raw.match(/,/g)?.length ?? 0) <= 1) out.push({ n: Number(raw.replace(',', '.')), decimals: raw.split(',')[1]?.length ?? 0 });
+  if (raw.includes('.') && !raw.includes(',')) out.push({ n: Number(raw), decimals: raw.split('.')[1]!.length });
+  return out;
+}
+
+/**
  * Numbers in `text` that cannot be traced to the input. Matching is tolerant to rounding:
  *  - "63%" matches 0.634 (probability shown as a whole/1-decimal percent) or 63.4
  *  - "1.95" matches 1.95; "-0.75"/"+0.75" match 0.75 (signs are ignored)
+ *  - "1,474" matches 1474 (thousands separator) or 1.474 (decimal comma)
  * Integers 0-3 are always allowed ("2 ทีม", "1 ประตู", "0-0").
  */
 export function inventedNumbers(text: string, allowed: readonly number[]): string[] {
   const bad: string[] = [];
-  for (const m of text.matchAll(/(\d+(?:[.,]\d+)?)(\s*%)?/g)) {
-    const raw = m[1]!;
-    const n = Number(raw.replace(',', '.'));
-    const pct = Boolean(m[2]);
-    if (!pct && Number.isInteger(n) && n <= 3) continue;
-    const ok = allowed.some((a) => {
-      const x = Math.abs(a);
-      if (pct) return Math.abs(x * 100 - n) <= 0.51 || Math.abs(x - n) <= 0.51;
-      const decimals = raw.split(/[.,]/)[1]?.length ?? 0;
-      const tol = 0.5 * 10 ** -decimals + 1e-9;
-      return Math.abs(x - n) <= tol;
+  for (const m of text.matchAll(NUMBER_IN_TEXT)) {
+    const grouped = m[1] !== undefined;
+    const raw = (m[1] ?? m[2])!;
+    const pct = Boolean(m[3]);
+    const ok = readings(raw, grouped).some(({ n, decimals }) => {
+      if (!pct && Number.isInteger(n) && n <= 3) return true;
+      return allowed.some((a) => {
+        const x = Math.abs(a);
+        if (pct) return Math.abs(x * 100 - n) <= 0.51 || Math.abs(x - n) <= 0.51;
+        const tol = 0.5 * 10 ** -decimals + 1e-9;
+        return Math.abs(x - n) <= tol;
+      });
     });
     if (!ok) bad.push(raw + (pct ? '%' : ''));
   }

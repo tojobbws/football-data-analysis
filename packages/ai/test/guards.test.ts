@@ -59,6 +59,44 @@ describe('inventedNumbers', () => {
   });
 });
 
+describe('inventedNumbers: thousands separators and number formats', () => {
+  const elo = allowedNumbers({ home_rating: 1474, away_rating: 1572, gap: -98, xg: 1.474, line: 2.25, big: 1234567, half: 1474.5 });
+  it('reads a comma between groups of three digits as a thousands separator when that value is in the input', () => {
+    expect(inventedNumbers('Elo ของเจ้าบ้าน 1,474 ส่วนทีมเยือน 1,572', elo)).toEqual([]);
+    expect(inventedNumbers('ตัวเลข 1,234,567 และ 1,474.5', elo)).toEqual([]);
+  });
+  it('still flags a grouped number that is not in the input under either reading', () => {
+    expect(inventedNumbers('Elo 1,476', elo)).toEqual(['1,476']);
+    expect(inventedNumbers('Elo 1,600', elo)).toEqual(['1,600']);
+    expect(inventedNumbers('รวม 1,234,568', elo)).toEqual(['1,234,568']);
+  });
+  it('keeps a dot as a decimal mark: 1.474 is never read as 1474', () => {
+    const onlyThousand = allowedNumbers({ rating: 1474 });
+    expect(inventedNumbers('xG 1.474', onlyThousand)).toEqual(['1.474']);
+    expect(inventedNumbers('xG 1.474', elo)).toEqual([]);
+  });
+  it('keeps the decimal-comma reading it had before ("1,474" = 1.474, "2,25" = 2.25)', () => {
+    const onlyDecimal = allowedNumbers({ xg: 1.474, line: 2.25 });
+    expect(inventedNumbers('xG 1,474 เส้น 2,25', onlyDecimal)).toEqual([]);
+  });
+  it('ignores signs: negative values match their absolute value as before', () => {
+    expect(inventedNumbers('ส่วนต่าง -98 และ −1,474', elo)).toEqual([]);
+    expect(inventedNumbers('ส่วนต่าง -99', elo)).toEqual(['99']);
+  });
+  it('does not read malformed groups as thousands', () => {
+    // a group of four digits is not a thousands group: the old decimal reading 1.4740 applies (not in the input)
+    expect(inventedNumbers('ค่า 1,4740', allowedNumbers({ rating: 14740 }))).toEqual(['1,4740']);
+    // two digits after a comma: decimal comma only
+    expect(inventedNumbers('ค่า 14,74', allowedNumbers({ rating: 1474 }))).toEqual(['14,74']);
+    // a broken group splits into numbers that are each checked
+    expect(inventedNumbers('ค่า 12,345,67', allowedNumbers({ a: 12345, b: 67 }))).toEqual(['12,345']);
+  });
+  it('leaves percents and small integers as before', () => {
+    expect(inventedNumbers('63% และ 2 ทีม', allowedNumbers({ p: 0.634 }))).toEqual([]);
+    expect(inventedNumbers('1,000 ครั้ง', allowedNumbers({}))).toEqual([]);
+  });
+});
+
 describe('validateShadowOutput', () => {
   const { input, candidates } = buildShadowInput(source);
   const good = {
