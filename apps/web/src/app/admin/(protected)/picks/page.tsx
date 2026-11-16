@@ -43,7 +43,7 @@ const rulesBet = (r: Row): Bet | null => {
   return p ? { market: p.market, selection: p.selection, line: p.line == null ? null : Number(p.line), odds: p.odds == null ? null : Number(p.odds) } : null;
 };
 
-function result(r: Row, b: Bet | null): { status: Status; units: number | null } | null {
+function result(r: Pick<Row, 'status_short' | 'goals_home' | 'goals_away'>, b: Bet | null): { status: Status; units: number | null } | null {
   if (!b || !FINISHED.includes(r.status_short) || r.goals_home == null || r.goals_away == null) return null;
   const sel = toSelection(b.market, b.selection, b.line);
   if (!sel) return null;
@@ -86,6 +86,8 @@ export default async function AdminPickCompare({ searchParams }: { searchParams:
   const sb = await authClient();
   const res = await sb.rpc('fp_admin_pick_compare', { p_from: from, p_to: to });
   const all = ((res.data ?? []) as Row[]).filter((r) => r.round === round);
+  const dres = round === 'DAILY' ? await sb.rpc('fp_admin_decisions_shadow', { p_from: from, p_to: to }) : null;
+  const dRows = ((dres?.data ?? []) as DRow[]);
 
   const lines = all.map((r) => {
     const ai = aiBet(r);
@@ -225,6 +227,136 @@ export default async function AdminPickCompare({ searchParams }: { searchParams:
           <Empty inline>ไม่มีคู่</Empty>
         )}
       </Section>
+
+      {round === 'DAILY' && (dRows.length || dres?.error) ? <DecisionsShadow rows={dRows} error={dres?.error?.message ?? null} /> : null}
     </main>
+  );
+}
+
+/** fp_admin_decisions_shadow (migration 0061): one OpenAI Decisions answer on the input of a DAILY Hybrid AI decision */
+interface DRow {
+  fixture_id: number;
+  slug: string | null;
+  kickoff_at: string;
+  status_short: string;
+  home: string;
+  away: string;
+  goals_home: number | null;
+  goals_away: number | null;
+  config: string;
+  called_at: string;
+  status: 'OK' | 'INVALID' | 'ERROR';
+  side: string | null;
+  market: string | null;
+  selection: string | null;
+  line: number | null;
+  odds: number | null;
+  choice_probability: number | null;
+  ai_prompt_version: string;
+  ai_status: string;
+  ai_side: string | null;
+  ai_market: string | null;
+  ai_selection: string | null;
+  ai_line: number | null;
+  ai_odds: number | null;
+}
+
+const betOf = (ok: boolean, side: string | null, market: string | null, selection: string | null, line: number | null, odds: number | null): Bet | null =>
+  ok && side && side !== 'NO_PICK' && market && selection ? { market, selection, line: line == null ? null : Number(line), odds: odds == null ? null : Number(odds) } : null;
+
+/** Shadow only: OpenAI Decisions asked on exactly the stored input of the day's DAILY Hybrid AI decisions; never published. */
+function DecisionsShadow({ rows, error }: { rows: DRow[]; error: string | null }) {
+  const lines = rows.map((r) => {
+    const dec = betOf(r.status === 'OK', r.side, r.market, r.selection, r.line, r.odds);
+    const ai = betOf(r.ai_status === 'OK', r.ai_side, r.ai_market, r.ai_selection, r.ai_line, r.ai_odds);
+    return { r, dec, ai, decRes: result(r, dec), aiRes: result(r, ai), late: Date.parse(r.called_at) >= Date.parse(r.kickoff_at) };
+  });
+  const decT = tally(lines.map((l) => ({ res: l.decRes, bet: l.dec })));
+  const aiT = tally(lines.map((l) => ({ res: l.aiRes, bet: l.ai })));
+  const late = lines.filter((l) => l.late).length;
+  return (
+    <Section title="ทดลอง: OpenAI Decisions (shadow ไม่เผยแพร่)" aside={`${lines.length} คู่ · ${rows[0]?.config ?? ''}`}>
+      {error ? <p className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">โหลดข้อมูลไม่สำเร็จ: {error} (ต้อง migrate 0061 ก่อน)</p> : null}
+      <p className="mb-3 max-w-3xl text-xs leading-relaxed text-slate-600">
+        Decisions อ่าน input ชุดเดียวกับที่ Hybrid AI ใช้ตัดสินรอบ 14:00 (เก็บไว้ก่อนเตะ) แล้วเลือก 1 ทางหรือไม่เลือก · เทียบกับ Hybrid AI ของ input เดียวกัน ·
+        {late ? ` ${late} คู่ถามหลังเตะแล้ว (ยังเห็นแค่ข้อมูล 14:00) มีเครื่องหมาย ⏱ ·` : ''} ตัวอย่างคืนเดียวเล็กเกินจะสรุปว่าแบบไหนดีกว่า
+      </p>
+      <table className="mb-4 w-full text-sm">
+        <thead>
+          <tr className="text-xs text-slate-500">
+            <th className="pb-2 text-left font-normal">ผู้เลือก</th>
+            <th className="pb-2 font-normal">เลือก</th>
+            <th className="pb-2 font-normal">จบแล้ว</th>
+            <th className="pb-2 font-normal">ได้ (รวมครึ่ง)</th>
+            <th className="pb-2 font-normal">เสีย (รวมครึ่ง)</th>
+            <th className="pb-2 font-normal">เจ๊า</th>
+            <th className="pb-2 font-normal">หน่วยสุทธิ</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 text-center tabular-nums">
+          {([['OpenAI Decisions', decT], ['Hybrid AI (×3)', aiT]] as const).map(([name, t]) => (
+            <tr key={name}>
+              <td className="py-1.5 text-left">{name}</td>
+              <td>{t.picks}</td>
+              <td>{t.settled}</td>
+              <td>{t.win}</td>
+              <td>{t.loss}</td>
+              <td>{t.push}</td>
+              <td className="font-semibold">{t.settled ? u(t.units) : '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-sm">
+          <thead>
+            <tr className="text-xs text-slate-500">
+              <th className="pb-2 text-left font-normal">คู่</th>
+              <th className="pb-2 text-left font-normal">OpenAI Decisions</th>
+              <th className="pb-2 text-left font-normal">Hybrid AI (×3)</th>
+              <th className="pb-2 font-normal">เทียบ</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 align-top">
+            {lines.map(({ r, dec, ai, decRes, aiRes, late: isLate }) => {
+              const note = dec && ai ? (same(dec, ai) ? 'ตรงกัน' : 'ต่างกัน') : dec ? 'Decisions เท่านั้น' : ai ? 'AI เท่านั้น' : 'ไม่เลือกทั้งคู่';
+              const cell = (b: Bet | null, res: ReturnType<typeof result>, side: string | null, status: string, extra: string) =>
+                status !== 'OK' ? (
+                  <span className="text-rose-600">{status}</span>
+                ) : b ? (
+                  <>
+                    <p>
+                      {selectionLabel(b.market, b.selection, b.line, r.home, r.away)} <span className="text-xs text-slate-500">@{b.odds ?? '-'} · {SIDE[side ?? ''] ?? ''}{extra}</span>
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1.5">
+                      {res ? <StatusBadge admin status={res.status} /> : <span className="text-xs text-slate-500">รอผล</span>} <span className="text-xs tabular-nums">{u(res?.units ?? null)}</span>
+                    </p>
+                  </>
+                ) : (
+                  <span className="text-slate-400">ไม่เลือก{extra}</span>
+                );
+              const p = r.choice_probability == null ? '' : ` · p ${Math.round(Number(r.choice_probability) * 100)}%`;
+              return (
+                <tr key={r.fixture_id}>
+                  <td className="py-2 pr-3">
+                    {r.slug ? <Link href={`/matches/${r.slug}`} className="font-medium hover:underline">{r.home} vs {r.away}</Link> : <span className="font-medium">{r.home} vs {r.away}</span>}
+                    <p className="text-xs text-slate-500">
+                      {timeTH(r.kickoff_at)}
+                      {r.goals_home != null && FINISHED.includes(r.status_short) ? ` · ${r.goals_home}-${r.goals_away}` : ''}
+                    </p>
+                  </td>
+                  <td className="py-2 pr-3">
+                    {cell(dec, decRes, r.side, r.status, p)}
+                    {isLate ? <p className="text-xs text-amber-700">⏱ ถามหลังเตะ (input 14:00)</p> : null}
+                  </td>
+                  <td className="py-2 pr-3">{cell(ai, aiRes, r.ai_side, r.ai_status, '')}</td>
+                  <td className={`py-2 text-center text-xs ${note === 'ตรงกัน' ? 'text-emerald-700' : note === 'ต่างกัน' ? 'text-amber-700' : 'text-slate-500'}`}>{note}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Section>
   );
 }
