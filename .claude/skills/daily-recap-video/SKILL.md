@@ -55,6 +55,15 @@ Run every step from `scripts/video/`.
    - Give the owner the path, the length and the loudness line.
 5. Tell the owner what you could not check: the voice pronunciation and the music, since you cannot hear them.
 
+## Look
+
+The recap has its own colour theme, "violet night + electric cyan" (owner, 2026-11-16), so it never looks like the navy/gold คู่น่าจับตา film:
+- deep violet grounds, cyan accent (pills, rings, gauge, highlighted subtitle words), lilac secondary colour and text tints;
+- green ✓ and red ✕ stay for ทายถูก / ทายผิด;
+- the shared cover (`cover.js`) stays navy/gold for the spotlight film; `recap.html` overrides its colours under `#film #cover`.
+
+The palette lives in `recap.html` (`:root` and the "recap theme on the shared cover" block). Keep it for every recap unless the owner asks for another; don't copy navy/gold back from `spot.html` or `cover.js`.
+
 ## Rules
 
 - Show every pick of the list, wrong ones included. `recap.cjs` refuses a script that leaves one out.
