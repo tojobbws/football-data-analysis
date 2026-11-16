@@ -18,7 +18,7 @@
  * It is final: no LINEUP, no PREMATCH.
  */
 import { buildHybridReason, buildReason, dailyRoundFor, DEFAULT_RULES, IMPACT_VERSION, prematchCause, publishRoundFor, selectionLabel, SHADOW_RULES, type MissingPlayer, type OutcomeDistribution, type PrematchCause, type PublishRound } from '@fp/analysis';
-import { HYBRID_ENGINE_VERSION, HYBRID_PROMPT_VERSION } from '@fp/ai';
+import { HYBRID_ENGINE_VERSION, HYBRID_PROMPT_VERSION, HYBRID_PROMPT_VERSION_V211 } from '@fp/ai';
 import { runJob, type JobContext } from '@fp/database';
 import { addHours, footballDayHorizon, pickRunAt } from '@fp/shared';
 
@@ -143,7 +143,9 @@ export function publishJob(ctx: JobContext, opts: PublishOptions = {}) {
     if (engine === 'hybrid') await ctx.repo.ensureModelVersion(HYBRID_ENGINE_VERSION, 'Hybrid AI decision engine: verified pre-match data + market main lines (ADR 0010)', {});
 
     for (const f of fixtures) {
-      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined, schedule });
+      // the prompt version in force (ADR 0021: HYBRID_VERSION, unset = v2.1.1); only the rounds schedule reads it
+      const promptVersion = ctx.env.HYBRID_VERSION === 'v2.0' ? HYBRID_PROMPT_VERSION : HYBRID_PROMPT_VERSION_V211;
+      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? promptVersion : undefined, schedule });
       if (!due) continue;
       const { round, cause, gateTunedAt } = due;
 

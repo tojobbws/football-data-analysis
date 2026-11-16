@@ -143,7 +143,7 @@ describe('hybridJob', () => {
 
   it('shadow: stores every decision as the AI saw and answered it, and publishes nothing from it', async () => {
     const d = fakeDecider(answers);
-    expect(await hybridJob(ctx, { sameFootballDay: false, engine: 'shadow', decider: d })).toBe(5);
+    expect(await hybridJob(ctx, { sameFootballDay: false, engine: 'shadow', decider: d, version: 'v2.0' })).toBe(5);
     // no market for 302: no AI call; three answers for every other fixture, each of 303's asked twice
     const times = (name: string, n: number) => Array<string>(n).fill(name);
     expect(d.calls.sort()).toEqual([...times('Down FC', 3), ...times('Fog FC', 3), ...times('Good FC', 3), ...times('Invalid FC', 6)]);
@@ -201,7 +201,7 @@ describe('hybridJob', () => {
 
   it('a repeated run decides again only where no valid decision is fresh', async () => {
     const d = fakeDecider(answers);
-    await hybridJob(ctx, { sameFootballDay: false, engine: 'shadow', decider: d });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'shadow', decider: d, version: 'v2.0' });
     expect(d.calls.filter((c) => c === 'Good FC' || c === 'Fog FC')).toEqual([]);
     expect(await count(`select count(*) n from hybrid_decisions where fixture_id in (301, 302, 305)`)).toBe(3);
     expect(d.calls).toContain('Invalid FC');
@@ -244,7 +244,7 @@ describe('hybridJob', () => {
       { candidates_snapshot: [] },
     );
     const d = fakeDecider({ ...answers, 'Old Prompt FC': () => ({ output: pick() }) });
-    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d, version: 'v2.0' });
     expect(d.calls.filter((c) => c === 'Old Prompt FC')).toHaveLength(HYBRID_VOTES);
     expect(await count(`select count(*) n from hybrid_decisions where fixture_id = 306 and publish_round = 'PREMATCH' and status = 'OK'`)).toBe(1);
 
@@ -259,7 +259,7 @@ describe('hybridJob', () => {
 
     // once only
     const again = fakeDecider({ ...answers, 'Old Prompt FC': () => ({ output: pick() }) });
-    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: again });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: again, version: 'v2.0' });
     await publishJob(ctx, { sameFootballDay: false, engine: 'hybrid' });
     expect(again.calls).not.toContain('Old Prompt FC');
     expect(await count(`select count(*) n from analysis_predictions where fixture_id = 306`)).toBe(2);
@@ -271,7 +271,7 @@ describe('hybridJob', () => {
     await odds(307);
     const over = pick({ market: 'OU', side: 'OVER', main_line: 2.5, summary_th: 'สองทีมยิงกันเปิดเกมบ่อย' });
     const d = fakeDecider({ ...answers, 'Totals FC': () => ({ output: over }) });
-    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d });
+    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d, version: 'v2.0' });
     const [dec] = await q<{ side: string; market: string; line: string }>(`select side, market, line from hybrid_decisions where fixture_id = 307 and status = 'OK'`);
     expect(dec).toMatchObject({ side: 'OVER', market: 'OVER_UNDER' });
 
@@ -291,7 +291,7 @@ describe('hybridJob', () => {
       await odds(308);
       // Nation A has no past matches: a count like "6 นัด" is in its input only when a time-derived number happens to be
       const d = fakeDecider({ ...answers, 'Nation A': () => ({ output: pick({ supporting_evidence: ['ทีมเยือนเสียประตูน้อย'] }) }) });
-      await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d });
+      await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: d, version: 'v2.0' });
       const [dec] = await q<{ side: string; market: string }>(`select side, market from hybrid_decisions where fixture_id = 308 and status = 'OK'`);
       expect(dec).toMatchObject({ side: 'UNDERDOG', market: 'ASIAN_HANDICAP' });
 
@@ -313,7 +313,8 @@ describe('hybridJob', () => {
         throw new Anthropic.BadRequestError(400, undefined, 'Your credit balance is too low', new Headers());
       },
     };
-    await hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: broke });
+    // the run is marked FAILED (the workflow fails and GitHub notifies), after storing what it had (ADR 0021)
+    await expect(hybridJob(ctx, { sameFootballDay: false, engine: 'hybrid', decider: broke, version: 'v2.0' })).rejects.toThrow(/persistent API error/);
     // the three answers of the first fixture go out together; no fixture after it is tried
     expect(calls).toHaveLength(HYBRID_VOTES);
     expect(new Set(calls).size).toBe(1);

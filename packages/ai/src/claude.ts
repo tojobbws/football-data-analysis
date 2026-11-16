@@ -89,8 +89,11 @@ export function createClaudePickNoteWriter(opts: { apiKey?: string; model?: stri
 
 export interface HybridDecider {
   decide(input: Record<string, unknown>): Promise<RankerResult>;
+  /** optional (v2.1.1, ADR 0021): ask again on the same input with the previous answer and its validation feedback */
+  retry?(input: Record<string, unknown>, previousOutput: unknown, feedback: string): Promise<RankerResult>;
 }
 
-export function createClaudeHybridDecider(opts: { apiKey?: string; model?: string } = {}): HybridDecider {
-  return { decide: createStructuredCall({ ...opts, model: opts.model ?? HYBRID_AI_MODEL, system: HYBRID_SYSTEM_PROMPT, schema: HYBRID_OUTPUT_SCHEMA as unknown as Record<string, unknown> }) };
+/** `system` defaults to the v2.0 prompt; the hybrid job passes the v2.1.1 prompt when that version is in force. */
+export function createClaudeHybridDecider(opts: { apiKey?: string; model?: string; system?: string } = {}): HybridDecider {
+  return { decide: createStructuredCall({ apiKey: opts.apiKey, model: opts.model ?? HYBRID_AI_MODEL, system: opts.system ?? HYBRID_SYSTEM_PROMPT, schema: HYBRID_OUTPUT_SCHEMA as unknown as Record<string, unknown> }) };
 }

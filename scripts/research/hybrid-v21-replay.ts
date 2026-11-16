@@ -22,6 +22,9 @@ import OpenAI from 'openai';
 import {
   allowedNumbers,
   buildHybridSystemPromptV21,
+  buildHybridSystemPromptV211,
+  prepareHybridInputV211,
+  validateHybridOutputV211,
   createOpenAIHybridDeciderV21,
   createOpenAIStructuredCall,
   HYBRID_MAX_ATTEMPTS,
@@ -116,8 +119,9 @@ function optionsOf(input: Record<string, unknown>): HybridOption[] {
 
 // ---------------------------------------------------------------- arms
 const controlPrompt = (input: Record<string, unknown>) => ('elo_ratings' in input ? HYBRID_SYSTEM_PROMPT : HYBRID_SYSTEM_PROMPT.replace(`${HYBRID_V20_GUIDE}\n\n`, ''));
-const armInput = (arm: string, d: Decision) => (arm === 'v21' ? withAggregatesV21(d.input) : d.input);
-const armPrompt = (arm: string, d: Decision) => (arm === 'v21' ? buildHybridSystemPromptV21(controlPrompt(d.input)) : controlPrompt(d.input));
+// v211 = the production v2.1.1 path: the cut-off check, the totals with counts, the v2.1.1 prompt and validator
+const armInput = (arm: string, d: Decision) => (arm.startsWith('v211') ? prepareHybridInputV211(d.input).input : arm === 'v21' ? withAggregatesV21(d.input) : d.input);
+const armPrompt = (arm: string, d: Decision) => (arm.startsWith('v211') ? buildHybridSystemPromptV211(controlPrompt(d.input)) : arm === 'v21' ? buildHybridSystemPromptV21(controlPrompt(d.input)) : controlPrompt(d.input));
 const sha = (x: unknown) => createHash('sha256').update(typeof x === 'string' ? x : JSON.stringify(x)).digest('hex');
 
 // ---------------------------------------------------------------- calls: TPM limiter, budget, raw log
@@ -191,7 +195,7 @@ async function answerOnce(arm: string, d: Decision, answer: number): Promise<Ans
   const input = armInput(arm, d);
   const options = optionsOf(d.input); // the original market candidates, unchanged
   const system = armPrompt(arm, d);
-  const v21 = arm === 'v21' ? createOpenAIHybridDeciderV21({ apiKey: env.OPENAI_API_KEY!, model: MODEL, system, timeoutMs: 150_000 }) : null;
+  const v21 = arm === 'v21' || arm.startsWith('v211') ? createOpenAIHybridDeciderV21({ apiKey: env.OPENAI_API_KEY!, model: MODEL, system, timeoutMs: 150_000 }) : null;
   const ask = v21 ? null : control(system);
   const rec: AnswerRec = { arm, group: d.group, rowId: d.rowId, answer, attempts: [], final: 'INVALID', side: null, output: null, inputSha256: sha(input), storedInputHash: d.inputHash, promptSha256: sha(system) };
   let previous: unknown = null;
@@ -216,12 +220,12 @@ async function answerOnce(arm: string, d: Decision, answer: number): Promise<Ans
       feedback = null;
       continue;
     }
-    const v = validateHybridOutput(r.res.output, input, options);
+    const v = arm.startsWith('v211') ? validateHybridOutputV211(r.res.output, input, options) : validateHybridOutput(r.res.output, input, options);
     if (v.ok && v.decision) {
       rec.attempts.push({ attempt, kind, status: 'OK', side: v.decision.side, violations: [], latencyMs: r.ms, ...(kind === 'retry' ? { feedback: feedback! } : {}) });
       return { ...rec, final: 'OK', side: v.decision.side, output: r.res.output };
     }
-    const located = locateViolations(r.res.output, input, options);
+    const located = locateViolations(r.res.output, input, options, { averageCounts: arm.startsWith('v211') });
     rec.attempts.push({ attempt, kind, status: 'INVALID', side: null, violations: located, latencyMs: r.ms, ...(kind === 'retry' ? { feedback: feedback! } : {}) });
     rec.output = r.res.output;
     previous = r.res.output;
@@ -339,7 +343,7 @@ for (const g of ['G1', 'G2'] as const) {
   for (const arm of arms) {
     const complete = ds.filter((d) => Array.from({ length: HYBRID_VOTES }, (_, i) => done.has(`${arm}|${d.rowId}|${i + 1}`)).every(Boolean));
     const dist: Record<string, number> = {};
-    let attempts = 0, rejectedAttempts = 0, numberRejected = 0, inventedNumbersCount = 0, bannedWords = 0, otherViolations = 0;
+    let attempts = 0, rejectedAttempts = 0, numberRejected = 0, inventedNumbersCount = 0, bannedWords = 0, otherViolations = 0, averageViolations = 0;
     let firstRejected = 0, retryFixed = 0, sameNumberAgain = 0, sameAsLive = 0;
     let derivedPassed = 0, derivedQuotedAggregate = 0, derivedCoincidental = 0, numbersInValidTexts = 0;
     const examples: string[] = [];
@@ -361,6 +365,7 @@ for (const g of ['G1', 'G2'] as const) {
           inventedNumbersCount += nums.length;
           bannedWords += t.violations.filter((v) => v.kind === 'BANNED_WORD').length;
           otherViolations += t.violations.filter((v) => v.kind === 'OTHER').length;
+          averageViolations += t.violations.filter((v) => v.kind === 'AVERAGE_WITHOUT_COUNT').length;
           if (nums.length && examples.length < 6) examples.push(`${d.match} a${a.answer} t${t.attempt}: ${nums.map((v) => `${v.value} @${v.field} ${v.excerpt}`).join(' | ')}`);
         }
         const [t1, t2] = a.attempts;
@@ -379,7 +384,7 @@ for (const g of ['G1', 'G2'] as const) {
             if (derived.has(v.toFixed(2)) || derived.has(v.toFixed(1))) {
               if (exactOriginal.has(String(v))) continue; // the value itself is in the stored input too
               derivedPassed++;
-              if (arm === 'v21' && exactArm.has(String(v))) derivedQuotedAggregate++;
+              if ((arm === 'v21' || arm.startsWith('v211')) && exactArm.has(String(v))) derivedQuotedAggregate++;
               else derivedCoincidental++;
             }
           }
@@ -402,6 +407,7 @@ for (const g of ['G1', 'G2'] as const) {
       inventedNumbers: inventedNumbersCount,
       bannedWords,
       otherViolations,
+      averageViolations,
       retry: { answersRejectedFirst: firstRejected, fixedOnRetry: retryFixed, successRate: firstRejected ? retryFixed / firstRejected : null, sameViolationAgain: sameNumberAgain },
       atRisk: { numbersInValidTexts, derivedLookingPassed: derivedPassed, quotedAggregate: derivedQuotedAggregate, coincidental: derivedCoincidental },
       examples,
@@ -413,7 +419,7 @@ for (const g of ['G1', 'G2'] as const) {
   for (const arm of arms) {
     const x = per[arm] as Record<string, any>;
     if (!x) continue;
-    console.log(`${arm}: INVALID ${x.invalidDecisions}/${x.decisions} · rejected attempts ${x.rejectedAttempts}/${x.attempts} (${(100 * (x.rejectionRate ?? 0)).toFixed(1)}%) · number guard ${x.numberGuardRejectedAttempts}/${x.attempts} (${(100 * (x.numberGuardRejectionRate ?? 0)).toFixed(1)}%) · invented numbers ${x.inventedNumbers} · banned ${x.bannedWords} · other ${x.otherViolations}`);
+    console.log(`${arm}: INVALID ${x.invalidDecisions}/${x.decisions} · rejected attempts ${x.rejectedAttempts}/${x.attempts} (${(100 * (x.rejectionRate ?? 0)).toFixed(1)}%) · number guard ${x.numberGuardRejectedAttempts}/${x.attempts} (${(100 * (x.numberGuardRejectionRate ?? 0)).toFixed(1)}%) · invented numbers ${x.inventedNumbers} · banned ${x.bannedWords} · average-without-count ${x.averageViolations} · other ${x.otherViolations}`);
     console.log(`   retry: ${x.retry.fixedOnRetry}/${x.retry.answersRejectedFirst} fixed (${x.retry.successRate === null ? '-' : (100 * x.retry.successRate).toFixed(0) + '%'}), same violation again ${x.retry.sameViolationAgain} · same as live ${x.sameAsLive ?? '-'} · at risk: ${JSON.stringify(x.atRisk)}`);
     for (const e of x.examples.slice(0, 3)) console.log(`   e.g. ${e.slice(0, 220)}`);
   }

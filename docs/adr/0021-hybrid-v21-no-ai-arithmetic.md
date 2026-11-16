@@ -1,7 +1,7 @@
 # Hybrid AI v2.1 (experimental): the AI quotes totals it is given and never computes one
 
-Status: experimental, dry-run only. The owner approved development and a replay on 2026-11-16, and production
-approval is still to come. v2.0 stays the locked production baseline (ADR 0020).
+Status: v2.1 experimental (dry-run, 2026-11-16). **v2.1.1 approved for production on 2026-11-16** (amendment below).
+v2.0 stays the locked baseline and the rollback (ADR 0020).
 
 ## Problem
 
@@ -105,3 +105,75 @@ It reads no match result. The results are in `reports/hybrid-v21/` and in the re
 - Rollback:
   - **Guard:** revert the commit on `number-guard-thousands`.
   - **v2.1:** delete `hybrid-v21.ts` and its export. Nothing else depends on it.
+
+## Amendment, 2026-11-16 evening: v2.1.1 goes to production
+
+The owner approved production for v2.1.1 without a shadow period. The conditions were a replay with 0 INVALID decisions, checked aggregates, no data leakage, and the number guard left as strict as before.
+
+### What v2.1.1 adds to v2.1
+
+- **Match counts.** Every sum and average has the number of matches it rests on:
+  - per window: `goals_matches`, `xg_for_matches`, `xg_against_matches`, `xg_total_matches`, `npxg_total_matches`
+  - in `comparison`: `home_matches` and `away_matches`
+- **The owner's rule, verbatim, plus a pointer to the counts.** "Whenever citing an average, explicitly state the
+  number of matches used to calculate it. If the sample count is unavailable, do not cite the average as a factual
+  statement."
+- **A check of that rule.** `averagesWithoutCount` finds an average value cited without its count. The count can be in
+  digits or in Thai words ("ในสิบเกม", "เกมเดียว"). "ราคาเฉลี่ย", the median price, does not count. The check is part
+  of `validateHybridOutputV211`, and its feedback goes into the retry.
+- **The cut-off check.** `enforceCutoffV211` compares every dated value in the input with `prediction_timestamp_utc`:
+  - recent matches
+  - head to head
+  - recent starters
+  - the market movement points
+  - the API prediction
+
+  It removes anything later and records it in `data_quality.cutoff_warnings`. The job also writes it as a GitHub
+  `::error::` annotation.
+- **Persistent errors.** `isPersistentOpenAIError` now also catches "no credits remaining" without the code
+  `insufficient_quota`, quota or billing messages, and an unknown model. A persistent error marks the hybrid run as
+  FAILED, so the workflow fails and GitHub notifies the owner. An INVALID or ERROR decision becomes a GitHub
+  `::warning::` annotation.
+- **Runtime version and rollback.** The version is chosen at runtime by `HYBRID_VERSION`: v2.1.1 by default, and `v2.0`
+  restores the locked baseline exactly as before. Rollback needs no deploy:
+  `gh variable set HYBRID_VERSION --body v2.0`.
+- **Unchanged:**
+  - market options
+  - the majority of three
+  - `HYBRID_MAX_ATTEMPTS` (2)
+  - pick selection and publishing
+  - the v2.0 prompt and input builder
+  - stored v2.0 decisions
+
+### Checked before deploy
+
+- **Aggregates** (`scripts/research/v211-aggregate-audit.ts`):
+  - all 742 stored inputs were recomputed by an independent implementation: 151,567 checks, 0 mismatches
+  - the cross-check against the v2.0 window values covered 4,452 windows and proved the same matches and denominators
+  - no average is zero-filled
+- **Leakage:** 15,765 dated values were checked, and none is after the decision time. `enforceCutoffV211` gave 0
+  warnings. The repository queries filter by the decision time; the tables without a time (standings, injuries, the
+  match's lineups) are the state at the decision in a live run.
+- **Replay** (`scripts/research/hybrid-v21-replay.ts`, arm `v211r`, gpt-6-luna):
+
+  | Measure | G1 (16 INVALID) | G2 (82 retried) |
+  |---|---|---|
+  | v2.1.1 INVALID | 0/16 | 0/82 |
+  | v2.0 control INVALID | 7/16 | 1/82 |
+  | Number-guard rejections | 0/49 | 0/249 |
+  | Rejected attempts | 1/49 | 3/249 |
+  | Feedback retries that passed | 1/1 | 3/3 |
+
+  - Every derived-looking number that passed is an exact aggregate field. One borderline case at 1-decimal precision
+    was not reproduced on a closer check.
+  - A first v2.1.1 detector read counts in digits only. It rejected 106 G2 attempts that had their counts in Thai words
+    and left 3/82 INVALID. It was fixed before this replay.
+- **Live smoke test** (`scripts/hybrid-v211-smoke.ts`) passed through the production functions with no write.
+  Central African Republic v Benin, INVALID on 16 Nov for "xG รวม 4.01", now has `xg_total` 4.01 in its input and
+  passed first time.
+- **Watch item: the pick distribution.**
+  - G2 decisions: NO_PICK was 36/82 for v2.1.1, against 42 for the v2.0 control and 45 for v2.1.
+  - Answers: 102/246 (41%), against 112 and 115 (46–47%).
+  - The first v2.1.1 replay gave 94/246.
+  - Feedback retries never changed a side (20/20).
+  - The prompt is not tuned against this. It is measured on live picks, with v2.1.1 counted apart.

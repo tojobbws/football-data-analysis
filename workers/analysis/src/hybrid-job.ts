@@ -19,19 +19,31 @@
  *
  * PICK_SCHEDULE=daily (docs/adr/0014-one-daily-pick-run.md): every match of the pick day is decided in the runs from
  * 14:00 to 16:00 Thai, DAILY_CONCURRENCY matches at a time so a full day (up to ~100 matches) fits in one run.
+ *
+ * HYBRID_VERSION (docs/adr/0021-hybrid-v21-no-ai-arithmetic.md): v2.1.1 (default) checks the input against the decision
+ * time, adds the precomputed totals with their match counts, uses the v2.1.1 prompt and validator (the same number
+ * guard plus the match-count rule) and asks a rejected answer again with its located violations, on the same input
+ * and within the same attempt limit. v2.0 is the locked baseline, exactly as before: the rollback.
  */
 import { createHash } from 'node:crypto';
 import {
   buildHybridInput,
   createClaudeHybridDecider,
   createOpenAIHybridDecider,
+  createOpenAIHybridDeciderV21,
   HYBRID_ENGINE_VERSION,
   HYBRID_MAX_ATTEMPTS,
   HYBRID_PROMPT_VERSION,
+  HYBRID_PROMPT_VERSION_V211,
+  HYBRID_SYSTEM_PROMPT_V211,
   HYBRID_VOTES,
   isPersistentApiError,
+  locateViolations,
   majorityVote,
+  prepareHybridInputV211,
+  retryFeedbackV21,
   validateHybridOutput,
+  validateHybridOutputV211,
   type HybridDecider,
   type HybridSource,
   type RankerResult,
@@ -59,31 +71,42 @@ export interface HybridJobOptions {
   schedule?: PickSchedule;
   /** matches decided at the same time (default 1, daily DAILY_CONCURRENCY) */
   concurrency?: number;
+  /** prompt and input version; default env HYBRID_VERSION, unset = v2.1.1 */
+  version?: HybridVersion;
 }
+
+export type HybridVersion = 'v2.0' | 'v2.1.1';
+/** The Hybrid AI version in force: HYBRID_VERSION, unset = v2.1.1 (ADR 0021); v2.0 is the rollback. */
+export const hybridVersion = (env: { HYBRID_VERSION?: HybridVersion }): HybridVersion => env.HYBRID_VERSION ?? 'v2.1.1';
+/** The prompt_version stored with each decision of that version. */
+export const hybridPromptVersion = (v: HybridVersion) => (v === 'v2.0' ? HYBRID_PROMPT_VERSION : HYBRID_PROMPT_VERSION_V211);
 
 /** The OpenAI model of the pick decision: OPENAI_HYBRID_MODEL, else the shared OPENAI_MODEL. */
 export const hybridOpenAIModel = (env: { OPENAI_MODEL?: string; OPENAI_HYBRID_MODEL?: string }) => env.OPENAI_HYBRID_MODEL ?? env.OPENAI_MODEL;
 
 /** OpenAI when OPENAI_API_KEY and a model (OPENAI_HYBRID_MODEL or OPENAI_MODEL) are set, else Claude when ANTHROPIC_API_KEY is, else none. */
-function defaultDecider(ctx: JobContext): HybridDecider | null {
+function defaultDecider(ctx: JobContext, version: HybridVersion): HybridDecider | null {
   const { OPENAI_API_KEY, ANTHROPIC_API_KEY, HYBRID_AI_MODEL } = ctx.env;
   const model = hybridOpenAIModel(ctx.env);
-  if (OPENAI_API_KEY && model) return createOpenAIHybridDecider({ apiKey: OPENAI_API_KEY, model });
-  return ANTHROPIC_API_KEY ? createClaudeHybridDecider({ apiKey: ANTHROPIC_API_KEY, model: HYBRID_AI_MODEL }) : null;
+  const v211 = version === 'v2.1.1';
+  if (OPENAI_API_KEY && model) return v211 ? createOpenAIHybridDeciderV21({ apiKey: OPENAI_API_KEY, model, system: HYBRID_SYSTEM_PROMPT_V211 }) : createOpenAIHybridDecider({ apiKey: OPENAI_API_KEY, model });
+  return ANTHROPIC_API_KEY ? createClaudeHybridDecider({ apiKey: ANTHROPIC_API_KEY, model: HYBRID_AI_MODEL, ...(v211 ? { system: HYBRID_SYSTEM_PROMPT_V211 } : {}) }) : null;
 }
 
 export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
   const engine: PickEngine = opts.engine ?? ctx.env.PICK_ENGINE ?? 'legacy';
   const schedule: PickSchedule = opts.schedule ?? ctx.env.PICK_SCHEDULE ?? 'rounds';
+  const version: HybridVersion = opts.version ?? hybridVersion(ctx.env);
+  const promptVersion = hybridPromptVersion(version);
   const daily = schedule === 'daily';
   const budgetMinutes = opts.budgetMinutes ?? (daily ? 15 : 12);
   const concurrency = Math.max(1, opts.concurrency ?? (daily ? DAILY_CONCURRENCY : 1));
-  return runJob(ctx, 'hybrid', { engine, engineVersion: HYBRID_ENGINE_VERSION, promptVersion: HYBRID_PROMPT_VERSION, schedule }, async () => {
+  return runJob(ctx, 'hybrid', { engine, engineVersion: HYBRID_ENGINE_VERSION, promptVersion, hybridVersion: version, schedule }, async () => {
     if (engine === 'legacy') {
       ctx.log.info('PICK_ENGINE=legacy: the Hybrid AI does not run');
       return 0;
     }
-    const decider = opts.decider === undefined ? defaultDecider(ctx) : opts.decider;
+    const decider = opts.decider === undefined ? defaultDecider(ctx, version) : opts.decider;
     if (!decider) {
       ctx.log.error('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY): no Hybrid AI decision this run');
       return 0;
@@ -97,6 +120,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
     const deadline = Date.now() + budgetMinutes * 60_000;
     const queue = [...fixtures];
     let stop = false;
+    let persistentError: string | null = null;
     // `concurrency` workers take the fixtures in kick-off order; one stops all on a persistent API error or the budget
     const worker = async () => {
       while (!stop) {
@@ -111,7 +135,7 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
       }
     };
     const decideOne = async (f: Fixture): Promise<'STOP' | void> => {
-      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? HYBRID_PROMPT_VERSION : undefined, schedule });
+      const due = await dueRound(ctx, f, now, { engineVersion, gateRetune: engine !== 'hybrid', promptVersion: engine === 'hybrid' ? promptVersion : undefined, schedule });
       if (!due) return;
       const { round } = due;
       // a published round is final: nothing left to decide
@@ -119,24 +143,34 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
       const existing = await ctx.repo.latestHybridDecision(f.id, round, HYBRID_ENGINE_VERSION);
       if (existing && !(await decisionFresh(ctx, f.id, round, existing.decidedAt, now))) return;
 
-      const { header, input, inputHash, options, legacy } = await collectHybridInput(ctx, f, round, now, { inputV2: true, v20: true });
-      const base = { fixture_id: f.id, publish_round: round, engine_mode: engine, engine_version: HYBRID_ENGINE_VERSION, prompt_version: HYBRID_PROMPT_VERSION, input, input_hash: inputHash, legacy };
+      const { header, input, inputHash, options, legacy, cutoffWarnings } = await collectHybridInput(ctx, f, round, now, { inputV2: true, v20: true, version });
+      const base = { fixture_id: f.id, publish_round: round, engine_mode: engine, engine_version: HYBRID_ENGINE_VERSION, prompt_version: promptVersion, input, input_hash: inputHash, legacy };
       const match = `${header.home} vs ${header.away} (${round})`;
+      if (cutoffWarnings.length) {
+        // data after the decision time was removed from the input (should never happen: the queries filter by time)
+        ctx.log.error('data cutoff warning: values after the decision time were removed from the input', { fixtureId: f.id, cutoffWarnings });
+        console.log(`::error title=Hybrid AI data cutoff::${match}: ${cutoffWarnings.join('; ')}`);
+      }
 
       let row: Record<string, unknown>;
       if (!options.length) {
         // nothing to choose from: no main AH or O/U line the market trades now; no AI call
         row = { ...base, model: null, status: 'OK', attempts: 0, side: 'NO_PICK', summary_th: 'ยังไม่มีเส้นหลักของตลาดที่เชื่อถือได้ ณ เวลาที่วิเคราะห์', output: null };
       } else {
-        const answers = await Promise.all(Array.from({ length: HYBRID_VOTES }, () => askOnce(decider, input, options)));
+        const answers = await Promise.all(Array.from({ length: HYBRID_VOTES }, () => askOnce(decider, input, options, version)));
         row = { ...base, ...combineVotes(answers) };
         const stopOn = answers.find((a) => a.persistent);
         if (stopOn) {
           await ctx.repo.insertHybridDecision(row).catch(() => undefined);
           ctx.log.error('Hybrid AI stopped for this run', { fixtureId: f.id, error: stopOn.failure });
           report.push({ match, result: 'ERROR', note: (stopOn.failure ?? '').slice(0, 80) });
+          persistentError = stopOn.failure;
           return 'STOP';
         }
+      }
+      if (row.status !== 'OK') {
+        // a GitHub annotation on the run: the decision is retried in the next run while the round is open
+        console.log(`::warning title=Hybrid AI ${row.status}::${match}: ${((row.violations as string[]) ?? []).join(' | ').slice(0, 500)}`);
       }
 
       try {
@@ -152,6 +186,10 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
     };
     await Promise.all(Array.from({ length: concurrency }, worker));
     if (report.length) console.table(report);
+    if (persistentError) {
+      // no credit, bad key, unknown model: the run is marked FAILED so the workflow fails and GitHub notifies the owner
+      throw new Error(`Hybrid AI stopped by a persistent API error (no retry can fix it): ${persistentError}`);
+    }
     return stored;
   });
 }
@@ -168,6 +206,10 @@ export interface Answer {
   failure: string | null;
   /** the failure would hit the next call too (no credit, bad key): stop the run */
   persistent: boolean;
+  /** v2.1.1: attempts that were asked again with the previous answer's located violations */
+  feedbackRetries?: number;
+  /** time spent on this answer's calls (ms) */
+  latencyMs?: number;
 }
 
 /** One answer's choice as stored in hybrid_decisions.votes */
@@ -176,27 +218,49 @@ export interface Vote {
   side: string | null;
   confidence: string | null;
   attempts: number;
+  /** v2.1.1 */
+  feedbackRetries?: number;
+  latencyMs?: number;
 }
 
-async function askOnce(decider: HybridDecider, input: Record<string, unknown>, options: readonly HybridOption[]): Promise<Answer> {
-  const a: Answer = { res: null, result: null, violations: [], attempts: 0, failure: null, persistent: false };
+/**
+ * One answer, asked again (same input, up to HYBRID_MAX_ATTEMPTS) while it fails validation. v2.1.1: the v2.1.1
+ * validator (number guard + match counts), and a retry carries the previous answer and its located violations when
+ * the decider supports it; the market options and the input never change between attempts.
+ */
+async function askOnce(decider: HybridDecider, input: Record<string, unknown>, options: readonly HybridOption[], version: HybridVersion = 'v2.0'): Promise<Answer> {
+  const v211 = version === 'v2.1.1';
+  // v2.0 votes stay exactly as before; v2.1.1 also records feedback retries and time
+  const a: Answer = { res: null, result: null, violations: [], attempts: 0, failure: null, persistent: false, ...(v211 ? { feedbackRetries: 0, latencyMs: 0 } : {}) };
+  let previous: unknown = null;
+  let feedback: string | null = null;
   while (a.attempts < HYBRID_MAX_ATTEMPTS) {
     a.attempts++;
+    const withFeedback = v211 && feedback !== null && previous !== null && typeof decider.retry === 'function';
+    const t0 = Date.now();
     try {
-      a.res = await decider.decide(input);
+      a.res = withFeedback ? await decider.retry!(input, previous, feedback!) : await decider.decide(input);
+      if (withFeedback) a.feedbackRetries!++;
     } catch (err) {
       a.failure = String(err).slice(0, 300);
       a.persistent = isPersistentApiError(err);
       break;
+    } finally {
+      if (v211) a.latencyMs! += Date.now() - t0;
     }
     if (a.res.refusal) break;
     if (a.res.output === null) {
       a.violations.push(`attempt ${a.attempts}: unparseable output (stop_reason ${a.res.stopReason})`);
+      feedback = null;
       continue;
     }
-    a.result = validateHybridOutput(a.res.output, input, options);
+    a.result = v211 ? validateHybridOutputV211(a.res.output, input, options) : validateHybridOutput(a.res.output, input, options);
     if (a.result.ok) break;
-    a.violations.push(...a.result.violations.map((v) => `attempt ${a.attempts}: ${v}`));
+    a.violations.push(...a.result.violations.map((v) => `attempt ${a.attempts}${withFeedback ? ' (feedback retry)' : ''}: ${v}`));
+    if (v211) {
+      previous = a.res.output;
+      feedback = retryFeedbackV21(locateViolations(a.res.output, input, options, { averageCounts: true }));
+    }
   }
   return a;
 }
@@ -217,7 +281,13 @@ function sumUsage(answers: readonly Answer[]): Record<string, number> | null {
  */
 export function combineVotes(answers: readonly Answer[]): Record<string, unknown> {
   const decisions = answers.map((a) => (statusOf(a) === 'OK' ? a.result!.decision! : null));
-  const votes: Vote[] = answers.map((a, i) => ({ status: statusOf(a), side: decisions[i]?.side ?? null, confidence: decisions[i]?.confidence ?? null, attempts: a.attempts }));
+  const votes: Vote[] = answers.map((a, i) => ({
+    status: statusOf(a),
+    side: decisions[i]?.side ?? null,
+    confidence: decisions[i]?.confidence ?? null,
+    attempts: a.attempts,
+    ...(a.feedbackRetries !== undefined ? { feedbackRetries: a.feedbackRetries, latencyMs: a.latencyMs } : {}),
+  }));
   const violations = answers.flatMap((a, i) => [...a.violations, ...(a.failure ? [a.failure] : []), ...(a.res?.refusal ? [`refusal: ${a.res.refusal.category ?? 'unknown'}`] : [])].map((v) => `answer ${i + 1}: ${v}`));
   const common = { attempts: answers.reduce((s, a) => s + a.attempts, 0), violations, votes, usage: sumUsage(answers) };
   const tally = majorityVote(decisions.map((d) => d?.side ?? null));
@@ -257,7 +327,7 @@ export function combineVotes(answers: readonly Answer[]): Record<string, unknown
  * at `now` (since prompt v1.6 no Dixon-Coles prices);
  * plus the rules' decision of the moment, which is stored beside the AI's for comparison and never shown to it.
  */
-export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date, opts: { inputV2?: boolean; v20?: boolean } = {}) {
+export async function collectHybridInput(ctx: JobContext, f: Fixture, round: string, now: Date, opts: { inputV2?: boolean; v20?: boolean; version?: HybridVersion } = {}) {
   const header = (await ctx.repo.fixtureHeader(f.id))!;
   const quotes = await ctx.repo.latestQuotes(f.id, now);
   const market = hybridMarket(quotes, now);
@@ -322,7 +392,12 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
     lineup: starters('HOME').length >= 11 && starters('AWAY').length >= 11 ? { home: starters('HOME'), away: starters('AWAY') } : null,
     market,
   };
-  const input = buildHybridInput(src);
+  // v2.1.1: the cut-off check against the decision time, then the precomputed totals with their match counts; the
+  // hash is of exactly what the AI sees. v2.0 (and the scripts that call this without a version) are unchanged.
+  const built = buildHybridInput(src);
+  const v211 = opts.version === 'v2.1.1' ? prepareHybridInputV211(built) : null;
+  const input = v211 ? v211.input : built;
+  const cutoffWarnings = v211 ? v211.cutoffWarnings : [];
   const inputHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
 
   // the rules' decision of this moment, for the comparison (it does not steer the AI's choice)
@@ -337,5 +412,5 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
       pick: pick ? { market: pick.market, selection: pick.selection, line: pick.line, odds: pick.odds, modelProbability: pick.modelProbability, marketProbability: pick.marketProbability } : null,
     };
   }
-  return { header, market, options, input, inputHash, legacy };
+  return { header, market, options, input, inputHash, legacy, cutoffWarnings };
 }

@@ -18,6 +18,13 @@ import {
   retryFeedbackV21,
   validateHybridOutput,
   withAggregatesV21,
+  averagesWithoutCount,
+  AVERAGE_COUNT_RULE_V211,
+  enforceCutoffV211,
+  HYBRID_PROMPT_VERSION_V211,
+  HYBRID_SYSTEM_PROMPT_V211,
+  prepareHybridInputV211,
+  validateHybridOutputV211,
 } from '../src/index.js';
 
 const match = (date: string, venue: 'HOME' | 'AWAY', score: string, xgFor: number | null, xgAgainst: number | null, np?: [number | null, number | null]) => ({
@@ -94,7 +101,8 @@ describe('withAggregatesV21', () => {
 
   it('puts the two teams side by side with their sum and gap, and the table and rest-day gaps', () => {
     const c = withAggregatesV21(input()).comparison as Record<string, Record<string, unknown>>;
-    expect(c.last_5!.xg_for_avg).toEqual({ home: 1.46, away: 0.9, sum: 2.36, gap_home_minus_away: 0.56 });
+    // v2.1.1: each side's match count beside the average (2 home matches with xG, 1 away)
+    expect(c.last_5!.xg_for_avg).toEqual({ home: 1.46, away: 0.9, sum: 2.36, gap_home_minus_away: 0.56, home_matches: 2, away_matches: 1 });
     expect(c.league_table!.points).toEqual({ home: 11, away: 5, gap_home_minus_away: 6 });
     expect(c.rest_days).toEqual({ home: 3.1, away: 2.6, gap_home_minus_away: 0.5 });
   });
@@ -199,5 +207,75 @@ describe('createOpenAIHybridDeciderV21', () => {
       { role: 'assistant', content: '{"side":"X"}' },
       { role: 'user', content: 'FEEDBACK' },
     ]);
+  });
+});
+
+describe('v2.1.1', () => {
+  it('every window sum and average has its match count, never the total count for a value some matches lack', () => {
+    const t = withAggregatesV21(input()).home_team as Record<string, Record<string, unknown>>;
+    // 3 matches with a score; xG for both sides in 2 of them
+    expect(t.last_10).toMatchObject({ goals_matches: 3, xg_for_matches: 2, xg_against_matches: 2, xg_total_matches: 2 });
+    expect(t.last_10!.xg_for_sum).toBe(2.91);
+  });
+
+  it('enforceCutoffV211: removes and names anything dated after the decision time; a clean input gets []', () => {
+    const clean = { ...input(), prediction_timestamp_utc: '2026-11-16T07:00:00.000Z' };
+    expect(enforceCutoffV211(clean).warnings).toEqual([]);
+    expect((enforceCutoffV211(clean).input.data_quality as Record<string, unknown>).cutoff_warnings).toEqual([]);
+    const leaky = structuredClone(clean) as Record<string, any>;
+    leaky.home_team.recent_matches.unshift({ date_utc: '2026-11-17', venue: 'HOME', score_for_against: '9-0', xg_for: 5, xg_against: 0 });
+    leaky.match_context = { head_to_head: { meetings: [{ date_utc: '2026-11-20', home: 'A', away: 'B', score: '1-0' }, { date_utc: '2025-01-01', home: 'A', away: 'B', score: '0-0' }] } };
+    leaky.market.movement = { opening: { as_of_utc: '2026-11-10T00:00:00.000Z' }, now: { as_of_utc: '2026-11-16T08:00:00.000Z' } };
+    leaky.api_football_prediction = { collected_at_utc: '2026-11-16T09:00:00.000Z', percent_home: 45 };
+    const r = enforceCutoffV211(leaky);
+    expect(r.warnings).toHaveLength(4);
+    const out = r.input as Record<string, any>;
+    expect(out.home_team.recent_matches).toHaveLength(3);
+    expect(out.match_context.head_to_head.meetings).toHaveLength(1);
+    expect(out.market.movement.now).toBeNull();
+    expect(out.market.movement.opening).not.toBeNull();
+    expect(out.api_football_prediction).toBeNull();
+    // the totals are computed only from what passed
+    const p = prepareHybridInputV211(leaky);
+    expect(p.cutoffWarnings).toHaveLength(4);
+    expect(((p.input.home_team as Record<string, any>).last_10 as Record<string, unknown>).goals_matches).toBe(3);
+  });
+
+  it('a match earlier on the decision day is not after the cut-off', () => {
+    const x = { ...input(), prediction_timestamp_utc: '2026-11-13T20:00:00.000Z' };
+    expect(enforceCutoffV211(x).warnings).toEqual([]);
+  });
+
+  it('averagesWithoutCount: an average next to a number needs its match count in the same item', () => {
+    expect(averagesWithoutCount(answer('ยิงเฉลี่ย 2 ประตูต่อเกม'))).toEqual([{ field: 'summary_th', excerpt: expect.stringContaining('เฉลี่ย') }]);
+    expect(averagesWithoutCount(answer('ยิงเฉลี่ย 2 ประตูใน 10 นัด'))).toEqual([]);
+    expect(averagesWithoutCount(answer('xG รวมเฉลี่ย 3.04 จาก 4 นัดที่มีข้อมูล'))).toEqual([]);
+    expect(averagesWithoutCount(answer('ฟอร์มโดยเฉลี่ยดีกว่า'))).toEqual([]); // no number: not a cited average
+    expect(averagesWithoutCount(answer('ราคาที่ตัดค่าน้ำแล้ว 0.51'))).toEqual([]);
+    // counts in Thai words, as the AI writes them (replay of 16 Nov: 119 of 120 first rejections were these)
+    expect(averagesWithoutCount(answer('เมลเบิร์นยิงเฉลี่ย 1.6 ประตูในสิบเกม'))).toEqual([]);
+    expect(averagesWithoutCount(answer('ทรอมโซมีประตูรวมเฉลี่ย 4.2 ในห้านัดหลัง'))).toEqual([]);
+    expect(averagesWithoutCount(answer('xG รวมเฉลี่ย 2.31 มาจากเกมเดียวของแต่ละทีม'))).toEqual([]);
+    // not a cited average value: the median price, a line before the word, the word alone
+    expect(averagesWithoutCount(answer('Aberdeen ต่อ 0.5 (ราคาเฉลี่ย 2.05)'))).toEqual([]);
+    expect(averagesWithoutCount(answer('เส้น 3.5 และค่าเฉลี่ยประตูย้อนหลังเพียงอย่างเดียวไม่พอ'))).toEqual([]);
+    // still a miss: a value with no count
+    expect(averagesWithoutCount(answer('xG เสียเฉลี่ยของ AZ ในเกมเยือนอยู่ที่ 1.71 ต่อเกม'))).toHaveLength(1);
+  });
+
+  it('validateHybridOutputV211 = the same guard plus the match-count rule', () => {
+    const agg = withAggregatesV21(input());
+    expect(validateHybridOutputV211(answer('ยิงเฉลี่ย 2 ประตูใน 3 นัด'), agg, options).ok).toBe(true);
+    expect(validateHybridOutputV211(answer('ยิงเฉลี่ย 2 ประตู'), agg, options).violations).toEqual(['average without match count in summary_th']);
+    expect(validateHybridOutputV211(answer('xG รวม 4.37'), agg, options).violations).toEqual(['number not in input: 4.37']);
+    expect(locateViolations(answer('ยิงเฉลี่ย 2 ประตู'), agg, options, { averageCounts: true })).toEqual([{ kind: 'AVERAGE_WITHOUT_COUNT', value: 'average', field: 'summary_th', excerpt: expect.any(String) }]);
+  });
+
+  it('prompt v2.1.1 = v2.1 plus the owner\'s average rule verbatim', () => {
+    expect(HYBRID_PROMPT_VERSION_V211).toBe('hybrid-ai-v2.1.1');
+    expect(HYBRID_SYSTEM_PROMPT_V211).toContain(AVERAGE_COUNT_RULE_V211);
+    expect(HYBRID_SYSTEM_PROMPT_V211).toContain(NO_CALCULATION_RULE_V21);
+    expect(HYBRID_SYSTEM_PROMPT_V211).toContain('ราคาที่ตัดค่าน้ำแล้ว');
+    expect(HYBRID_SYSTEM_PROMPT_V211.length).toBeGreaterThan(HYBRID_SYSTEM_PROMPT_V21.length);
   });
 });

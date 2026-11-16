@@ -1,7 +1,12 @@
 /**
- * Hybrid AI v2.1 — EXPERIMENTAL, dry-run only (docs/adr/0021-hybrid-v21-no-ai-arithmetic.md). Nothing in production
- * imports this module: hybrid-ai-v2.0 (HYBRID_PROMPT_VERSION, HYBRID_SYSTEM_PROMPT, buildHybridInput) stays the locked
- * baseline and is not changed here.
+ * Hybrid AI v2.1 / v2.1.1 (docs/adr/0021-hybrid-v21-no-ai-arithmetic.md). v2.1.1 is the production version from
+ * 16 Nov 2026 (the hybrid job, HYBRID_VERSION unset or v2.1.1); v2.1 stays for the dry-run record. hybrid-ai-v2.0
+ * (HYBRID_PROMPT_VERSION, HYBRID_SYSTEM_PROMPT, buildHybridInput) is the locked baseline, not changed here, and the
+ * rollback (HYBRID_VERSION=v2.0).
+ *
+ * v2.1.1 adds to v2.1: the match count beside every sum and average, the owner's rule to state it when citing an
+ * average (checked: averagesWithoutCount), and a check of every dated input value against the decision time
+ * (enforceCutoffV211).
  *
  * The audit of 16 Nov 2026 (docs/research/hybrid-invalid-audit-2026-11-16.md) found that 153 of the 172 numbers the
  * number guard rejected were correct sums and differences the AI computed itself ("xG รวม 4.01"). v2.1 removes the
@@ -59,14 +64,20 @@ function windowAggregates(ms: Match[]) {
   const nt = pick('npxg_total');
   const gfa = avg(goalsFor);
   const gaa = avg(goalsAgainst);
+  const xf = pick('xg_for');
+  const xa = pick('xg_against');
   return {
+    // v2.1.1: every sum and average carries the number of matches it rests on
+    goals_matches: gt.length,
     goals_for_sum: sum(goalsFor),
     goals_against_sum: sum(goalsAgainst),
     goals_total_sum: sum(gt),
     goals_total_avg: avg(gt),
     goal_difference_avg: gfa !== null && gaa !== null ? r2(gfa - gaa) : null,
-    xg_for_sum: sum(pick('xg_for')),
-    xg_against_sum: sum(pick('xg_against')),
+    xg_for_sum: sum(xf),
+    xg_for_matches: xf.length,
+    xg_against_sum: sum(xa),
+    xg_against_matches: xa.length,
     xg_total_sum: sum(xt),
     xg_total_avg: avg(xt),
     xg_total_matches: xt.length,
@@ -96,11 +107,17 @@ export function withAggregatesV21(input: Record<string, unknown>): Record<string
   if (H && A) {
     const pair = (h: unknown, a: unknown) => (num(h) !== null && num(a) !== null ? { home: num(h), away: num(a), sum: r2(num(h)! + num(a)!), gap_home_minus_away: r2(num(h)! - num(a)!) } : null);
     const comparison: Record<string, unknown> = {};
+    // each average with the field that counts its matches in the team's window
+    const COUNT_OF: Record<string, string> = {
+      goals_for_avg: 'goals_matches', goals_against_avg: 'goals_matches', goals_total_avg: 'goals_matches',
+      xg_for_avg: 'xg_for_matches', xg_against_avg: 'xg_against_matches', xg_total_avg: 'xg_total_matches',
+      npxg_for_avg: 'npxg_matches', npxg_against_avg: 'npxg_matches', shots_on_target_for_avg: 'shots_matches', xpts_avg: 'xpts_matches',
+    };
     for (const w of ['last_10', 'last_5']) {
       const block: Record<string, unknown> = {};
-      for (const k of ['goals_for_avg', 'goals_against_avg', 'goals_total_avg', 'xg_for_avg', 'xg_against_avg', 'xg_total_avg', 'npxg_for_avg', 'npxg_against_avg', 'shots_on_target_for_avg', 'xpts_avg']) {
+      for (const [k, c] of Object.entries(COUNT_OF)) {
         const p = pair(H[w]?.[k], A[w]?.[k]);
-        if (p) block[k] = p;
+        if (p) block[k] = { ...p, home_matches: num(H[w]?.[c]), away_matches: num(A[w]?.[c]) };
       }
       comparison[w] = block;
     }
@@ -150,10 +167,127 @@ export function buildHybridSystemPromptV21(base: string = HYBRID_SYSTEM_PROMPT):
 }
 export const HYBRID_SYSTEM_PROMPT_V21 = buildHybridSystemPromptV21();
 
+// ---------------------------------------------------------------- v2.1.1 (production candidate, 16 Nov 2026)
+
+export const HYBRID_PROMPT_VERSION_V211 = 'hybrid-ai-v2.1.1';
+
+/** The owner's rule of 16 Nov 2026 for averages, verbatim. */
+export const AVERAGE_COUNT_RULE_V211 = `Whenever citing an average, explicitly state the number of matches used to calculate it.
+
+If the sample count is unavailable, do not cite the average as a factual statement.`;
+
+export const COUNTS_GUIDE_V211 =
+  'Every average and sum in the input has its match count beside it: matches, goals_matches, xg_matches / xg_for_matches, xg_against_matches, xg_total_matches, npxg_matches, npxg_total_matches, shots_matches, xpts_matches, and home_matches / away_matches in comparison. Quote the count with the average, for example "เฉลี่ย 1.8 ประตูใน 10 นัด".';
+
+/** v2.1 plus the sample-count rule (after the no-calculation rule) and where the counts are. */
+export function buildHybridSystemPromptV211(base: string = HYBRID_SYSTEM_PROMPT): string {
+  const v21 = buildHybridSystemPromptV21(base);
+  if (!v21.includes(NO_CALCULATION_RULE_V21)) throw new Error('v2.1 prompt layout changed');
+  return v21.replace(NO_CALCULATION_RULE_V21, `${NO_CALCULATION_RULE_V21}\n\n${AVERAGE_COUNT_RULE_V211}\n\n${COUNTS_GUIDE_V211}`);
+}
+export const HYBRID_SYSTEM_PROMPT_V211 = buildHybridSystemPromptV211();
+
+/**
+ * Data-leakage check of a built input against its prediction_timestamp_utc (v2.1.1). Every dated value the AI sees
+ * must be at or before the decision time: recent matches, head-to-head meetings, recent starters, the market movement
+ * points and API-Football's prediction. next_match is a scheduled future fixture by design and is not checked.
+ * A value after the cut-off is removed and named in data_quality.cutoff_warnings (always present, [] when clean).
+ * The repository queries already filter by the decision time, so this is a second line that should never fire.
+ */
+export function enforceCutoffV211(input: Record<string, unknown>): { input: Record<string, unknown>; warnings: string[] } {
+  const out = structuredClone(input);
+  const warnings: string[] = [];
+  const cutoff = Date.parse(String(out.prediction_timestamp_utc ?? ''));
+  if (!Number.isFinite(cutoff)) {
+    warnings.push('prediction_timestamp_utc missing: the cut-off could not be checked');
+  } else {
+    const day = new Date(cutoff).toISOString().slice(0, 10);
+    // a date-only value is after the cut-off when its day is after the decision day (a match earlier that day may be finished)
+    const afterDay = (d: unknown) => typeof d === 'string' && d.slice(0, 10) > day;
+    const afterTime = (t: unknown) => typeof t === 'string' && Number.isFinite(Date.parse(t)) && Date.parse(t) > cutoff;
+    for (const key of ['home_team', 'away_team']) {
+      const t = out[key] as Record<string, unknown> | undefined;
+      if (!t || !Array.isArray(t.recent_matches)) continue;
+      const ms = t.recent_matches as Match[];
+      const kept = ms.filter((m) => !afterDay(m.date_utc));
+      if (kept.length < ms.length) {
+        warnings.push(`${key}: ${ms.length - kept.length} recent matches dated after the decision time removed`);
+        t.recent_matches = kept;
+      }
+    }
+    const h2h = (out.match_context as { head_to_head?: { meetings?: Match[] } } | undefined)?.head_to_head;
+    if (h2h?.meetings) {
+      const kept = h2h.meetings.filter((m) => !afterDay(m.date_utc));
+      if (kept.length < h2h.meetings.length) {
+        warnings.push(`head_to_head: ${h2h.meetings.length - kept.length} meetings dated after the decision time removed`);
+        h2h.meetings = kept;
+      }
+    }
+    const rs = out.recent_starters as Record<string, { to_date_utc?: unknown } | unknown> | undefined;
+    for (const side of ['home', 'away']) {
+      const s = rs?.[side] as { to_date_utc?: unknown } | undefined;
+      if (s && afterDay(s.to_date_utc)) warnings.push(`recent_starters.${side}: lineups dated after the decision time`);
+    }
+    const mv = (out.market as { movement?: Record<string, { as_of_utc?: unknown } | null> } | undefined)?.movement;
+    if (mv)
+      for (const k of ['opening', 'day_ago', 'now']) {
+        if (mv[k] && afterTime(mv[k]!.as_of_utc)) {
+          warnings.push(`market.movement.${k}: as of a time after the decision time, removed`);
+          mv[k] = null;
+        }
+      }
+    const api = out.api_football_prediction as { collected_at_utc?: unknown } | null | undefined;
+    if (api && afterTime(api.collected_at_utc)) {
+      warnings.push('api_football_prediction: collected after the decision time, removed');
+      out.api_football_prediction = null;
+    }
+  }
+  const dq = (out.data_quality ?? {}) as Record<string, unknown>;
+  out.data_quality = { ...dq, cutoff_warnings: warnings };
+  return { input: out, warnings };
+}
+
+/** The v2.1.1 input: the cut-off check, then the aggregates (computed only from what passed the check). */
+export function prepareHybridInputV211(input: Record<string, unknown>): { input: Record<string, unknown>; cutoffWarnings: string[] } {
+  const c = enforceCutoffV211(input);
+  return { input: withAggregatesV21(c.input), cutoffWarnings: c.warnings };
+}
+
+const AVERAGE_WORD = /เฉลี่ย|average|\bavg\b/i;
+/**
+ * A cited average: the word followed closely by a number ("เฉลี่ย 1.6", "xG รวมเฉลี่ยของซิตี้อยู่ที่ 3.2"). The word
+ * alone ("สร้างโอกาสเฉลี่ยไม่สูง"), a far number, or a number before the word (often a line: "เส้น 3.5 และค่าเฉลี่ย…")
+ * does not cite an average value; nor does ราคาเฉลี่ย, the median price across bookmakers (not taken over matches).
+ */
+const CITED_AVERAGE = /(?<!ราคา)(?:เฉลี่ย|average|\bavg\b)[^\d]{0,26}\d/i;
+/** Thai number words of a match count (1–12), as the AI writes them: "สิบเกม", "ห้านัดหลัง", "เกมเดียว". */
+const THAI_COUNT = '(?:หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า|สิบ(?:เอ็ด|สอง)?)';
+const MATCH_COUNT = new RegExp(`\\d+\\s*(?:นัด|เกม|แมตช์|matches?\\b|games?\\b)|${THAI_COUNT}\\s*(?:นัด|เกม|แมตช์)|(?:นัด|เกม|แมตช์)\\s*(?:เดียว|${THAI_COUNT})`, 'i');
+
+/**
+ * Text items that cite an average value without saying over how many matches it was taken ("ใน 10 นัด", "5 เกม",
+ * "ในสิบเกม", "เกมเดียว"). One item = one Thai text field or list entry, as in locateViolations. A count in digits is
+ * checked by the number guard like any number; a count in words (1–12) names a window or a count the input holds.
+ */
+export function averagesWithoutCount(raw: unknown): Array<{ field: string; excerpt: string }> {
+  const out = (raw ?? {}) as Record<string, unknown>;
+  return textFields(out)
+    .filter(([, text]) => CITED_AVERAGE.test(text) && !MATCH_COUNT.test(text))
+    .map(([field, text]) => ({ field, excerpt: excerptAround(text, text.match(AVERAGE_WORD)![0]) }));
+}
+
+/** validateHybridOutput (the same number guard, words, schema and market checks) plus the v2.1.1 sample-count rule. */
+export function validateHybridOutputV211(raw: unknown, input: Record<string, unknown>, options: readonly HybridOption[]) {
+  const v = validateHybridOutput(raw, input, options);
+  const counts = v.violations.some((x) => x.startsWith('schema:')) ? [] : averagesWithoutCount(raw).map((a) => `average without match count in ${a.field}`);
+  const violations = [...v.violations, ...counts];
+  return { ok: violations.length === 0, violations, decision: violations.length ? null : v.decision };
+}
+
 // ---------------------------------------------------------------- 3. retry with the exact violations
 
 export interface LocatedViolation {
-  kind: 'NUMBER_NOT_IN_INPUT' | 'BANNED_WORD' | 'OTHER';
+  kind: 'NUMBER_NOT_IN_INPUT' | 'BANNED_WORD' | 'AVERAGE_WITHOUT_COUNT' | 'OTHER';
   /** the number or word as written; for OTHER the validator's message */
   value: string;
   /** where in the answer: summary_th, options_review[1].counter_evidence[0], … */
@@ -183,8 +317,8 @@ const excerptAround = (text: string, needle: string) => {
  * The validator's verdict on an answer, with each number and banned word located in its field. The checks are
  * exactly validateHybridOutput's (the same guard); this only says where.
  */
-export function locateViolations(raw: unknown, input: Record<string, unknown>, options: readonly HybridOption[]): LocatedViolation[] {
-  const v = validateHybridOutput(raw, input, options);
+export function locateViolations(raw: unknown, input: Record<string, unknown>, options: readonly HybridOption[], opts: { averageCounts?: boolean } = {}): LocatedViolation[] {
+  const v = opts.averageCounts ? validateHybridOutputV211(raw, input, options) : validateHybridOutput(raw, input, options);
   if (v.ok) return [];
   const located: LocatedViolation[] = [];
   const out = (raw ?? {}) as Record<string, unknown>;
@@ -194,7 +328,9 @@ export function locateViolations(raw: unknown, input: Record<string, unknown>, o
     for (const n of inventedNumbers(text, allowed)) located.push({ kind: 'NUMBER_NOT_IN_INPUT', value: n, field, excerpt: excerptAround(text, n.replace('%', '')) });
     for (const w of BANNED_WORDS) if (text.includes(w)) located.push({ kind: 'BANNED_WORD', value: w, field, excerpt: excerptAround(text, w) });
   }
-  for (const msg of v.violations) if (!msg.startsWith('number not in input') && !msg.startsWith('banned word')) located.push({ kind: 'OTHER', value: msg, field: null, excerpt: null });
+  if (opts.averageCounts) for (const a of averagesWithoutCount(raw)) located.push({ kind: 'AVERAGE_WITHOUT_COUNT', value: 'average', field: a.field, excerpt: a.excerpt });
+  for (const msg of v.violations)
+    if (!msg.startsWith('number not in input') && !msg.startsWith('banned word') && !msg.startsWith('average without match count')) located.push({ kind: 'OTHER', value: msg, field: null, excerpt: null });
   return located;
 }
 
@@ -205,6 +341,8 @@ export function retryFeedbackV21(violations: readonly LocatedViolation[]): strin
       return `- Number ${v.value} in ${v.field}: ${v.excerpt}\n  Reason: this number is not in the input.\n  Fix: use only numbers that appear in the input (the precomputed aggregate fields included), or remove the number.`;
     if (v.kind === 'BANNED_WORD')
       return `- Word "${v.value}" in ${v.field}: ${v.excerpt}\n  Reason: banned word.\n  Fix: for a no-vig price write ราคาที่ตัดค่าน้ำแล้ว; otherwise rephrase without it.`;
+    if (v.kind === 'AVERAGE_WITHOUT_COUNT')
+      return `- An average in ${v.field}: ${v.excerpt}\n  Reason: the number of matches behind the average is not stated.\n  Fix: state it with the count given beside that average in the input (for example "ใน 10 นัด"), or do not cite the average.`;
     return `- ${v.value}\n  Fix: follow the output rules for this field.`;
   });
   return `Your previous answer was rejected by the validation check. The match data has not changed. Fix only the problems below and return the full answer again in the same JSON format. Do not calculate any new number.\n\n${lines.join('\n')}`;

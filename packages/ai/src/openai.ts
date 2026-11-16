@@ -60,10 +60,19 @@ export function createOpenAIPickNoteWriter(opts: { apiKey: string; model: string
   return { write: createOpenAIStructuredCall({ ...opts, system: PICK_NOTE_SYSTEM_PROMPT, schemaName: 'pick_note', schema: PICK_NOTE_OUTPUT_SCHEMA as unknown as Record<string, unknown> }) };
 }
 
-/** OpenAI errors the next request would hit too: bad request, bad key, no permission, or no quota left. */
+/**
+ * A 429 that is not a rate limit: the account cannot pay. OpenAI's "429 You have no credits remaining" (16 Nov 2026)
+ * came without the code insufficient_quota, so the message is read too.
+ */
+const NO_CREDIT_MESSAGE = /no credits remaining|insufficient[_ ](?:credits?|quota|balance)|quota (?:exceeded|exhausted)|exceeded your current quota|add credits|billing/i;
+
+/**
+ * OpenAI errors the next request would hit too: bad request, bad key, no permission, an unknown model (configuration),
+ * or no credit / quota left. A plain rate limit, an overload or a network error is not persistent.
+ */
 export function isPersistentOpenAIError(err: unknown): boolean {
-  if (err instanceof OpenAI.BadRequestError || err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) return true;
-  return err instanceof OpenAI.RateLimitError && err.code === 'insufficient_quota';
+  if (err instanceof OpenAI.BadRequestError || err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError || err instanceof OpenAI.NotFoundError) return true;
+  return err instanceof OpenAI.RateLimitError && (err.code === 'insufficient_quota' || NO_CREDIT_MESSAGE.test(err.message));
 }
 
 export function createOpenAIHybridDecider(opts: { apiKey: string; model: string }): HybridDecider {

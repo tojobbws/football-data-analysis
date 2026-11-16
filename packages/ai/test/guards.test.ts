@@ -91,6 +91,23 @@ describe('inventedNumbers: thousands separators and number formats', () => {
     // a broken group splits into numbers that are each checked
     expect(inventedNumbers('ค่า 12,345,67', allowedNumbers({ a: 12345, b: 67 }))).toEqual(['12,345']);
   });
+  it('handles every number kind of the hybrid input (ADR 0021 checklist) and still rejects what has no source', () => {
+    const input = allowedNumbers({
+      ah: { home_line: -1.25, options: [{ line: -1.25 }, { line: 1.25 }] },
+      ou: { line: 2.75 },
+      p: { market_probability_no_vig: 0.51295, percent_home: 45 },
+      counts: { matches: 10, goals_matches: 6, xg_total_matches: 4 },
+      elo: { home_rating: 1544, away_rating: 1572, home_minus_away: -28 },
+      xg: { xg_total: 4.01, xg_total_avg: 3.04 },
+    });
+    // handicap lines with either sign, O/U lines, percentages (probability or percent value), counts, Elo, decimals
+    expect(inventedNumbers('ต่อ -1.25 รอง +1.25 สูง/ต่ำ 2.75 ราคาที่ตัดค่าน้ำแล้ว 51% ทำนาย 45%', input)).toEqual([]);
+    expect(inventedNumbers('ใน 10 นัด, 6 นัดที่มีประตู, xG จาก 4 นัด, xG รวม 4.01 เฉลี่ย 3.04', input)).toEqual([]);
+    expect(inventedNumbers('Elo 1,544 กับ 1,572 ห่าง 28', input)).toEqual([]);
+    // no source: a line, a percent, a count, an Elo and a total that are not in the input
+    expect(inventedNumbers('ต่อ -1.75 สูง 3.25 โอกาส 64% ใน 12 นัด Elo 1,600 xG รวม 4.37', input)).toEqual(['1.75', '3.25', '64%', '12', '1,600', '4.37']);
+  });
+
   it('leaves percents and small integers as before', () => {
     expect(inventedNumbers('63% และ 2 ทีม', allowedNumbers({ p: 0.634 }))).toEqual([]);
     expect(inventedNumbers('1,000 ครั้ง', allowedNumbers({}))).toEqual([]);

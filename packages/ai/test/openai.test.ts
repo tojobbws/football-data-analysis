@@ -62,4 +62,20 @@ describe('OpenAI structured call', () => {
     expect(isPersistentApiError(await err(401, 'invalid_api_key'))).toBe(true);
     expect(isPersistentApiError(await err(429, 'rate_limit_exceeded'))).toBe(false);
   });
+
+  it('"no credits remaining" without the insufficient_quota code, and an unknown model, also stop the run', async () => {
+    const raw = async (status: number, error: Record<string, unknown>) => {
+      const { f } = fakeFetch(status, { error });
+      return createOpenAIStructuredCall({ apiKey: 'k', model: 'gpt-test', system: 'S', schemaName: 'x', schema, fetch: f })({}).catch((e: unknown) => e);
+    };
+    // the error of 16 Nov 2026
+    const noCredit = await raw(429, { message: 'You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/.', type: 'requests', code: null });
+    expect(noCredit).toBeInstanceOf(OpenAI.RateLimitError);
+    expect(isPersistentApiError(noCredit)).toBe(true);
+    expect(isPersistentApiError(await raw(429, { message: 'You exceeded your current quota, please check your plan and billing details.', type: 'insufficient_quota', code: null }))).toBe(true);
+    expect(isPersistentApiError(await raw(404, { message: 'The model `gpt-x` does not exist', type: 'invalid_request_error', code: 'model_not_found' }))).toBe(true);
+    // an ordinary rate limit, an overload and a server error are not
+    expect(isPersistentApiError(await raw(429, { message: 'Rate limit reached for gpt-6-luna on tokens per min (TPM): Limit 2000000', type: 'tokens', code: 'rate_limit_exceeded' }))).toBe(false);
+    expect(isPersistentApiError(await raw(500, { message: 'server error', type: 'server_error', code: null }))).toBe(false);
+  });
 });

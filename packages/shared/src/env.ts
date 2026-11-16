@@ -68,6 +68,17 @@ export const envSchema = z.object({
     .pipe(z.enum(['rounds', 'daily']).optional()),
   /** Optional: the Hybrid AI model (Claude); default HYBRID_AI_MODEL in @fp/ai. OpenAI uses OPENAI_MODEL. */
   HYBRID_AI_MODEL: z.string().optional().transform((v) => v || undefined),
+  /**
+   * Which Hybrid AI prompt and input make the pick (docs/adr/0021-hybrid-v21-no-ai-arithmetic.md):
+   *  v2.1.1 - (default) precomputed totals in the input, no-calculation and match-count rules, retry with feedback
+   *  v2.0   - the locked v2.0 baseline (ADR 0020), exactly as before: the rollback
+   * Set per run (GitHub Actions variable HYBRID_VERSION), so rolling back needs no deploy.
+   */
+  HYBRID_VERSION: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum(['v2.0', 'v2.1.1']).optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;
