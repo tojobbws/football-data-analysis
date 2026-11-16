@@ -6,3 +6,4 @@ export * from './claude.js';
 export * from './openai.js';
 export * from './pick-note.js';
 export * from './hybrid.js';
+export * from './hybrid-v21.js';
