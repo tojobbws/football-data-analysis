@@ -73,7 +73,6 @@ export function MatchPreviewCard({
   overInOutlook = false,
   teams,
   logos,
-  gaps = [],
   info,
   id,
 }: {
@@ -90,8 +89,6 @@ export function MatchPreviewCard({
   teams?: { home: TeamContext; away: TeamContext };
   /** club crests from the teams table (API-Football); a missing one falls back to a plain disc */
   logos?: { home: string | null; away: string | null };
-  /** what the page does not have yet (dataGaps): shown quietly, never lowers the support level */
-  gaps?: string[];
   /** preview-v1.0's pre-match block: competition, kickoff (Thai time) and venue from the fixture */
   info?: { league: string; kickoffAt: string; venue: string | null };
   id?: string;
@@ -102,7 +99,7 @@ export function MatchPreviewCard({
   const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
   const build = previewBuild(p.version);
   const v10 = build >= 100;
-  // preview-v1.2: the khemthit-football-writer layout, which places the data gaps inside the write-up
+  // preview-v1.2: the khemthit-football-writer layout
   const v12 = build >= 102;
   const fourPart = build >= 8;
   const numbers = <ModelNumbers p={p} result={result} modelTested={modelTested} pick={pick} overInOutlook={overInOutlook} fourPart={fourPart} />;
@@ -110,7 +107,7 @@ export function MatchPreviewCard({
   return (
     <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`} action={<Badge variant={support.variant}>{support.label}</Badge>}>
       {v10 ? (
-        <V10Preview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes} info={info} support={support.label} modelTested={modelTested} result={result} gaps={v12 ? gaps : []} v12={v12} />
+        <V10Preview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes} info={info} support={support.label} modelTested={modelTested} result={result} v12={v12} />
       ) : fourPart ? (
         <FourPartPreview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes}>
           {numbers}
@@ -129,7 +126,6 @@ export function MatchPreviewCard({
         </>
       )}
 
-      {gaps.length && !v12 ? <p className="mt-4 text-xs leading-relaxed text-zinc-500">ข้อมูลที่ยังไม่มี: {gaps.join(' · ')}</p> : null}
       <Note>
         {p.text_source === 'AI' ? 'เรียบเรียงโดย AI จากข้อมูลในระบบเท่านั้น ตัวเลขทุกตัวมาจากโมเดลและฐานข้อมูล' : 'สร้างจากตัวเลขในระบบโดยอัตโนมัติ'} · บันทึกก่อนเตะ แก้ไขไม่ได้ ·{' '}
         {fourPart ? 'เข็มทิศเกมเลือกโดยกฎของระบบ AI เป็นผู้อธิบายเท่านั้น ส่วนบทวิเคราะห์ไม่นับในผลงาน' : 'เป็นข้อมูลประกอบ ไม่ใช่เข็มทิศเกม และไม่นับในผลงาน'}
@@ -144,11 +140,6 @@ function previewBuild(version: string | undefined): number {
   return m ? Number(m[1]) * 100 + Number(m[2]) : 0;
 }
 
-const CONFIDENCE: Record<NonNullable<MatchPreview['confidence']>, { label: string; variant: 'good' | 'warn' | 'bad' }> = {
-  HIGH: { label: 'สูง', variant: 'good' },
-  MEDIUM: { label: 'ปานกลาง', variant: 'warn' },
-  LOW: { label: 'ต่ำ', variant: 'bad' },
-};
 
 /**
  * preview-v1.0, the layout of the 2026-10-20 brief: the pre-match facts, three points (the main
@@ -159,10 +150,10 @@ const CONFIDENCE: Record<NonNullable<MatchPreview['confidence']>, { label: strin
  * preview-v1.1 keeps this frame in the order of a Thai press preview: a headline, each side in turn
  * with its form chips, the team news, the analysis, the score, then a list of facts read off the data.
  * preview-v1.2 follows the khemthit-football-writer brief: the story-first lead, each side, how the
- * model and the market see it, the score, what is not known yet (the page's own data gaps), the game
+ * model and the market see it, the score, the game
  * summary, the Game Compass, and the closing line last.
  */
-function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result, gaps = [], v12 = false }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null; gaps?: string[]; v12?: boolean }) {
+function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result, v12 = false }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null; v12?: boolean }) {
   const mainAway = p.main_side === 'AWAY';
   const main = { name: mainAway ? away : home, logo: mainAway ? logos?.away : logos?.home, form: (mainAway ? teams?.away : teams?.home)?.form ?? [] };
   const opp = { name: mainAway ? home : away, logo: mainAway ? logos?.home : logos?.away, form: (mainAway ? teams?.home : teams?.away)?.form ?? [] };
@@ -172,7 +163,6 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
   const lean = ph == null || pa == null ? null : Math.abs(ph - pa) < 0.1 ? 'สูสี ตัวเลขของโมเดลไม่เอนไปทางใดชัด' : `${ph > pa ? home : away} มีแนวโน้มทำผลงานได้ดีกว่า`;
   const ifScore = pick && hasScore && !p.pickScore ? (settle(pick.sel, Number(p.predicted_home), Number(p.predicted_away)) as Status) : null;
   const factors = [p.key_factor_th, ...limits].filter((x): x is string => Boolean(x));
-  const conf = p.confidence ? CONFIDENCE[p.confidence] : null;
   // preview-v1.1: each side in turn, the team news, the analysis and a facts list replace the three points
   const v11 = p.analysis_th != null;
   const points = [
@@ -299,20 +289,6 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
         </section>
       ) : null}
 
-      {v12 && gaps.length ? (
-        <section aria-labelledby="pv-gaps" className="border-t border-zinc-100 pt-4">
-          <SectionTitle id="pv-gaps">ยังไม่รู้อะไรบ้าง</SectionTitle>
-          <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-zinc-700">
-            {gaps.map((x) => (
-              <li key={x} className="flex gap-2.5">
-                <span className="mt-[0.6em] h-px w-2.5 shrink-0 bg-zinc-300" aria-hidden />
-                <span>{x}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       <section aria-labelledby="pv-summary" className="border-t border-zinc-100 pt-4">
         <SectionTitle id="pv-summary">สรุปเกม</SectionTitle>
         <dl className="mt-2 divide-y divide-zinc-100 text-sm">
@@ -322,15 +298,6 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
             <SummaryRow k="แนวโน้มประตู" v={`3 ประตูขึ้นไป ${pct(p.p_goals_3plus)}${p.p_btts != null ? ` · ทั้งสองทีมยิงได้ ${pct(p.p_btts)}` : ''}`} />
           ) : null}
           {factors.length ? <SummaryRow k="ปัจจัยสำคัญ" v={factors.join(' ')} /> : null}
-          {conf ? (
-            <div className="grid gap-1 py-2 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-3">
-              <dt className="text-zinc-500">ความมั่นใจ</dt>
-              <dd className="text-zinc-800">
-                <Badge variant={conf.variant}>{conf.label}</Badge>
-                {p.confidence_notes.length ? <span className="ml-2 text-zinc-600">{p.confidence_notes.join(' · ')}</span> : null}
-              </dd>
-            </div>
-          ) : null}
         </dl>
       </section>
 
