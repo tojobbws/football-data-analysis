@@ -95,8 +95,6 @@ export function MatchPreviewCard({
 }) {
   const p = withPickScore(stored, pick);
   const notes = p.data_notes.filter((n) => !n.includes(UNTESTED_NOTE));
-  // a LIMITED level whose only reason was the untested note reads as GOOD, like a preview written today
-  const support = DATA_SUPPORT[p.data_support === 'LIMITED' && notes.length === 0 && p.data_notes.length > 0 ? 'GOOD' : p.data_support];
   const build = previewBuild(p.version);
   const v10 = build >= 100;
   // preview-v1.2: the khemthit-football-writer layout
@@ -105,9 +103,9 @@ export function MatchPreviewCard({
   const numbers = <ModelNumbers p={p} result={result} modelTested={modelTested} pick={pick} overInOutlook={overInOutlook} fourPart={fourPart} />;
 
   return (
-    <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`} action={<Badge variant={support.variant}>{support.label}</Badge>}>
+    <Card id={id} title="วิเคราะห์เกม" description={`${STAGE[p.stage]} · ${dateTimeTH(p.created_at)}`}>
       {v10 ? (
-        <V10Preview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes} info={info} support={support.label} modelTested={modelTested} result={result} v12={v12} />
+        <V10Preview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes} info={info} modelTested={modelTested} result={result} v12={v12} />
       ) : fourPart ? (
         <FourPartPreview p={p} home={home} away={away} teams={teams} logos={logos} pick={pick} pickNote={pickNote} limits={notes}>
           {numbers}
@@ -153,7 +151,7 @@ function previewBuild(version: string | undefined): number {
  * model and the market see it, the score, the game
  * summary, the Game Compass, and the closing line last.
  */
-function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, support, modelTested, result, v12 = false }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; support: string; modelTested: boolean; result?: { home: number; away: number } | null; v12?: boolean }) {
+function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info, modelTested, result, v12 = false }: { p: MatchPreview; home: string; away: string; teams?: { home: TeamContext; away: TeamContext }; logos?: { home: string | null; away: string | null }; pick?: PreviewPick | null; pickNote?: string | null; limits: string[]; info?: { league: string; kickoffAt: string; venue: string | null }; modelTested: boolean; result?: { home: number; away: number } | null; v12?: boolean }) {
   const mainAway = p.main_side === 'AWAY';
   const main = { name: mainAway ? away : home, logo: mainAway ? logos?.away : logos?.home, form: (mainAway ? teams?.away : teams?.home)?.form ?? [] };
   const opp = { name: mainAway ? home : away, logo: mainAway ? logos?.home : logos?.away, form: (mainAway ? teams?.home : teams?.away)?.form ?? [] };
@@ -190,7 +188,7 @@ function V10Preview({ p, home, away, teams, logos, pick, pickNote, limits, info,
             ) : null}
             <dt className="text-zinc-500">ข้อมูล</dt>
             <dd className="text-zinc-800">
-              {support} · {STAGE[p.stage]} · บันทึก {dateTimeTH(p.created_at)}
+              {STAGE[p.stage]} · บันทึก {dateTimeTH(p.created_at)}
             </dd>
           </dl>
           <p className="mt-3 max-w-prose text-base leading-7 text-zinc-800">{p.overview_th}</p>
