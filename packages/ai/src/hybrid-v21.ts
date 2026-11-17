@@ -179,11 +179,18 @@ If the sample count is unavailable, do not cite the average as a factual stateme
 export const COUNTS_GUIDE_V211 =
   'Every average and sum in the input has its match count beside it: matches, goals_matches, xg_matches / xg_for_matches, xg_against_matches, xg_total_matches, npxg_matches, npxg_total_matches, shots_matches, xpts_matches, and home_matches / away_matches in comparison. Quote the count with the average, for example "เฉลี่ย 1.8 ประตูใน 10 นัด".';
 
-/** v2.1 plus the sample-count rule (after the no-calculation rule) and where the counts are. */
+/**
+ * The owner's rule of 17 Nov 2026: summary_th is shown to fans under the Game Compass, and fans do not know Elo or the
+ * other model terms ("จากอันดับ Elo และตารางที่ดีกว่า"). A wording rule only: the pick logic and the input are unchanged.
+ */
+export const PLAIN_WORDS_RULE_V211 =
+  '- Readers are ordinary football fans, not analysts. In every Thai text field never write Elo, npxG, xPTS, goals_prevented, closing line, no-vig or any input field name, and never quote a rating number. Say what the value means in plain Thai instead: Elo ratings → ความแข็งแกร่งของทีมจากผลงานที่ผ่านมา (for example ทีมที่แข็งแกร่งกว่าจากผลงานที่ผ่านมา, คู่แข่งที่เจอมาแข็งกว่า); xPTS → แต้มที่ควรได้จากโอกาสที่สร้าง; goals_prevented → ผู้รักษาประตูเซฟได้เกินคาด; the closing line → ราคาตลาดก่อนเตะ. xG may stay as xG, explained in the same sentence the first time (คุณภาพโอกาสยิง).';
+
+/** v2.1 plus the sample-count rule (after the no-calculation rule), where the counts are, and the plain-words rule. */
 export function buildHybridSystemPromptV211(base: string = HYBRID_SYSTEM_PROMPT): string {
   const v21 = buildHybridSystemPromptV21(base);
   if (!v21.includes(NO_CALCULATION_RULE_V21)) throw new Error('v2.1 prompt layout changed');
-  return v21.replace(NO_CALCULATION_RULE_V21, `${NO_CALCULATION_RULE_V21}\n\n${AVERAGE_COUNT_RULE_V211}\n\n${COUNTS_GUIDE_V211}`);
+  return `${v21.replace(NO_CALCULATION_RULE_V21, `${NO_CALCULATION_RULE_V21}\n\n${AVERAGE_COUNT_RULE_V211}\n\n${COUNTS_GUIDE_V211}`)}\n${PLAIN_WORDS_RULE_V211}`;
 }
 export const HYBRID_SYSTEM_PROMPT_V211 = buildHybridSystemPromptV211();
 

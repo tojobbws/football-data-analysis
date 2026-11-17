@@ -177,3 +177,17 @@ The owner approved production for v2.1.1 without a shadow period. The conditions
   - The first v2.1.1 replay gave 94/246.
   - Feedback retries never changed a side (20/20).
   - The prompt is not tuned against this. It is measured on live picks, with v2.1.1 counted apart.
+
+## Amendment 17 Nov 2026: plain words for fans
+
+The owner saw "จากอันดับ Elo และตารางที่ดีกว่า" in a published `summary_th`, under the Game Compass on a match page.
+Fans do not know Elo. The v2.1.1 output rules now end with `PLAIN_WORDS_RULE_V211`: no Elo, npxG, xPTS,
+goals_prevented, closing line, no-vig or input field names in Thai text, and no rating numbers. Each term gets a plain
+Thai wording, for example ความแข็งแกร่งของทีมจากผลงานที่ผ่านมา for Elo. xG stays, explained the first time.
+
+- It is a wording rule only. The input, the schema, the guards and the pick rules are unchanged, so the label stays
+  `hybrid-ai-v2.1.1`. Decisions made before the push used the prompt without this rule.
+- No guard checks it, so a stray "Elo" is not rejected and costs no retry. If it still shows up, a check can follow.
+- The v2.0 rollback prompt is not changed.
+- The preview prompt (`PREVIEW_SYSTEM_PROMPT`) got the same rule, and it no longer says the page shows the data gaps
+  and the confidence level, since the match page stopped showing both on 17 Nov 2026.

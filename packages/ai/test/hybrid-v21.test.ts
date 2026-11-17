@@ -20,6 +20,7 @@ import {
   withAggregatesV21,
   averagesWithoutCount,
   AVERAGE_COUNT_RULE_V211,
+  PLAIN_WORDS_RULE_V211,
   enforceCutoffV211,
   HYBRID_PROMPT_VERSION_V211,
   HYBRID_SYSTEM_PROMPT_V211,
@@ -276,6 +277,8 @@ describe('v2.1.1', () => {
     expect(HYBRID_SYSTEM_PROMPT_V211).toContain(AVERAGE_COUNT_RULE_V211);
     expect(HYBRID_SYSTEM_PROMPT_V211).toContain(NO_CALCULATION_RULE_V21);
     expect(HYBRID_SYSTEM_PROMPT_V211).toContain('ราคาที่ตัดค่าน้ำแล้ว');
+    expect(HYBRID_SYSTEM_PROMPT_V211).toContain(PLAIN_WORDS_RULE_V211);
+    expect(HYBRID_SYSTEM_PROMPT_V21).not.toContain(PLAIN_WORDS_RULE_V211);
     expect(HYBRID_SYSTEM_PROMPT_V211.length).toBeGreaterThan(HYBRID_SYSTEM_PROMPT_V21.length);
   });
 });
