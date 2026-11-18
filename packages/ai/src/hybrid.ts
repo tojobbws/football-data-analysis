@@ -473,6 +473,10 @@ export function buildHybridInput(src: HybridSource): Record<string, unknown> {
   }
   if (!src.standings.home || !src.standings.away) missing.push('league table not available for both teams');
   if (src.injuriesCoverage === 'unavailable_for_league') missing.push('this league provides no injury data: an empty injuries list does not mean nobody is out');
+  // 18 Nov 2026 (owner): a league that reports injuries can still have none for this match yet (Brazil Serie A, first
+  // round after the international break: 0 rows from the provider at 14:00, usually ~44 h before kickoff)
+  else if (src.injuriesCoverage === 'available' && src.injuries.length === 0)
+    missing.push('no injury report for this match from the data provider yet: an empty injuries list does not mean nobody is out');
   if (m.ah.status !== 'OK') missing.push(`no usable main Asian handicap line (${m.ah.status})`);
   if (m.ou.status !== 'OK') missing.push(`no usable main over/under line (${m.ou.status})`);
   const totalLine = m.ou.status === 'OK' && m.ou.line !== null ? m.ou.line : FALLBACK_TOTAL_LINE;

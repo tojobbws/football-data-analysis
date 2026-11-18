@@ -191,3 +191,16 @@ Thai wording, for example ความแข็งแกร่งของที
 - The v2.0 rollback prompt is not changed.
 - The preview prompt (`PREVIEW_SYSTEM_PROMPT`) got the same rule, and it no longer says the page shows the data gaps
   and the confidence level, since the match page stopped showing both on 17 Nov 2026.
+
+## Amendment 18 Nov 2026: a match with no injury report yet
+
+- On 18 Nov the 14:00 run decided all six Brazil Serie A games (19 Nov 05:30–07:30 Thai) with `injuries: []`.
+  The league does report injuries (322 rows over the last 30 days, usually first seen about 44 h before kickoff), but
+  the provider had none for this round, the first after the international break; asked directly it returned 0 rows.
+- The input said nothing about it: `injuries_coverage` was `available`, so an empty list read as "nobody is out".
+- The owner asked for the fix. `buildHybridInput` now adds a `data_quality.missing` line, "no injury report for this
+  match from the data provider yet: an empty injuries list does not mean nobody is out", when the league reports
+  injuries and this match has none. The `unavailable_for_league` line is unchanged.
+- It changes the input of both prompt versions (v2.0 rollback and v2.1.1), and `input_hash` with it; the prompt text and
+  the prompt version string are unchanged. The line holds no number, so the number guard is not affected.
+- Decisions already stored are never redone. The 18 Nov DAILY picks stand (ADR 0014: one final pick per pick day).

@@ -206,10 +206,17 @@ describe('input v2 flags (audit gaps G1, G2): off by default, never change the v
     expect(v2.data_quality.missing.some((x) => x.includes('no injury data'))).toBe(true);
   });
 
-  it('records coverage without a warning when the league reports injuries (an empty list is then real)', () => {
+  it('says the match has no injury report yet when the league reports injuries but this list is empty', () => {
     const v2 = buildHybridInput({ ...src, injuries: [], injuriesCoverage: 'available' }) as { data_quality: { injuries_coverage: string; missing: string[] } };
     expect(v2.data_quality.injuries_coverage).toBe('available');
     expect(v2.data_quality.missing.some((x) => x.includes('no injury data'))).toBe(false);
+    expect(v2.data_quality.missing.filter((x) => x.includes('no injury report for this match'))).toHaveLength(1);
+  });
+
+  it('adds no injury warning when the league reports injuries and the match has some', () => {
+    const injuries = [{ team: 'HOME' as const, player: 'A. Player', type: 'Missing Fixture', reason: 'Knee Injury', playerId: 1 }];
+    const v2 = buildHybridInput({ ...src, injuries, injuriesCoverage: 'available' }) as { data_quality: { missing: string[] } };
+    expect(v2.data_quality.missing.some((x) => x.includes('injur'))).toBe(false);
   });
 
   it('still accepts an answer that was valid on the v1 input (the new block adds no number to quote or trip over)', () => {
