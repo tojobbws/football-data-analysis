@@ -30,9 +30,11 @@ import {
   fairLogLoss,
   fairTarget,
   fitMarketScoreModel,
+  MARGIN_LEVELS,
   MARKET_VIEW,
   oddsBand,
   settle,
+  TOTAL_LEVELS,
   unitsFor,
   type HybridOption,
   type HybridSide,
@@ -70,6 +72,19 @@ for (const day of ['2026-11-16', '2026-11-17'])
     shadow.set(Number(r.hybridDecisionId), { choice: pick?.choice ?? 'ERROR', wins, afterKickoff: Date.parse(r.calledAt) >= Date.parse(r.kickoffAt) });
   }
 
+// Decisions v2 shadow rows (migration 0062), by fixture: the latest row of the current versions
+const v2 = new Map<number, { hybridDecisionId: number; status: string; side: string | null; wins: Record<string, number>; margin: Record<string, number> | null; total: Record<string, number> | null }>();
+if ((await db.query<{ t: string | null }>(`select to_regclass('public.decisions_v2')::text as t`)).rows[0]?.t) {
+  const { rows: v2rows } = await db.query<{ fixture_id: string; hybrid_decision_id: string; status: string; side: string | null; candidates: Array<{ side: string; fairProbability: number }>; view: { view?: { margin: Record<string, number>; total: Record<string, number> } } | null }>(
+    `select distinct on (fixture_id) fixture_id, hybrid_decision_id, status, side, candidates, view from decisions_v2 order by fixture_id, decided_at desc, id desc`,
+  );
+  for (const r of v2rows)
+    v2.set(Number(r.fixture_id), {
+      hybridDecisionId: Number(r.hybrid_decision_id), status: r.status, side: r.status === 'OK' ? r.side : r.status,
+      wins: Object.fromEntries((r.candidates ?? []).map((c) => [c.side, c.fairProbability])), margin: r.view?.view?.margin ?? null, total: r.view?.view?.total ?? null,
+    });
+}
+
 // ---------------------------------------------------------------- the snapshots
 const { rows } = await db.query<{
   id: string; fixture_id: string; input: Record<string, any>; prompt_version: string; status: string; side: string | null;
@@ -91,7 +106,10 @@ function optionsOf(input: Record<string, any>): HybridOption[] {
 const footballDay = (d: Date) => new Date(d.getTime() + 7 * 3_600_000 - 6 * 3_600_000).toISOString().slice(0, 10);
 
 interface OptionRow { side: HybridSide; market: string; odds: number; mp: number; fitP: number | null; outcome: Outcome | null; closeMp: number | null }
-interface Row { decisionId: number; fixtureId: number; day: string; league: string; national: boolean; prompt: string; options: OptionRow[]; fitOk: boolean | null; choices: Record<string, string | null>; wins: Record<string, Record<string, number> | null> }
+/** expected level −2…+2; jsonb does not keep key order, so the levels are read by name */
+const lean = (p: Record<string, number>, levels: readonly string[]) => levels.reduce((a, k, i) => a + (p[k] ?? 0) * (i - 2), 0);
+let v2OnEarlierInput = 0;
+interface Row { lean?: { towardFavourite: number; total: number } | null; decisionId: number; fixtureId: number; day: string; league: string; national: boolean; prompt: string; options: OptionRow[]; fitOk: boolean | null; choices: Record<string, string | null>; wins: Record<string, Record<string, number> | null> }
 const out: Row[] = [];
 let fitFail = 0;
 for (const r of rows) {
@@ -112,6 +130,9 @@ for (const r of rows) {
   }
   const id = Number(r.id);
   const sh = shadow.get(id);
+  const w2 = v2.get(Number(r.fixture_id));
+  if (w2 && w2.hybridDecisionId !== id) v2OnEarlierInput++;
+  const fav = r.input.market?.asian_handicap?.favourite === r.input.match?.home ? 1 : r.input.market?.asian_handicap?.favourite ? -1 : 0;
   out.push({
     decisionId: id,
     fixtureId: Number(r.fixture_id),
@@ -129,9 +150,11 @@ for (const r of rows) {
       'D v1 replay': replay.get(id)?.choice ?? null,
       'D config D (dry-run)': configD.get(id) ?? null,
       'D config D (live shadow)': sh?.choice ?? null,
+      'D v2 (shadow)': w2?.side ?? null,
       MARKET: 'NO_PICK',
     },
-    wins: { 'D v1 replay': replay.get(id)?.wins ?? null, 'D config D (live shadow)': sh?.wins ?? null },
+    wins: { 'D v1 replay': replay.get(id)?.wins ?? null, 'D config D (live shadow)': sh?.wins ?? null, 'D v2 (shadow)': w2?.wins ?? null },
+    lean: w2?.margin && w2.total ? { towardFavourite: fav * lean(w2.margin, MARGIN_LEVELS), total: lean(w2.total, TOTAL_LEVELS) } : null,
   });
 }
 
@@ -158,7 +181,7 @@ function systemSummary(name: string, subset: Row[]) {
 function printSystems(title: string, subset: Row[]) {
   console.log(`\n=== ${title} (${subset.length} settled fixtures, ${new Set(subset.map((r) => r.day)).size} football days)`);
   console.log('system                    asked picks pick% NO_PICK INVALID  units   ROI/pick [95% CI]          fair hit vs mkt     CLV pp [95% CI]          CLV n');
-  for (const name of ['HYBRID ×3', 'D v1 replay', 'D config D (dry-run)', 'D config D (live shadow)', 'MARKET']) {
+  for (const name of ['HYBRID ×3', 'D v1 replay', 'D config D (dry-run)', 'D config D (live shadow)', 'D v2 (shadow)', 'MARKET']) {
     const s = systemSummary(name, subset);
     if (!s.asked) continue;
     console.log(
@@ -215,5 +238,18 @@ printSystems('Live shadow nights 16–17 Nov (paired)', out.filter((r) => r.choi
 for (const n of ['HYBRID ×3', 'D v1 replay', 'D config D (dry-run)']) printSplits(n, replayed);
 printProbabilityScores('D v1 replay', out);
 printProbabilityScores('D config D (live shadow)', out);
+const v2Set = out.filter((r) => r.choices['D v2 (shadow)'] != null);
+if (v2Set.length) {
+  printSystems('Decisions v2 shadow (paired, out of sample)', v2Set);
+  printSplits('D v2 (shadow)', v2Set);
+  printProbabilityScores('D v2 (shadow)', out);
+  // pre-registered diagnostic (spec §5): a systematic lean is reported, never tuned away on the same matches
+  const leans = v2Set.filter((r) => r.lean);
+  const fl = clusteredMean(clusterSums(leans.map((r) => ({ cluster: r.day, value: r.lean!.towardFavourite }))));
+  const tl = clusteredMean(clusterSums(leans.map((r) => ({ cluster: r.day, value: r.lean!.total }))));
+  console.log(`
+--- D v2 lean (levels, −2…+2): toward the favourite ${ci(fl)}   total (more goals +) ${ci(tl)}   n=${leans.length}`);
+  if (v2OnEarlierInput) console.log(`    note: ${v2OnEarlierInput} v2 rows were decided on an earlier DAILY Hybrid input than the latest one`);
+}
 if (values.json) await writeFile(values.json, JSON.stringify(out));
 await db.close();

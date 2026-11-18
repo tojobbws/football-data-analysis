@@ -4,15 +4,21 @@ import {
   decideV2,
   distributionFor,
   estimateOptions,
+  factorLean,
+  hybridInputFit,
+  hybridInputOptions,
+  hybridInputQuality,
+  optionEvidence,
   expectedValue,
   fairProbability,
   fitMarketScoreModel,
   MARKET_VIEW,
-  normaliseShifts,
+  normaliseLevels,
+  TOTAL_LEVELS,
   oddsDispersion,
   scoreMatrix,
   unitsFor,
-  type GoalView,
+  type MarketView,
   type HybridOption,
   type MarketQuality,
   type OddsQuote,
@@ -104,15 +110,15 @@ describe('estimateOptions', () => {
   });
 
   it('favourite + underdog and over + under always add up (one score distribution)', () => {
-    const view: GoalView = { home: { LOWER: 0.3, AS_MARKET: 0.4, HIGHER: 0.3 }, away: { MUCH_HIGHER: 0.2, AS_MARKET: 0.8 } };
+    const view: MarketView = { margin: { AWAY_SLIGHTLY: 0.3, AS_MARKET: 0.4, HOME_SLIGHTLY: 0.3 }, total: { MORE_CLEARLY: 0.2, AS_MARKET: 0.8 } };
     const est = estimateOptions(fit, opts, view)!;
     const p = Object.fromEntries(est.map((e) => [e.side, e.fairProbability]));
     expect(p.FAVORITE! + p.UNDERDOG!).toBeCloseTo(1, 9);
     expect(p.OVER! + p.UNDER!).toBeCloseTo(1, 9);
   });
 
-  it('a stronger home attack helps the home favourite and Over, and the uncertainty is reported', () => {
-    const view: GoalView = { home: { HIGHER: 0.5, MUCH_HIGHER: 0.5 }, away: { AS_MARKET: 1 } };
+  it('a home-leaning margin and more goals help the home favourite and Over, and the uncertainty is reported', () => {
+    const view: MarketView = { margin: { HOME_SLIGHTLY: 0.5, HOME_CLEARLY: 0.5 }, total: { MORE_SLIGHTLY: 1 } };
     const est = estimateOptions(fit, opts, view)!;
     const base = estimateOptions(fit, opts, MARKET_VIEW)!;
     const by = (xs: typeof est, s: string) => xs.find((e) => e.side === s)!;
@@ -126,9 +132,9 @@ describe('estimateOptions', () => {
   });
 
   it('rejects a view that is not a probability distribution', () => {
-    expect(estimateOptions(fit, opts, { home: { HIGHER: 0.7 }, away: { AS_MARKET: 1 } })).toBeNull();
-    expect(estimateOptions(fit, opts, { home: { AS_MARKET: 1 }, away: { SOMETHING: 1 } as never })).toBeNull();
-    expect(normaliseShifts({ LOWER: 0.51, HIGHER: 0.5 })).not.toBeNull(); // rounding within 0.05 is normalised
+    expect(estimateOptions(fit, opts, { margin: { HOME_SLIGHTLY: 0.7 }, total: { AS_MARKET: 1 } })).toBeNull();
+    expect(estimateOptions(fit, opts, { margin: { AS_MARKET: 1 }, total: { SOMETHING: 1 } as never })).toBeNull();
+    expect(normaliseLevels(TOTAL_LEVELS, { FEWER_SLIGHTLY: 0.51, MORE_SLIGHTLY: 0.5 })).not.toBeNull(); // rounding within 0.05 is normalised
   });
 });
 
@@ -146,7 +152,7 @@ describe('decideV2', () => {
   });
 
   it('a confident view with enough expected profit picks the best option and records why the rest were left', () => {
-    const view: GoalView = { home: { MUCH_HIGHER: 1 }, away: { MUCH_LOWER: 1 } };
+    const view: MarketView = { margin: { HOME_CLEARLY: 1 }, total: { AS_MARKET: 1 } };
     const d = decideV2(fit, estimateOptions(fit, opts, view)!, GOOD);
     expect(d.side).toBe('FAVORITE');
     expect(d.chosen!.ev).toBeGreaterThanOrEqual(0.03);
@@ -154,7 +160,7 @@ describe('decideV2', () => {
   });
 
   it('an unsure view with the same mean is not robust enough to pick', () => {
-    const unsure: GoalView = { home: { MUCH_LOWER: 0.35, MUCH_HIGHER: 0.65 }, away: { AS_MARKET: 1 } };
+    const unsure: MarketView = { margin: { AWAY_CLEARLY: 0.35, HOME_CLEARLY: 0.65 }, total: { AS_MARKET: 1 } };
     const d = decideV2(fit, estimateOptions(fit, opts, unsure)!, GOOD);
     const fav = d.candidates.find((c) => c.side === 'FAVORITE')!;
     expect(fav.reasons).toContain('EV_NOT_ROBUST');
@@ -162,7 +168,7 @@ describe('decideV2', () => {
   });
 
   it('data gates win over expected profit: too few bookmakers, stale prices, a failed fit', () => {
-    const view: GoalView = { home: { MUCH_HIGHER: 1 }, away: { MUCH_LOWER: 1 } };
+    const view: MarketView = { margin: { HOME_CLEARLY: 1 }, total: { AS_MARKET: 1 } };
     const est = estimateOptions(fit, opts, view)!;
     expect(decideV2(fit, est, { ...GOOD, ASIAN_HANDICAP: { nBookmakers: 2, ageHours: 1 } }).candidates.find((c) => c.side === 'FAVORITE')!.reasons).toContain('TOO_FEW_BOOKMAKERS');
     expect(decideV2(fit, est, { ...GOOD, ASIAN_HANDICAP: { nBookmakers: 6, ageHours: 30 } }).candidates.find((c) => c.side === 'FAVORITE')!.reasons).toContain('STALE_PRICE');
@@ -170,7 +176,7 @@ describe('decideV2', () => {
   });
 
   it('only ever chooses one of the options it was given', () => {
-    const view: GoalView = { home: { MUCH_HIGHER: 1 }, away: { MUCH_HIGHER: 1 } };
+    const view: MarketView = { margin: { AS_MARKET: 1 }, total: { MORE_CLEARLY: 1 } };
     const ou = opts.filter((o) => o.market === 'OVER_UNDER');
     const d = decideV2(fit, estimateOptions(fit, ou, view)!, GOOD);
     expect(['OVER', 'UNDER', 'NO_PICK']).toContain(d.side);
@@ -207,5 +213,53 @@ describe('evaluation helpers', () => {
   it('CLV is the closing chance minus the decision chance, null when the line closed elsewhere', () => {
     expect(clvPoints(0.51, 0.535)).toBeCloseTo(0.025);
     expect(clvPoints(0.51, null)).toBeNull();
+  });
+});
+
+describe('reading a stored Hybrid input and the evidence', () => {
+  const input = {
+    match: { home: 'Home FC', away: 'Away FC' },
+    market: {
+      asian_handicap: { home_line: -0.5, bookmakers: 5, price_age_hours: 2, options: [
+        { option: 'FAVORITE', team_or_total: 'Home FC', line: -0.5, odds_median: 1.9, market_probability_no_vig: 0.51 },
+        { option: 'UNDERDOG', team_or_total: 'Away FC', line: 0.5, odds_median: 1.98, market_probability_no_vig: 0.49 },
+      ] },
+      over_under: { line: 2.5, bookmakers: 3, price_age_hours: 2, options: [
+        { option: 'OVER', team_or_total: 'OVER', line: 2.5, odds_median: 1.92, market_probability_no_vig: 0.5 },
+        { option: 'UNDER', team_or_total: 'UNDER', line: 2.5, odds_median: 1.96, market_probability_no_vig: 0.5 },
+      ] },
+      match_odds_1x2_no_vig: { home: 0.45, draw: 0.26, away: 0.29 },
+    },
+  };
+
+  it('takes the options, their quality and the market fit from the input exactly', () => {
+    const opts = hybridInputOptions(input);
+    expect(opts.map((o) => `${o.side}:${o.selection}:${o.line}@${o.odds}`)).toEqual(['FAVORITE:HOME:-0.5@1.9', 'UNDERDOG:AWAY:0.5@1.98', 'OVER:OVER:2.5@1.92', 'UNDER:UNDER:2.5@1.96']);
+    expect(hybridInputQuality(input)).toMatchObject({ ASIAN_HANDICAP: { nBookmakers: 5, ageHours: 2 }, OVER_UNDER: { nBookmakers: 3, ageHours: 2 } });
+    const fit = hybridInputFit(input)!;
+    expect(fit.ok).toBe(true);
+    expect(Math.abs(fit.residual.draw!)).toBeLessThan(0.002);
+    expect(hybridInputFit({ ...input, market: { ...input.market, over_under: { options: [] } } })).toBeNull();
+  });
+
+  it('a data gate below the analyst’s sufficiency stops every option', () => {
+    const fit = hybridInputFit(input)!;
+    const est = estimateOptions(fit, hybridInputOptions(input), { margin: { HOME_CLEARLY: 1 }, total: { AS_MARKET: 1 } })!;
+    expect(decideV2(fit, est, { ...hybridInputQuality(input), dataSufficient: 0.9 }).side).toBe('FAVORITE');
+    const d = decideV2(fit, est, { ...hybridInputQuality(input), dataSufficient: 0.3 });
+    expect(d.side).toBe('NO_PICK');
+    expect(d.noPickReasons).toContain('DATA_INSUFFICIENT');
+  });
+
+  it('a factor supports the options it leans to and conflicts with the others', () => {
+    const ev = optionEvidence(hybridInputOptions(input), [
+      { name: 'performance', kind: 'TEAM', probabilities: [0, 0, 0.2, 0.6, 0.2] }, // lean +1.0 toward home
+      { name: 'market_move', kind: 'TEAM', probabilities: [0, 0.3, 0.7, 0, 0] }, // −0.3 toward away
+      { name: 'scoring_data', kind: 'GOALS', probabilities: [0, 0, 0.9, 0.1, 0] }, // +0.1: too small to count
+    ]);
+    expect(ev.find((e) => e.side === 'FAVORITE')).toEqual({ side: 'FAVORITE', supporting: [{ factor: 'performance', lean: 1 }], conflicting: [{ factor: 'market_move', lean: -0.3 }] });
+    expect(ev.find((e) => e.side === 'UNDERDOG')).toEqual({ side: 'UNDERDOG', supporting: [{ factor: 'market_move', lean: -0.3 }], conflicting: [{ factor: 'performance', lean: 1 }] });
+    expect(ev.find((e) => e.side === 'OVER')).toEqual({ side: 'OVER', supporting: [], conflicting: [] });
+    expect(factorLean([0.5, 0, 0, 0, 0.5])).toBe(0);
   });
 });

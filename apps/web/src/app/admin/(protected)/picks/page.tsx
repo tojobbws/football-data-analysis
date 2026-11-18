@@ -88,6 +88,8 @@ export default async function AdminPickCompare({ searchParams }: { searchParams:
   const all = ((res.data ?? []) as Row[]).filter((r) => r.round === round);
   const dres = round === 'DAILY' ? await sb.rpc('fp_admin_decisions_shadow', { p_from: from, p_to: to }) : null;
   const dRows = ((dres?.data ?? []) as DRow[]);
+  const v2res = round === 'DAILY' ? await sb.rpc('fp_admin_decisions_v2', { p_from: from, p_to: to }) : null;
+  const v2Rows = ((v2res?.data ?? []) as DRow[]);
 
   const lines = all.map((r) => {
     const ai = aiBet(r);
@@ -228,6 +230,7 @@ export default async function AdminPickCompare({ searchParams }: { searchParams:
         )}
       </Section>
 
+      {round === 'DAILY' && (v2Rows.length || (v2res?.error && dRows.length === 0)) ? <DecisionsShadow v2 rows={v2Rows} error={v2res?.error?.message ?? null} /> : null}
       {round === 'DAILY' && (dRows.length || dres?.error) ? <DecisionsShadow rows={dRows} error={dres?.error?.message ?? null} /> : null}
     </main>
   );
@@ -251,7 +254,14 @@ interface DRow {
   selection: string | null;
   line: number | null;
   odds: number | null;
-  choice_probability: number | null;
+  choice_probability?: number | null;
+  /** v2 only (fp_admin_decisions_v2, migration 0062) */
+  market_probability?: number | null;
+  fair_probability?: number | null;
+  ev?: number | null;
+  ev_sd?: number | null;
+  no_pick_reasons?: string[];
+  data_sufficient?: number | null;
   ai_prompt_version: string;
   ai_status: string;
   ai_side: string | null;
@@ -264,8 +274,20 @@ interface DRow {
 const betOf = (ok: boolean, side: string | null, market: string | null, selection: string | null, line: number | null, odds: number | null): Bet | null =>
   ok && side && side !== 'NO_PICK' && market && selection ? { market, selection, line: line == null ? null : Number(line), odds: odds == null ? null : Number(odds) } : null;
 
-/** Shadow only: OpenAI Decisions asked on exactly the stored input of the day's DAILY Hybrid AI decisions; never published. */
-function DecisionsShadow({ rows, error }: { rows: DRow[]; error: string | null }) {
+const V2_REASON: Record<string, string> = {
+  MARKET_FIT_FAILED: 'ไม่มีเส้นหลักครบ',
+  DATA_INSUFFICIENT: 'ข้อมูลไม่พอ',
+  TOO_FEW_BOOKMAKERS: 'เจ้ามือน้อย',
+  STALE_PRICE: 'ราคาเก่า',
+  EV_BELOW_THRESHOLD: 'EV ไม่ถึงเกณฑ์',
+  EV_NOT_ROBUST: 'EV ไม่นิ่งพอ',
+};
+
+/**
+ * Shadow only: OpenAI Decisions asked on exactly the stored input of the day's DAILY Hybrid AI decisions; never published.
+ * v1 (migration 0061) chose an option; v2 (migration 0062) gives categories that the engine prices, with EV per option.
+ */
+function DecisionsShadow({ rows, error, v2 = false }: { rows: DRow[]; error: string | null; v2?: boolean }) {
   const lines = rows.map((r) => {
     const dec = betOf(r.status === 'OK', r.side, r.market, r.selection, r.line, r.odds);
     const ai = betOf(r.ai_status === 'OK', r.ai_side, r.ai_market, r.ai_selection, r.ai_line, r.ai_odds);
@@ -275,12 +297,20 @@ function DecisionsShadow({ rows, error }: { rows: DRow[]; error: string | null }
   const aiT = tally(lines.map((l) => ({ res: l.aiRes, bet: l.ai })));
   const late = lines.filter((l) => l.late).length;
   return (
-    <Section title="ทดลอง: OpenAI Decisions (shadow ไม่เผยแพร่)" aside={`${lines.length} คู่ · ${rows[0]?.config ?? ''}`}>
-      {error ? <p className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">โหลดข้อมูลไม่สำเร็จ: {error} (ต้อง migrate 0061 ก่อน)</p> : null}
-      <p className="mb-3 max-w-3xl text-xs leading-relaxed text-slate-600">
-        Decisions อ่าน input ชุดเดียวกับที่ Hybrid AI ใช้ตัดสินรอบ 14:00 (เก็บไว้ก่อนเตะ) แล้วเลือก 1 ทางหรือไม่เลือก · เทียบกับ Hybrid AI ของ input เดียวกัน ·
-        {late ? ` ${late} คู่ถามหลังเตะแล้ว (ยังเห็นแค่ข้อมูล 14:00) มีเครื่องหมาย ⏱ ·` : ''} ตัวอย่างคืนเดียวเล็กเกินจะสรุปว่าแบบไหนดีกว่า
-      </p>
+    <Section title={v2 ? 'ทดลอง: Decisions v2 (shadow ไม่เผยแพร่)' : 'ทดลอง: OpenAI Decisions v1 (shadow ไม่เผยแพร่)'} aside={`${lines.length} คู่ · ${rows[0]?.config ?? ''}`}>
+      {error ? <p className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">โหลดข้อมูลไม่สำเร็จ: {error} (ต้อง migrate {v2 ? '0062' : '0061'} ก่อน)</p> : null}
+      {v2 ? (
+        <p className="mb-3 max-w-3xl text-xs leading-relaxed text-slate-600">
+          v2 อ่าน input ชุดเดียวกับ Hybrid AI รอบ 14:00 แต่ไม่เห็นคำตอบของ Hybrid · AI ตอบเป็นหมวด (เอียงทีมไหนเทียบเส้นแฮนดิแคป / ประตูมากน้อยเทียบเส้นสกอร์รวม) ·
+          เครื่องคำนวณโอกาส ได้/ได้ครึ่ง/คืน/เสียครึ่ง/เสีย และ EV ที่ราคาเดียวกับ Hybrid · เลือกเมื่อ EV ≥ 3% และยังเป็นบวกหลังหักความไม่แน่นอน ไม่งั้นไม่เลือก ·
+          เกณฑ์ตัดสินผลกำหนดไว้ก่อน (spec §5) ห้ามสรุปจากรายวัน
+        </p>
+      ) : (
+        <p className="mb-3 max-w-3xl text-xs leading-relaxed text-slate-600">
+          Decisions อ่าน input ชุดเดียวกับที่ Hybrid AI ใช้ตัดสินรอบ 14:00 (เก็บไว้ก่อนเตะ) แล้วเลือก 1 ทางหรือไม่เลือก · เทียบกับ Hybrid AI ของ input เดียวกัน ·
+          {late ? ` ${late} คู่ถามหลังเตะแล้ว (ยังเห็นแค่ข้อมูล 14:00) มีเครื่องหมาย ⏱ ·` : ''} ตัวอย่างคืนเดียวเล็กเกินจะสรุปว่าแบบไหนดีกว่า
+        </p>
+      )}
       <table className="mb-4 w-full text-sm">
         <thead>
           <tr className="text-xs text-slate-500">
@@ -294,7 +324,7 @@ function DecisionsShadow({ rows, error }: { rows: DRow[]; error: string | null }
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 text-center tabular-nums">
-          {([['OpenAI Decisions', decT], ['Hybrid AI (×3)', aiT]] as const).map(([name, t]) => (
+          {([[v2 ? 'Decisions v2' : 'OpenAI Decisions', decT], ['Hybrid AI (×3)', aiT]] as const).map(([name, t]) => (
             <tr key={name}>
               <td className="py-1.5 text-left">{name}</td>
               <td>{t.picks}</td>
@@ -312,7 +342,7 @@ function DecisionsShadow({ rows, error }: { rows: DRow[]; error: string | null }
           <thead>
             <tr className="text-xs text-slate-500">
               <th className="pb-2 text-left font-normal">คู่</th>
-              <th className="pb-2 text-left font-normal">OpenAI Decisions</th>
+              <th className="pb-2 text-left font-normal">{v2 ? 'Decisions v2' : 'OpenAI Decisions'}</th>
               <th className="pb-2 text-left font-normal">Hybrid AI (×3)</th>
               <th className="pb-2 font-normal">เทียบ</th>
             </tr>
@@ -335,7 +365,16 @@ function DecisionsShadow({ rows, error }: { rows: DRow[]; error: string | null }
                 ) : (
                   <span className="text-slate-400">ไม่เลือก{extra}</span>
                 );
-              const p = r.choice_probability == null ? '' : ` · p ${Math.round(Number(r.choice_probability) * 100)}%`;
+              const pct = (x: number) => `${Math.round(x * 1000) / 10}%`;
+              const p = v2
+                ? dec && r.ev != null
+                  ? ` · EV ${Number(r.ev) >= 0 ? '+' : ''}${pct(Number(r.ev))} ±${pct(Number(r.ev_sd ?? 0))} · โอกาส ${pct(Number(r.fair_probability))} (ตลาด ${pct(Number(r.market_probability))})`
+                  : r.status === 'OK' && r.no_pick_reasons?.length
+                    ? ` · ${r.no_pick_reasons.map((x) => V2_REASON[x] ?? x).join(', ')}`
+                    : ''
+                : r.choice_probability == null
+                  ? ''
+                  : ` · p ${Math.round(Number(r.choice_probability) * 100)}%`;
               return (
                 <tr key={r.fixture_id}>
                   <td className="py-2 pr-3">

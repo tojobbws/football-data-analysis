@@ -79,6 +79,16 @@ export const envSchema = z.object({
     .optional()
     .transform((v) => v || undefined)
     .pipe(z.enum(['v2.0', 'v2.1.1']).optional()),
+  /**
+   * Decisions v2 shadow (.scratch/decisions-v2/spec.md, migration 0062): `shadow` runs the decisions-v2 job on the
+   * stored DAILY inputs before kickoff, stored only, never published; unset = the job does nothing.
+   * Set per run (GitHub Actions variable DECISIONS_V2), so stopping it needs no deploy.
+   */
+  DECISIONS_V2: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum(['shadow']).optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;
