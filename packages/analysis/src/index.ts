@@ -23,3 +23,4 @@ export * from './hybrid-market.js';
 export * from './table.js';
 export * from './regular-starters.js';
 export * from './hybrid-context.js';
+export * from './decisions-v2.js';
