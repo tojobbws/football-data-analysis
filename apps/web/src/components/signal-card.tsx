@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ROUND_SHORT, odds, pct, selectionLabel } from '@/lib/labels';
-import { footballDate, shortDayTH, thaiDate, timeTH } from '@/lib/time';
+import { FOOTBALL_DAY_START_HOUR, footballDate, shortDayTH, thaiDate, timeTH } from '@/lib/time';
 import { CompassMark, IconLock } from './icons';
 
 export interface SignalCardData {
@@ -24,12 +24,12 @@ export interface SignalCardData {
 
 const MARKET_SHORT: Record<string, string> = { MATCH_WINNER: 'ผลแพ้ชนะ 1X2', ASIAN_HANDICAP: 'กำแพง · แฮนดิแคป', OVER_UNDER: 'สูง/ต่ำ' };
 
-/** "คืนนี้ / เช้านี้ / พรุ่งนี้เช้า / วันนี้" for today's football day (08:00→08:00), otherwise the short date. */
+/** "คืนนี้ / เช้านี้ / พรุ่งนี้เช้า / วันนี้" for today's football day (10:00→10:00), otherwise the short date. */
 export function whenLabel(iso: string) {
   const d = new Date(iso);
   if (footballDate(d) !== footballDate()) return shortDayTH(iso);
   const h = Number(timeTH(iso).slice(0, 2));
-  if (h >= 5 && h < 8) return thaiDate(d) === thaiDate() ? 'เช้านี้' : 'พรุ่งนี้เช้า';
+  if (h >= 5 && h < FOOTBALL_DAY_START_HOUR) return thaiDate(d) === thaiDate() ? 'เช้านี้' : 'พรุ่งนี้เช้า';
   return h >= 17 || h < 5 ? 'คืนนี้' : 'วันนี้';
 }
 

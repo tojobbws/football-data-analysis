@@ -54,7 +54,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await recentRead;
   // matches marked คู่น่าจับตา on the scoreboard: the day's ranked list; finished ones keep the mark with their result
-  // the day's own 00:00-08:00 kick-offs belong to the previous football day: they keep that day's gold frames
+  // the day's own 00:00-10:00 kick-offs belong to the previous football day: they keep that day's gold frames
   const dayFrom = date ? Date.parse(footballDayRange(date).from) : 0;
   const preDawn = shown.filter((m) => Date.parse(m.kickoff_at) < dayFrom);
   const watch = new Set([...watchSlugs(shown.filter((m) => !preDawn.includes(m)), ranks), ...watchSlugs(preDawn, prevRanks)]);

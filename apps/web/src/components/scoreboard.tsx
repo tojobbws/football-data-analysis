@@ -89,7 +89,7 @@ export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; 
     groups.set(m.league.id, g);
   }
   const nextMorning = date ? addDaysStr(date, 1) : null;
-  // the day's own 00:00-08:00 kick-offs (listed with the day as well as with the previous football day)
+  // the day's own 00:00-10:00 kick-offs (listed with the day as well as with the previous football day)
   const dayStart = date ? Date.parse(footballDayRange(date).from) : null;
   const isPreDawn = (m: MatchRow) => dayStart != null && Date.parse(m.kickoff_at) < dayStart;
   return (
@@ -119,7 +119,7 @@ export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; 
   );
 }
 
-/** The divider's word for a group's first next-morning kick-off: before 05:00 is "เช้ามืด", 05:00–07:59 is "เช้า". */
+/** The divider's word for a group's first next-morning kick-off: before 05:00 is "เช้ามืด", 05:00–09:59 is "เช้า". */
 const morningWord = (m: MatchRow) => (Number(timeTH(m.kickoff_at).slice(0, 2)) < 5 ? 'เช้ามืด' : 'เช้า');
 
 const longWeekday = (d: string) => new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long' }).format(new Date(noon(d))).replace(/^วัน/, '');

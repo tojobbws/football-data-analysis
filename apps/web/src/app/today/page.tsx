@@ -22,7 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** "Today" is the football day (08:00 → 08:00 Thai time), like the home scoreboard: a 01:45 kickoff is tonight's match. */
+/** "Today" is the football day (10:00 → 10:00 Thai time), like the home scoreboard: a 01:45 kickoff is tonight's match. */
 export default async function TodayPage() {
   const today = footballDate();
   const [todays, counts, articles] = await Promise.all([matchesOnFootballDay(today), matchDayCounts(addDaysStr(today, 1), 10), latestArticles(12)]);

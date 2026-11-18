@@ -13,11 +13,11 @@ export function thaiDayRange(date: string): { from: string; to: string } {
 }
 
 /**
- * A "football day" runs 08:00 → 08:00 Thai time, so late kick-offs (01:30, 02:00) and the South American
- * morning games (05:00–07:30) stay with the evening they belong to — the way Thai fans read "บอลคืนนี้".
+ * A "football day" runs 10:00 → 10:00 Thai time, so late kick-offs (01:30, 02:00) and the South American
+ * morning games (05:00–09:30) stay with the evening they belong to — the way Thai fans read "บอลคืนนี้".
  * Web views only: the workers keep their own 06:00 day (@fp/shared footballDay).
  */
-export const FOOTBALL_DAY_START_HOUR = 8;
+export const FOOTBALL_DAY_START_HOUR = 10;
 
 export function footballDayRange(date: string): { from: string; to: string } {
   const from = new Date(`${date}T${String(FOOTBALL_DAY_START_HOUR).padStart(2, '0')}:00:00+07:00`);
@@ -35,7 +35,7 @@ export function pickDayRange(date: string): { from: string; to: string } {
   return { from: from.toISOString(), to: new Date(from.getTime() + 86_400_000).toISOString() };
 }
 
-/** The football day `d` falls in (before 08:00 Thai time = still the previous day). */
+/** The football day `d` falls in (before 10:00 Thai time = still the previous day). */
 export function footballDate(d: Date = new Date()): string {
   return thaiDate(new Date(d.getTime() - FOOTBALL_DAY_START_HOUR * 3_600_000));
 }
