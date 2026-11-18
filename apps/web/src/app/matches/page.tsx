@@ -29,7 +29,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
   // league by league: PL, La Liga, Bundesliga, Serie A, Ligue 1 first, then the rest by importance; kickoff order inside a league
   const matches = byLeagueThenKickoff(shown, registry);
   // finished คู่น่าจับตา keep their gold frame and show ถูก/ผิด
-  // the day's own 00:00-06:00 kick-offs belong to the previous football day: they keep that day's gold frames
+  // the day's own 00:00-08:00 kick-offs belong to the previous football day: they keep that day's gold frames
   const dayFrom = date ? Date.parse(footballDayRange(date).from) : 0;
   const preDawn = matches.filter((m) => Date.parse(m.kickoff_at) < dayFrom);
   const watch = new Set([...finishedWatch(matches.filter((m) => !preDawn.includes(m)), ranks), ...finishedWatch(preDawn, prevRanks)]);

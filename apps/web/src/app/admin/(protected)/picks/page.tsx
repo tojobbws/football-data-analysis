@@ -73,7 +73,7 @@ function tally(rows: Array<{ res: ReturnType<typeof result>; bet: Bet | null }>)
 }
 
 /**
- * Per football day (06:00 → 06:00 Thai): what the rules and the Hybrid AI each chose for every match, side by side,
+ * Per football day (08:00 → 08:00 Thai): what the rules and the Hybrid AI each chose for every match, side by side,
  * with the result of each bet at its own price. Read-only. Only matches the AI has decided (hybrid_decisions, since 2026-10-26).
  */
 export default async function AdminPickCompare({ searchParams }: { searchParams: Promise<{ date?: string; round?: string }> }) {

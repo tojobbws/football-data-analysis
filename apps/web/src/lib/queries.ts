@@ -192,10 +192,10 @@ export async function previewCards(when: 'upcoming' | 'recent', limit: number): 
 // Matches
 // ---------------------------------------------------------------------------
 
-/** Matches of one football day (06:00 → 06:00 Thai time) — the scoreboard views and /today. */
+/** Matches of one football day (08:00 → 08:00 Thai time) — the scoreboard views and /today. */
 export async function matchesOnFootballDay(date: string, opts: { withPreDawn?: boolean } = {}): Promise<MatchRow[]> {
   const { from, to } = footballDayRange(date);
-  // withPreDawn: the scoreboard pages also list the day's own 00:00-06:00 kick-offs, which belong to the previous football day
+  // withPreDawn: the scoreboard pages also list the day's own 00:00-08:00 kick-offs, which belong to the previous football day
   return matchesBetween(opts.withPreDawn ? new Date(`${date}T00:00:00+07:00`).toISOString() : from, to);
 }
 
@@ -216,7 +216,7 @@ async function matchesBetween(from: string, to: string): Promise<MatchRow[]> {
 }
 
 /** Next days that have matches (for the date strip), starting at `date`. */
-/** Matches per football day (06:00 → 06:00 Thai time) for `days` football days from `fromDate`. */
+/** Matches per football day (08:00 → 08:00 Thai time) for `days` football days from `fromDate`. */
 export async function matchDayCounts(fromDate: string, days: number): Promise<Map<string, number>> {
   const { from } = footballDayRange(fromDate);
   const to = new Date(new Date(from).getTime() + days * 86_400_000).toISOString();
@@ -707,7 +707,14 @@ async function loadWatchedPicks(from: string, days: number): Promise<Map<string,
   const versionOfDay = new Map<string, string | null>();
   for (const d of dates) versionOfDay.set(d, listVersion(footballDayRows.filter((r) => String(r.football_date) === d).map((r) => String(r.version))));
   const ranks = new Map<number, number>();
-  for (const r of footballDayRows) if (r.version === versionOfDay.get(String(r.football_date))) ranks.set(Number(r.fixture_id), Number(r.rank));
+  // a match keeps the day of the list that holds it: lists before ADR 0014 were made on the workers' 06:00 day,
+  // which the web's 08:00 football day no longer matches for 06:00-08:00 kick-offs
+  const listDayOf = new Map<number, string>();
+  for (const r of footballDayRows)
+    if (r.version === versionOfDay.get(String(r.football_date))) {
+      ranks.set(Number(r.fixture_id), Number(r.rank));
+      listDayOf.set(Number(r.fixture_id), String(r.football_date));
+    }
   // from featured-ai-v2 on, a match belongs to the pick day whose list holds it (ADR 0014)
   const pickDayOf = new Map<number, string>();
   for (const r of listed.data ?? [])
@@ -720,7 +727,7 @@ async function loadWatchedPicks(from: string, days: number): Promise<Map<string,
   const candidates: number[] = [];
   for (const f of fx.data ?? []) {
     if (!ranks.has(f.id)) continue;
-    const day = pickDayOf.get(f.id) ?? footballDate(new Date(f.kickoff_at));
+    const day = pickDayOf.get(f.id) ?? listDayOf.get(f.id) ?? footballDate(new Date(f.kickoff_at));
     dayOf.set(f.id, day);
     candidates.push(f.id);
   }

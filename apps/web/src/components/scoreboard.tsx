@@ -89,7 +89,7 @@ export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; 
     groups.set(m.league.id, g);
   }
   const nextMorning = date ? addDaysStr(date, 1) : null;
-  // the day's own 00:00-06:00 kick-offs (listed with the day as well as with the previous football day)
+  // the day's own 00:00-08:00 kick-offs (listed with the day as well as with the previous football day)
   const dayStart = date ? Date.parse(footballDayRange(date).from) : null;
   const isPreDawn = (m: MatchRow) => dayStart != null && Date.parse(m.kickoff_at) < dayStart;
   return (
@@ -105,9 +105,9 @@ export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; 
             <ul className="space-y-1.5">
               {rows.map((m, i) => (
                 <li key={m.id}>
-                  {i === firstEarly ? <Divider label={`เช้ามืดวัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
+                  {i === firstEarly ? <Divider label={`${morningWord(rows[i]!)}วัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
                   {i === firstRegular && firstRegular > 0 ? <Divider label={`วัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
-                  {i === firstLate ? <Divider label={`เช้ามืดวัน${longWeekday(nextMorning!)} ${dayMonthTH(noon(nextMorning!))}`} /> : null}
+                  {i === firstLate ? <Divider label={`${morningWord(rows[i]!)}วัน${longWeekday(nextMorning!)} ${dayMonthTH(noon(nextMorning!))}`} /> : null}
                   <MatchCard m={m} watched={watch?.has(m.slug) ?? false} />
                 </li>
               ))}
@@ -118,6 +118,9 @@ export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; 
     </div>
   );
 }
+
+/** The divider's word for a group's first next-morning kick-off: before 05:00 is "เช้ามืด", 05:00–07:59 is "เช้า". */
+const morningWord = (m: MatchRow) => (Number(timeTH(m.kickoff_at).slice(0, 2)) < 5 ? 'เช้ามืด' : 'เช้า');
 
 const longWeekday = (d: string) => new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long' }).format(new Date(noon(d))).replace(/^วัน/, '');
 
