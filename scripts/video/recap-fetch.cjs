@@ -11,6 +11,9 @@ const VERSIONS = ['featured-v2', 'featured-ai-v1', 'featured-ai-v2', 'featured-a
 // the switch day. A pick day has a list from one of them only.
 const listVersion = (vs) => (vs.includes('featured-ai-v4') ? 'featured-ai-v4' : vs.includes('featured-ai-v3') ? 'featured-ai-v3' : vs.includes('featured-ai-v2') ? 'featured-ai-v2' : vs.includes('featured-ai-v1') ? 'featured-ai-v1' : vs.includes('featured-v2') ? 'featured-v2' : null);
 const FINISHED = ['FT', 'AET', 'PEN'];
+// a postponed match (owner 2026-11-21, four Saudi games of 20 Nov moved to 4-5 Dec): not finished, and the provider marks it PST
+// or its kickoff now lies after the pick day's end (D+1 14:00 Thai). The film says เลื่อนการแข่งขัน instead of a result.
+const dayEndUtc = (date) => { const d = new Date(`${date}T07:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d; };
 // result word in the film: a half result reads as the whole one (lib.cjs RESULT_WORD; owner 2026-11-11, after TikTok
 // removed a recap that said ทายถูกครึ่ง). The rate still counts a half result as half, like /performance.
 const RESULT = RESULT_WORD;
@@ -25,7 +28,8 @@ function yesterday() {
 /** daySummary of /performance: a half result counts half, PUSH / VOID / pending stay out of the rate. */
 function summary(ms) {
   const n = (s) => ms.filter((m) => m.status === s).length;
-  const c = { total: ms.length, win: n('WIN'), loss: n('LOSS'), half_win: n('HALF_WIN'), half_loss: n('HALF_LOSS'), push: n('PUSH'), void: n('VOID'), pending: ms.filter((m) => !RESULT[m.status] || m.status === 'PENDING').length };
+  const pp = (m) => m.postponed && m.status === 'PENDING';
+  const c = { total: ms.length, win: n('WIN'), loss: n('LOSS'), half_win: n('HALF_WIN'), half_loss: n('HALF_LOSS'), push: n('PUSH'), void: n('VOID'), postponed: ms.filter(pp).length, pending: ms.filter((m) => !pp(m) && (!RESULT[m.status] || m.status === 'PENDING')).length };
   const right = c.win + c.half_win / 2, wrong = c.loss + c.half_loss / 2;
   c.right = right; c.wrong = wrong;
   // what the film counts on screen and in the voice: a half result with the whole ones
@@ -76,14 +80,27 @@ function summary(ms) {
     const first = (p.reason || '').split('\n')[0];
     const lineLabel = (first.match(/เข็มทิศเกม:\s*(.+?)\s*\(/) || [])[1] || `${p.selection} ${Number(p.line)}`;
     const fan = fanPick({ market: p.market, side: p.selection, line: p.line, home: f.home, away: f.away });
+    // the match story for an optional "why" scene (owner 2026-11-13): stored API-Football stats, the goals, and the
+    // two teams' meeting before this one. The film may only show numbers read from here.
+    const st = await q(`select team_id, type, value_num from fixture_statistics where fixture_id = $1`, [f.id]);
+    const sv = (type) => [f.hid, f.aid].map((id) => { const x = st.find((s) => Number(s.team_id) === Number(id) && s.type === type); return x && x.value_num != null ? Number(x.value_num) : null; });
+    const stats = st.length ? { xg: sv('expected_goals'), shots: sv('total_shots'), sot: sv('shots_on_goal'), poss: sv('ball_possession'), corners: sv('corner_kicks'), saves: sv('goalkeeper_saves') } : null;
+    const goals = (await q(`select elapsed, extra, team_id, player_name, detail from fixture_events where fixture_id = $1 and type = 'Goal' and detail <> 'Missed Penalty' order by seq`, [f.id]))
+      .map((e) => ({ min: Number(e.elapsed), extra: e.extra == null ? null : Number(e.extra), side: Number(e.team_id) === Number(f.hid) ? 'home' : 'away', player: e.player_name, penalty: e.detail === 'Penalty', own_goal: e.detail === 'Own Goal' }));
+    const [pm] = await q(`select f2.kickoff_at, f2.home_team_id, f2.goals_home, f2.goals_away, l2.name league from fixtures f2 join leagues l2 on l2.id = f2.league_id
+      where f2.kickoff_at < $3 and f2.status_short = any($4) and ((f2.home_team_id = $1 and f2.away_team_id = $2) or (f2.home_team_id = $2 and f2.away_team_id = $1)) order by f2.kickoff_at desc limit 1`, [f.hid, f.aid, f.kickoff_at, FINISHED]);
+    const prev = pm ? { date: new Date(pm.kickoff_at).toISOString().slice(0, 10), league: pm.league, home: Number(pm.home_team_id) === Number(f.hid) ? f.home : f.away, away: Number(pm.home_team_id) === Number(f.hid) ? f.away : f.home, goals: [pm.goals_home, pm.goals_away] } : null;
+    const finished = FINISHED.includes(f.status_short);
+    const postponed = !finished && (f.status_short === 'PST' || new Date(f.kickoff_at) > dayEndUtc(date));
     out.push({
       key: `m${r.rank}`, rank: r.rank, ...(film ? { order: r.order } : {}), fixture_id: Number(f.id), prediction_id: Number(p.id), publish_round: p.publish_round, engine: p.decision_rule_version,
       league: f.league, league_importance: f.importance == null ? 30 : Number(f.importance), league_logo: await logo(f.llogo, `leagues-${f.league_id}.png`),
-      kickoff_th: kickoffTh(f.kickoff_at), fixture_status: f.status_short, finished: FINISHED.includes(f.status_short),
+      kickoff_th: kickoffTh(f.kickoff_at), fixture_status: f.status_short, finished, postponed,
       home: { name: f.home, logo: await logo(f.hlogo, `teams-${f.hid}.png`), goals: f.goals_home },
       away: { name: f.away, logo: await logo(f.alogo, `teams-${f.aid}.png`), goals: f.goals_away },
       pick: { market: p.market, side: String(p.selection).toLowerCase(), label: fan.label, fan, line_label: lineLabel, line: Number(p.line), odds: p.odds_at_publish == null ? null : Number(p.odds_at_publish).toFixed(2) },
-      status: p.status, result: RESULT[p.status] || p.status, badge: BADGE[p.status] ? `brand/${BADGE[p.status]}.webp` : null,
+      status: p.status, result: postponed && p.status === 'PENDING' ? 'เลื่อนการแข่งขัน' : RESULT[p.status] || p.status, badge: BADGE[p.status] ? `brand/${BADGE[p.status]}.webp` : null,
+      stats, goals, prev,
     });
   }
   await c.end();
@@ -102,6 +119,6 @@ function summary(ms) {
   for (const m of dropped) console.log(`dropped by the owner: [${m.key}] ${m.home.name} vs ${m.away.name} · ${m.result}`);
   for (const m of kept) console.log(`[${m.key}] ${m.league} · ${m.home.name} ${m.home.goals ?? '-'}-${m.away.goals ?? '-'} ${m.away.name} (${m.fixture_status}) · ${m.pick.label} (site: ${m.pick.line_label} @ ${m.pick.odds}) · ${m.status} = ${m.result}`);
   const s = facts.summary;
-  console.log(`summary: ${s.total} picks · film says ทายถูก ${s.shown_win} · ทายผิด ${s.shown_loss} (half results inside: ${s.half_win} / ${s.half_loss}) · เสมอตัว ${s.push} · โมฆะ ${s.void} · รอผล ${s.pending} · rate ${s.rate_pct ?? '-'}%`);
-  if (s.pending || kept.some((m) => !m.finished)) console.error('WARNING: not every match is finished and settled yet; wait before making the film');
+  console.log(`summary: ${s.total} picks · film says ทายถูก ${s.shown_win} · ทายผิด ${s.shown_loss} (half results inside: ${s.half_win} / ${s.half_loss}) · เสมอตัว ${s.push} · โมฆะ ${s.void} · เลื่อน ${s.postponed} · รอผล ${s.pending} · rate ${s.rate_pct ?? '-'}%`);
+  if (s.pending || kept.some((m) => !m.finished && !m.postponed)) console.error('WARNING: not every match is finished and settled yet; wait before making the film');
 })().catch((e) => { console.error(e.message); process.exit(1); });

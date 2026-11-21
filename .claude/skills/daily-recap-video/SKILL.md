@@ -6,7 +6,13 @@ description: Make the เข็มทิศเกม "สรุปผลงา�
 # Daily recap video
 
 The owner's brief is `scripts/video/RECAP_BRIEF.md` (read it once per session). One film per finished football day, 30–45 s:
-0. **cover (0–1 s, `cover.js` shared with the spotlight film, `COVER` in `recap.cjs`):** a still thumbnail frame, complete from frame 0: the site logo (`brand/logo-lockup.webp` on a white plate), "สรุปผลงานการทำนาย", the date, every team's logo in pick pairs and the เข็มทิศเกม title. No voice; it zooms out into the opening.
+0. **cover (0–1 s, `cover.js` shared with the spotlight film, `COVER` in `recap.cjs`):** a still thumbnail frame, complete from frame 0. No voice; it zooms out into the opening. It shows:
+   - the site logo (`brand/logo-lockup.webp` on a white plate) and "สรุปผลงานการทำนาย";
+   - "ทายถูก <shown_win> จาก <total> คู่ · <date_short>";
+   - one wide row per **right** pick (owner, 2026-11-18): both logos, the real score, the pick subtitle (e.g. เลือกสวีเดน ไม่แพ้) and the big ถูก badge;
+   - the เข็มทิศเกม title.
+
+   A day with no right pick falls back to every pair with the date. `recap.html` builds this, so there is nothing to do per day: read `probe_0.00.png` and give the owner its path as the thumbnail.
 1. **opening:** night stadium, logo impact, "สรุปผลงานการทำนาย ประจำวันที่ …".
 2. **one scoreboard card per pick**, in the spotlight film's order: logos, real score on split-flaps, เข็มทิศเกมเลือก …, then a drawn ✓ ทายถูก or ✕ ทายผิด.
 3. **dashboard:** win-rate gauge, per-match badges, and count-up tiles for total, right, wrong and เสมอตัว.

@@ -20,15 +20,16 @@ const ODIR = path.join(DAY, 'out', 'recap');
 fs.mkdirSync(ODIR, { recursive: true });
 
 const TEMPO = 1.15;                 // same voice speed as the spotlight film
-const LEAD = { opening: 0.95, match: 0.45, summary: 0.55, closing: 0.6 }; // silence before each segment (room for the transition)
+const LEAD = { opening: 0.95, match: 0.45, why: 0.5, summary: 0.55, closing: 0.6 }; // silence before each segment (room for the transition)
 const RESULT_PAUSE = 0.32;          // beat of silence before the result word (ทายถูก / ทายผิด)
 const TAIL = 2.0;                   // logo hold after the last word
 const HOLD = 0.9;                   // the result stays on screen after the voice before the next card flips in
 const COVER = 1.0;                  // film 0 -> COVER s: a still cover (brand + every team's logo), the thumbnail frame; the story starts after it
-const TAGS = { opening: '[excited] ', match: '[excited] ', summary: '[confident] ', closing: '[confident] ' };
+const TAGS = { opening: '[excited] ', match: '[excited] ', why: '[confident] ', summary: '[confident] ', closing: '[confident] ' };
 const BANNED = ['ทีเด็ด', 'แทง', 'กำไร', 'ตามคู่นี้', 'การันตี', 'ชัวร์', 'แน่นอน', 'ได้เงิน', 'เสียเงิน'];
 // marks each segment must carry: a verbatim piece of its text whose first character times a visual event
-const MARKS = { opening: ['title', 'date'], match: ['score', 'pick', 'result'], summary: ['total', 'win', 'loss', 'rate'], closing: ['line1', 'line2', 'logo', 'tag'] };
+// why: optional matches[].why, a stats panel after that match's card (owner 2026-11-13, a one-pick day: why was it wrong)
+const MARKS = { opening: ['title', 'date'], match: ['score', 'pick', 'result'], why: ['head', 'xg', 'sot', 'goals', 'lesson'], summary: ['total', 'win', 'loss', 'rate'], closing: ['line1', 'line2', 'logo', 'tag'] };
 
 // ---------- 1. script + facts -> segments ----------
 function prepare() {
@@ -36,7 +37,7 @@ function prepare() {
   const spot = readJson(path.join(RDIR, 'spot.json'));
   const errors = [];
   const s = facts.summary;
-  if (s.pending || facts.matches.some((m) => !m.finished)) errors.push('a match is not finished or settled yet');
+  if (s.pending || facts.matches.some((m) => !m.finished && !m.postponed)) errors.push('a match is not finished or settled yet');
   const segs = [{ role: 'opening', ...spot.opening }];
   const keys = spot.matches.map((m) => m.match);
   for (const m of facts.matches) if (!keys.includes(m.key)) errors.push(`${m.key} (${m.home.name} vs ${m.away.name}) is missing from the script: every pick is shown, right or wrong`);
@@ -46,12 +47,24 @@ function prepare() {
     if (!sm.segment.includes(m.result)) errors.push(`${sm.match}: the voice must say the real result "${m.result}"`);
     if (!sm.marks.result.includes(m.result)) errors.push(`${sm.match}: marks.result must be the result word "${m.result}"`);
     // the pick in football words (facts pick.fan), never the betting line
-    if (!sm.subs.some((p) => p.show.includes(m.pick.fan.text))) errors.push(`${sm.match}: a subtitle must show the pick as "${m.pick.fan.text}" (facts pick.fan.text), not the line`);
+    // a postponed match has no result to judge: its pick stays on the card, the voice only says เลื่อนการแข่งขัน (owner 2026-11-21)
+    if (!m.postponed && !sm.subs.some((p) => p.show.includes(m.pick.fan.text))) errors.push(`${sm.match}: a subtitle must show the pick as "${m.pick.fan.text}" (facts pick.fan.text), not the line`);
     for (const p of sm.subs) {
       const sc = p.show.match(/(\d+)\s*-\s*(\d+)/);
-      if (sc && ![`${m.home.goals}-${m.away.goals}`, `${m.away.goals}-${m.home.goals}`].includes(`${sc[1]}-${sc[2]}`)) errors.push(`${sm.match}: score "${sc[0]}" is not the real ${m.home.goals}-${m.away.goals}`);
+      if (sc && m.postponed) errors.push(`${sm.match}: "${sc[0]}" shown for a postponed match, it has no score`);
+      else if (sc && ![`${m.home.goals}-${m.away.goals}`, `${m.away.goals}-${m.home.goals}`].includes(`${sc[1]}-${sc[2]}`)) errors.push(`${sm.match}: score "${sc[0]}" is not the real ${m.home.goals}-${m.away.goals}`);
     }
-    segs.push({ role: 'match', ...sm, match: m });
+    const { why, ...card } = sm;
+    segs.push({ role: 'match', ...card, match: m });
+    if (why) {
+      if (!m.stats || !m.goals) errors.push(`${sm.match}: why needs the match stats and goals in facts (rerun recap-fetch.cjs)`);
+      else {
+        // every number the why scene shows is a stored fact: a stat, a goal minute, the score or the previous meeting
+        const ok = new Set([...Object.values(m.stats).flat(), ...m.goals.map((g) => g.min), m.home.goals, m.away.goals, ...(m.prev ? m.prev.goals : [])].filter((v) => v != null).map(String));
+        for (const p of why.subs) for (const n of p.show.match(/\d+(?:\.\d+)?/g) || []) if (!ok.has(n)) errors.push(`${sm.match} why: "${n}" in "${p.show}" is not a stored fact`);
+      }
+      segs.push({ role: 'why', ...why, match: m });
+    }
   }
   // the dashboard numbers come from facts; the spoken ones must agree with the subtitles that show them
   const sumShow = spot.summary.subs.map((p) => p.show).join(' ');
@@ -104,7 +117,7 @@ function timeline({ facts, segs }) {
     const toFilm = (t) => at + (t - trim) / TEMPO + cuts.filter((c) => t > c.src).reduce((s, c) => s + c.pause, 0);
     const charAt = (piece, from = tagEnd) => { const ix = text.indexOf(piece, from); if (ix < 0) throw new Error(`s${g.i}: "${piece}" not found`); return ix; };
     const marks = {};
-    for (const k of MARKS[g.role]) marks[k] = +toFilm(a.character_start_times_seconds[charAt(g.marks[k])]).toFixed(3);
+    for (const k of new Set([...MARKS[g.role], ...Object.keys(g.marks || {})])) marks[k] = +toFilm(a.character_start_times_seconds[charAt(g.marks[k])]).toFixed(3);
     let cursor = tagEnd;
     const first0 = subs.length;
     for (const p of g.subs) {
@@ -114,17 +127,17 @@ function timeline({ facts, segs }) {
     }
     const start = toFilm(speechStart), end = toFilm(speechEnd);
     out.push({ i: g.i, role: g.role, file: `recap/vo/s${g.i}_fast.wav`, at: +at.toFixed(3), start: +start.toFixed(3), end: +end.toFixed(3), cuts: cuts.map((c) => ({ at: +((c.src - trim) / TEMPO).toFixed(3), pause: c.pause })) });
-    scenes.push({ role: g.role, key: g.match ? g.match.key : g.role, t0: +(g.i === 0 ? 0 : clock + 0.05).toFixed(3), speech: +start.toFixed(3), end: +end.toFixed(3), marks, subs: [first0, subs.length] });
-    clock = end + (g.role === 'match' ? HOLD : 0);
+    scenes.push({ role: g.role, key: g.match ? (g.role === 'why' ? `${g.match.key}-why` : g.match.key) : g.role, t0: +(g.i === 0 ? 0 : clock + 0.05).toFixed(3), speech: +start.toFixed(3), end: +end.toFixed(3), marks, subs: [first0, subs.length] });
+    clock = end + (g.role === 'match' || g.role === 'why' ? HOLD : 0);
   }
   const T = +(clock + TAIL).toFixed(3); // story length; the film is COVER + T
   scenes.forEach((s, k) => { s.t1 = k + 1 < scenes.length ? scenes[k + 1].t0 : T; });
   const ms = scenes.filter((s) => s.role === 'match');
-  const sum = scenes.find((s) => s.role === 'summary'), cl = scenes.find((s) => s.role === 'closing');
-  const probe = [-COVER, scenes[0].marks.date + 0.9, ...ms.flatMap((s) => [s.marks.pick + 0.6, s.marks.result + 1.0]), sum.marks.rate + 1.4, cl.marks.line2 + 0.8, T - 0.3].map((t) => +(Math.min(t, T - 0.05) + COVER).toFixed(2));
+  const ws = scenes.filter((s) => s.role === 'why'), sum = scenes.find((s) => s.role === 'summary'), cl = scenes.find((s) => s.role === 'closing');
+  const probe = [-COVER, scenes[0].marks.date + 0.9, ...ms.flatMap((s) => [s.marks.pick + 0.6, s.marks.result + 1.0]), ...ws.flatMap((s) => [s.marks.xg + 1.2, s.marks.sot + 1.0, s.marks.goals + 1.8, s.marks.lesson + 1.2]), sum.marks.rate + 1.4, cl.marks.line2 + 0.8, T - 0.3].map((t) => +(Math.min(t, T - 0.05) + COVER).toFixed(2));
   // segs, subs, scenes and marks run on the story clock; T, frames and probe are film time (cover + story)
   const TL = { key: 'recap', page: 'recap.html', type: 'recap', T: +(COVER + T).toFixed(3), cover: COVER, fps: 30, frames: Math.round((COVER + T) * 30), tempo: TEMPO, segs: out, subs, scenes, probe,
-    facts: { date: facts.date, date_th: facts.date_th, date_short: facts.date_short, summary: facts.summary, matches: segs.filter((g) => g.match).map((g) => ({ ...g.match, head: g.head })) } };
+    facts: { date: facts.date, date_th: facts.date_th, date_short: facts.date_short, summary: facts.summary, matches: segs.filter((g) => g.role === 'match').map((g) => ({ ...g.match, head: g.head })) } };
   writeJson(path.join(ODIR, 'timeline.json'), TL);
   console.log('recap T', TL.T, `(cover ${COVER} + story ${T}) ·`, scenes.map((s) => `${s.key} ${(s.t0 + COVER).toFixed(2)}`).join(' / '));
   for (const s of subs) console.log('  ', (s.t0 + COVER).toFixed(2), (s.t1 + COVER).toFixed(2), s.onscreen ? '(on screen)' : '', s.show);
@@ -156,14 +169,25 @@ function storySound(TL, T) {
     groove(s.t0 + 0.2, s.marks.pick, 0.8);
     for (let k = 0; k < 6; k++) flap(s.marks.score + k * 0.07, 0.6 + 0.08 * k);
     kick(sfx, s.marks.score + 0.45, 0.4);
-    chord(mus, s.marks.pick, s.marks.result - s.marks.pick, [57, 60, 64, 69], 0.6, 900);
-    { let tt = s.marks.pick + 0.15; while (tt < s.marks.result - 0.05) { const u = (tt - s.marks.pick) / (s.marks.result - s.marks.pick); snare(sfx, tt, 0.08 + 0.22 * u); tt += 0.12 / (1 + 2 * u); } }
+    const postponed = TL.facts.matches.find((m) => m.key === s.key).postponed;
+    if (!postponed) chord(mus, s.marks.pick, s.marks.result - s.marks.pick, [57, 60, 64, 69], 0.6, 900);
+    if (!postponed) { let tt = s.marks.pick + 0.15; while (tt < s.marks.result - 0.05) { const u = (tt - s.marks.pick) / (s.marks.result - s.marks.pick); snare(sfx, tt, 0.08 + 0.22 * u); tt += 0.12 / (1 + 2 * u); } }
     const R = s.marks.result, st = statusOf(s.key), good = st === 'WIN' || st === 'HALF_WIN', bad = st === 'LOSS' || st === 'HALF_LOSS';
-    boom(sfx, R, good ? 0.6 : 0.5);
+    boom(sfx, R, good ? 0.6 : postponed ? 0.3 : 0.5);
     if (good) { bell(sfx, R, 76, 0.8, -0.2); bell(sfx, R + 0.09, 81, 0.8, 0.2); bell(sfx, R + 0.18, 88, 0.9, 0); crowd(sfx, R - 0.05, 2.4, 0.22, (t) => Math.min(1, t / 0.15) * Math.exp(-Math.max(0, t - 0.5) * 1.3)); }
     else if (bad) { bassNote(mus, R, 0.55, 28, 0.55); bassNote(mus, R + 0.02, 0.5, 40, 0.25); crowd(sfx, R + 0.05, 1.6, 0.08, (t) => Math.min(1, t / 0.3) * Math.exp(-t * 1.6)); }
     else bell(sfx, R, 81, 0.6, 0);
     groove(R, s.t1, 0.85);
+  }
+  // why: a data-desk bed, ticks as the bars fill, a kick per goal on the timeline, a soft hit on the lesson
+  for (const s of sc.filter((x) => x.role === 'why')) {
+    whoosh(sfx, s.t0 - 0.1, 0.5, 0.35, 0); boom(sfx, s.t0 + 0.15, 0.3);
+    groove(s.t0 + 0.2, s.t1, 0.7);
+    chord(mus, s.t0 + 0.2, s.t1 - s.t0 - 0.2, [57, 60, 64, 67], 0.35, 800);
+    for (const k of ['xg', 'sot']) { whoosh(sfx, s.marks[k] - 0.1, 0.35, 0.2, k === 'xg' ? -0.4 : 0.4); for (let n = 0; n < 6; n++) tick(s.marks[k] + 0.1 + n * 0.08, 0.7); }
+    const m = TL.facts.matches.find((x) => `${x.key}-why` === s.key);
+    (m ? m.goals : []).forEach((g, k) => { kick(sfx, s.marks.goals + 0.3 + k * 0.45, 0.32); bell(sfx, s.marks.goals + 0.3 + k * 0.45, g.side === 'home' ? 76 : 69, 0.35, g.side === 'home' ? -0.4 : 0.4); });
+    kick(sfx, s.marks.lesson, 0.35); noiseHit(sfx, s.marks.lesson, 0.9, 2, 10000, 2500, 0.15);
   }
   // summary: dashboard build, count-up ticks, a hit on the rate
   whoosh(sfx, sum.t0 - 0.1, 0.55, 0.45, 0); boom(sfx, sum.t0 + 0.2, 0.4);

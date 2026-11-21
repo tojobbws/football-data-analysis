@@ -2,6 +2,7 @@
 // The site logo on a white plate, a gold title, the date, every team of the list in pick pairs (real logos only)
 // and the เข็มทิศเกม title. Every frame is complete from frame 0; it only breathes, then zooms out into the page.
 // usage: const cover = makeCover({ C, title, dateHTML, pairs: [{ home: { logo }, away: { logo } }], before: <element> });
+//        a pair may also carry score ('1-1', shown in place of VS) and badge (an image on the card's corner): the recap's cover of right picks
 //        cover(t) on every seek (t = film time); C = 0 -> no cover.
 (function () {
   const CSS = `
@@ -22,6 +23,12 @@
 .cvp .pl{border-radius:50%;background:radial-gradient(circle at 38% 30%,#fff 0%,#eef3fb 45%,#cfd9ea 100%);box-shadow:0 0 0 6px #f6b72a,0 0 0 10px #3a2203,0 14px 30px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;flex:none}
 .cvp .pl img{width:68%;height:68%;object-fit:contain}
 .cvp .vs{font-family:Barlow;font-weight:900;color:#fbbf24;text-shadow:0 4px 0 #3a2203}
+.cvp{position:relative}
+.cvp .cvc{display:flex;flex-direction:column;align-items:center;gap:10px}
+.cvp .cvr{display:flex;align-items:center;justify-content:center}
+.cvp .nt{font-weight:700;line-height:1.25;white-space:nowrap;color:#fff;text-shadow:0 4px 0 rgba(0,0,0,.45)}
+.cvp .sc{font-family:Barlow;font-weight:900;color:#fff;letter-spacing:2px;white-space:nowrap;text-shadow:0 5px 0 rgba(0,0,0,.45)}
+.cvp .bd{position:absolute;right:-14px;top:-26px;height:92px;width:auto;filter:drop-shadow(0 8px 16px rgba(0,0,0,.55));transform:rotate(6deg)}
 #cvTitle{position:absolute;left:540px;top:1430px;width:600px;margin-left:-300px}
 #cvTitle img{display:block;width:600px;filter:drop-shadow(0 16px 30px rgba(0,0,0,.6))}`;
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
@@ -30,7 +37,8 @@
   const lerp = (a, b, u) => a + (b - a) * u;
   const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
-  window.makeCover = function ({ C, title, dateHTML, pairs, before }) {
+  // layout (optional): { cols, top, room, cardW } overrides the grid; the recap's cover of right picks uses one wide column
+  window.makeCover = function ({ C, title, dateHTML, pairs, before, layout = {} }) {
     if (!C) return () => {};
     const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
     const root = document.createElement('div'); root.id = 'cover';
@@ -44,10 +52,16 @@
       <div id="cvTitle"><img src="brand/compass-picks-title.webp"></div></div>`;
     before.parentNode.insertBefore(root, before);
     // one card per match: one column for 1-2 matches, two columns from 3; the cards shrink to fit the room
-    const n = pairs.length, cols = n <= 2 ? 1 : 2, rows = Math.ceil(n / cols);
-    const top = 770, room = 620, gap = 26, cardH = Math.min(n <= 2 ? 280 : 240, (room - (rows - 1) * gap) / rows), pl = Math.round(cardH * 0.7), cardW = cols === 1 ? 780 : 470;
+    const n = pairs.length, cols = layout.cols || (n <= 2 ? 1 : 2), rows = Math.ceil(n / cols);
+    const top = layout.top || 770, room = layout.room || 620, gap = 26, cardH = Math.min(n <= 2 ? 280 : 240, (room - (rows - 1) * gap) / rows), pl = Math.round(cardH * 0.7), cardW = layout.cardW || (cols === 1 ? 780 : 470);
     const g = root.querySelector('#cvGrid'); g.style.top = top + 'px'; g.style.height = room + 'px'; g.style.gap = `${gap}px 30px`;
-    g.innerHTML = pairs.map((m) => `<div class="cvp" style="width:${cardW}px;height:${cardH}px;gap:${Math.round(pl * 0.18)}px"><div class="pl" style="width:${pl}px;height:${pl}px"><img src="${m.home.logo}"></div><div class="vs" style="font-size:${Math.round(pl * 0.38)}px">VS</div><div class="pl" style="width:${pl}px;height:${pl}px"><img src="${m.away.logo}"></div></div>`).join('');
+    // a pair with a note (the recap's pick words) gets smaller logos and the note on a line under them
+    const row = (m, p) => `<div class="pl" style="width:${p}px;height:${p}px"><img src="${m.home.logo}"></div>${m.score ? `<div class="sc" style="font-size:${Math.round(p * 0.5)}px">${esc(m.score)}</div>` : `<div class="vs" style="font-size:${Math.round(p * 0.38)}px">VS</div>`}<div class="pl" style="width:${p}px;height:${p}px"><img src="${m.away.logo}"></div>`;
+    g.innerHTML = pairs.map((m) => {
+      const p = m.note ? Math.round(cardH * 0.5) : pl, gp = `gap:${Math.round(p * 0.18)}px`;
+      const body = m.note ? `<div class="cvc"><div class="cvr" style="${gp}">${row(m, p)}</div><div class="nt" style="font-size:${Math.round(cardH * 0.2)}px">${esc(m.note)}</div></div>` : row(m, p);
+      return `<div class="cvp" style="width:${cardW}px;height:${cardH}px;${m.note ? '' : gp}">${body}${m.badge ? `<img class="bd" src="${m.badge}">` : ''}</div>`;
+    }).join('');
     const cv = root.querySelector('.cv'), sheen = root.querySelector('#cvLogo .sheen'), cards = [...root.querySelectorAll('.cvp')];
     return function cover(t) {
       const x = io(prog(t, C - 0.22, C + 0.12));

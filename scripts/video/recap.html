@@ -71,6 +71,47 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#050210}
 .res .mk{position:relative;width:210px;height:210px;flex:none}
 .res .mk svg{position:absolute;inset:0;overflow:visible}
 .res .word{font-weight:700;font-size:118px;line-height:1.15;white-space:nowrap}
+/* ---------- why: the match story behind a result ---------- */
+#wwrap{position:absolute;inset:0;z-index:6}
+.wy{position:absolute;inset:0;visibility:hidden}
+.wy .head{position:absolute;left:0;top:176px;width:1080px;text-align:center}
+.wy .head .pill{display:inline-block;padding:12px 46px 14px;border-radius:999px;background:linear-gradient(180deg,#a5f3fc,#22d3ee 60%,#0891b2);color:#03161d;font-weight:700;font-size:56px;line-height:1.12;box-shadow:0 7px 0 #0b4a5c,0 18px 40px rgba(34,211,238,.35);white-space:nowrap}
+.wy .sc{position:absolute;left:60px;top:300px;width:960px;height:112px;border-radius:30px;background:rgba(22,8,52,.88);box-shadow:inset 0 0 0 2px rgba(190,150,255,.35);display:flex;align-items:center;justify-content:center;gap:22px}
+.wy .sc .lg3{width:80px;height:80px;border-radius:50%;background:#eef3fb;padding:9px;flex:none}
+.wy .sc .lg3 img{width:100%;height:100%;object-fit:contain}
+.wy .sc .nm{font-family:Barlow;font-weight:800;font-size:46px;text-transform:uppercase;color:#f2edff;white-space:nowrap}
+.wy .sc .g{font-family:Barlow;font-weight:900;font-size:76px;color:#fff;padding:0 8px}
+.wy .prev{position:absolute;left:0;top:432px;width:1080px;text-align:center}
+.wy .prev div{display:inline-block;padding:8px 28px 10px;border-radius:999px;background:rgba(34,211,238,.14);box-shadow:inset 0 0 0 2px rgba(34,211,238,.5);font-weight:700;font-size:34px;color:#cffafe;white-space:nowrap}
+.wy .prev b{font-family:Barlow;font-weight:900;font-size:40px;color:#fff;margin:0 6px}
+.wy .rows{position:absolute;left:60px;top:516px;width:960px}
+.wy .row{position:relative;height:100px;margin-bottom:8px;border-radius:24px;background:linear-gradient(180deg,rgba(44,18,100,.82),rgba(15,6,38,.9));box-shadow:inset 0 0 0 2px var(--rc,rgba(190,150,255,.25)),0 0 var(--rg,0px) var(--rc,rgba(0,0,0,0))}
+.wy .row .lab{position:absolute;left:0;top:10px;width:960px;text-align:center;font-weight:700;font-size:30px;color:#ded2ff;white-space:nowrap}
+.wy .row .v{position:absolute;top:8px;font-family:Barlow;font-weight:900;font-size:62px;line-height:1;color:#fff;width:150px}
+.wy .row .v.h{left:26px;text-align:left}.wy .row .v.a{right:26px;text-align:right}
+.wy .row .bar{position:absolute;top:66px;height:16px;border-radius:8px}
+.wy .row .bar.h{right:490px;background:linear-gradient(270deg,#22d3ee,#22d3ee);transform-origin:100% 50%}
+.wy .row .bar.a{left:490px;background:linear-gradient(90deg,#c4a5ff,#8b5cf6);transform-origin:0 50%}
+.wy .row .track{position:absolute;top:66px;left:80px;width:800px;height:16px;border-radius:8px;background:rgba(255,255,255,.07)}
+.wy .tl{position:absolute;left:60px;top:960px;width:960px;height:236px;border-radius:30px;background:linear-gradient(180deg,rgba(44,18,100,.82),rgba(15,6,38,.9));box-shadow:inset 0 0 0 2px rgba(190,150,255,.25)}
+.wy .tl .lab{position:absolute;left:0;top:12px;width:960px;text-align:center;font-weight:700;font-size:30px;color:#ded2ff}
+.wy .tl .line{position:absolute;left:70px;top:128px;width:820px;height:8px;border-radius:4px;background:rgba(255,255,255,.18)}
+.wy .tl .fill{position:absolute;left:0;top:0;height:100%;border-radius:4px;background:linear-gradient(90deg,#baa8e8,#fff);transform-origin:0 50%}
+.wy .tl .tk{position:absolute;top:22px;font-family:Barlow;font-weight:700;font-size:26px;color:#a795da;transform:translateX(-50%)}
+.wy .tl .ht{position:absolute;top:-12px;width:4px;height:32px;margin-left:-2px;background:rgba(255,255,255,.35);border-radius:2px}
+.wy .pin{position:absolute;width:0;height:0}
+.wy .pin .dot{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;box-shadow:0 0 0 4px #14062e}
+.wy .pin .cap{position:absolute;left:0;transform:translateX(-50%);display:flex;align-items:center;gap:8px;white-space:nowrap;padding:5px 14px 5px 6px;border-radius:999px;background:rgba(15,5,36,.95);box-shadow:inset 0 0 0 2px var(--pc)}
+.wy .pin .cap img{width:40px;height:40px;border-radius:50%;background:#eef3fb;padding:4px}
+.wy .pin .cap span{font-weight:700;font-size:26px;color:#fff}
+.wy .pin .cap b{font-family:Barlow;font-weight:900;font-size:30px;color:var(--pc)}
+.wy .pin .cap.up{top:-68px}.wy .pin .cap.dn{top:24px}
+.wy .gap{position:absolute;left:60px;top:1226px;width:960px;height:150px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.wy .gap>div{border-radius:28px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(44,18,100,.9),rgba(15,6,38,.95))}
+.wy .gap .k{font-weight:700;font-size:30px;color:#baa8e8;line-height:1.2}
+.wy .gap .v{font-weight:700;font-size:48px;line-height:1.25;white-space:nowrap}
+.wy .gap .p{box-shadow:inset 0 0 0 3px rgba(34,211,238,.7)}.wy .gap .p .v{color:var(--acc)}
+.wy .gap .r{box-shadow:inset 0 0 0 3px rgba(239,68,68,.8),0 0 50px rgba(239,68,68,.35)}.wy .gap .r .v{color:#ff6b6b}
 /* ---------- dashboard ---------- */
 #dash{position:absolute;inset:0;z-index:7}
 #dHead{position:absolute;left:0;top:190px;width:1080px;text-align:center}
@@ -127,6 +168,12 @@ canvas{position:absolute;left:0;top:0;pointer-events:none}
 #film #cover .glow{background:radial-gradient(closest-side,rgba(34,211,238,.22),rgba(34,211,238,0))}
 #film #cover .cb{background:linear-gradient(180deg,rgba(175,120,255,.42),rgba(125,60,240,.08) 55%,rgba(0,0,0,0) 80%)}
 #film #cover .cb.g{background:linear-gradient(180deg,rgba(70,230,255,.4),rgba(20,180,230,.08) 55%,rgba(0,0,0,0) 80%)}
+/* cover of right picks: wide rows, logos + score on the left, the big ทายถูก badge on the right, the title lower */
+#film #cover #cvH2{font-size:74px}
+#film #cover #cvH2 b{color:#4ade80}
+#film #cover #cvTitle{top:1580px}
+#film #cover .cvp:has(.bd){box-sizing:border-box;padding-right:230px;box-shadow:inset 0 0 0 4px rgba(74,222,128,.75),0 24px 60px rgba(0,0,0,.55)}
+#film #cover .cvp .bd{right:36px;top:50%;height:86%;transform:translateY(-50%) rotate(-4deg)}
 #film #cvLogo{box-shadow:0 0 0 6px rgba(34,211,238,.95),0 0 0 12px #0b3a4a,0 30px 80px rgba(0,0,0,.6)}
 #film #cvH1 .pill{background:linear-gradient(180deg,#a5f3fc,#22d3ee 60%,#0891b2);color:#03161d;box-shadow:0 8px 0 #0b4a5c,0 22px 60px rgba(34,211,238,.45)}
 #film #cvH2{text-shadow:0 5px 0 #14062e,0 12px 30px rgba(0,0,0,.7)}
@@ -149,6 +196,7 @@ canvas{position:absolute;left:0;top:0;pointer-events:none}
       <div id="oH2"></div>
     </div>
     <div id="mwrap"></div>
+    <div id="wwrap"></div>
     <div id="dash">
       <div id="dHead"><div class="pill">สรุปผลงาน</div></div>
       <div id="dDate"></div>
@@ -190,10 +238,12 @@ function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const
 // ---------- data ----------
 // the film is a cover (0 -> C) then the story; scenes, subs and marks run on the story clock, TL.T is the whole film
 const TL=window.TL,F=TL.facts,C=TL.cover||0,TF=TL.T,T=TF-C,subs=TL.subs;
-const SC=TL.scenes,OPEN=SC[0],MS=SC.filter(s=>s.role==='match'),SUM=SC.find(s=>s.role==='summary'),CL=SC.find(s=>s.role==='closing');
+const SC=TL.scenes,OPEN=SC[0],MS=SC.filter(s=>s.role==='match'),WS=SC.filter(s=>s.role==='why'),SUM=SC.find(s=>s.role==='summary'),CL=SC.find(s=>s.role==='closing');
 const S=F.summary;
 const good=st=>st==='WIN'||st==='HALF_WIN',bad=st=>st==='LOSS'||st==='HALF_LOSS';
 const tone=st=>good(st)?{c:'#22c55e',c2:'#16a34a',glow:'rgba(34,197,94,.75)'}:bad(st)?{c:'#ef4444',c2:'#b91c1c',glow:'rgba(239,68,68,.75)'}:{c:'#e2e8f0',c2:'#94a3b8',glow:'rgba(226,232,240,.5)'};
+// a postponed match (recap-fetch.cjs): no score, a lilac clock instead of a result mark
+const isPP=m=>m.postponed&&m.status==='PENDING',PP={c:'#c4a5ff',c2:'#7c5cc4',glow:'rgba(196,165,255,.6)'};
 $('oH2').innerHTML=`ประจำ<b>${esc(F.date_th)}</b>`;
 $('dDate').textContent=`คู่น่าจับตา ประจำ${F.date_th}`;
 
@@ -201,7 +251,7 @@ $('dDate').textContent=`คู่น่าจับตา ประจำ${F.dat
 const cards=F.matches.map((m,k)=>{
   const d=document.createElement('div');d.className='mc';
   const side=m.pick.side==='home'?m.home:m.pick.side==='away'?m.away:null;
-  const tc=tone(m.status);
+  const tc=isPP(m)?PP:tone(m.status);
   const nameFs=n=>n.length>16?36:n.length>12?40:46;
   const fit=(s,max,w)=>Math.min(max,Math.floor(w/(s.length*.47)));
   d.innerHTML=`<div class="tag"><div class="pill">คู่ที่ ${k+1}<small>/ ${F.matches.length}</small></div></div>
@@ -209,17 +259,17 @@ const cards=F.matches.map((m,k)=>{
     <div class="board"><div class="sweep"></div>
       <div class="plateR h"><img src="${m.home.logo}"></div><div class="plateR a"><img src="${m.away.logo}"></div>
       <div class="tn h" style="font-size:${nameFs(m.home.name)}px">${esc(m.home.name)}</div><div class="tn a" style="font-size:${nameFs(m.away.name)}px">${esc(m.away.name)}</div>
-      <div class="score"><div class="flap"><span>${m.home.goals}</span></div><div class="dash">-</div><div class="flap"><span>${m.away.goals}</span></div></div>
-      <div class="ft">จบเกม</div>
+      <div class="score"><div class="flap"><span>${m.home.goals??'–'}</span></div><div class="dash">-</div><div class="flap"><span>${m.away.goals??'–'}</span></div></div>
+      ${isPP(m)?`<div class="ft" style="left:320px;width:360px;font-size:34px;letter-spacing:1px">เลื่อนไป ${esc(m.kickoff_th.split('· ').pop())}</div>`:'<div class="ft">จบเกม</div>'}
     </div>
     <div class="pk"><div class="cm"><img src="brand/compass-mark.webp"></div><div class="txt"><div class="k">เข็มทิศเกมเลือก</div><div class="v" style="font-size:${fit(m.pick.label,84,side?560:680)}px">${esc(m.pick.label)}</div></div>${side?`<div class="tl"><img src="${side.logo}"></div>`:''}</div>
-    <div class="res"><div class="mk"><svg viewBox="0 0 210 210" width="210" height="210"></svg></div><div class="word" style="color:${tc.c}">${esc(m.result)}</div></div>`;
+    <div class="res"><div class="mk"><svg viewBox="0 0 210 210" width="210" height="210"></svg></div><div class="word" style="color:${tc.c}${isPP(m)?';font-size:84px':''}">${esc(m.result)}</div></div>`;
   $('mwrap').appendChild(d);
   const svg=d.querySelector('.mk svg');
   const ringBg=el('circle',{cx:105,cy:105,r:92,fill:tc.c2,opacity:.25},svg);
   const ring=el('circle',{cx:105,cy:105,r:92,fill:'none',stroke:tc.c,'stroke-width':14,'stroke-linecap':'round',transform:'rotate(-90 105 105)'},svg);
   const glow=el('circle',{cx:105,cy:105,r:92,fill:'none',stroke:tc.c,'stroke-width':40,opacity:.25,filter:'blur(8px)'},svg);
-  const paths=good(m.status)?['M 60 108 L 92 140 L 152 74']:bad(m.status)?['M 68 68 L 142 142','M 142 68 L 68 142']:['M 64 105 L 146 105'];
+  const paths=isPP(m)?['M 105 50 L 105 108','M 105 108 L 146 132']:good(m.status)?['M 60 108 L 92 140 L 152 74']:bad(m.status)?['M 68 68 L 142 142','M 142 68 L 68 142']:['M 64 105 L 146 105'];
   const strokes=paths.map(p=>el('path',{d:p,fill:'none',stroke:'#fff','stroke-width':24,'stroke-linecap':'round','stroke-linejoin':'round'},svg));
   const shock=el('circle',{cx:105,cy:105,r:100,fill:'none',stroke:tc.c,'stroke-width':10,opacity:0},svg);
   const ringLen=2*Math.PI*92;ring.setAttribute('stroke-dasharray',`${ringLen} ${ringLen}`);
@@ -227,6 +277,31 @@ const cards=F.matches.map((m,k)=>{
   return {d,m,tc,ring,ringLen,strokes,shock,glow,ringBg,board:d.querySelector('.board'),sweep:d.querySelector('.sweep'),flaps:[...d.querySelectorAll('.flap span')],tag:d.querySelector('.tag'),lg:d.querySelector('.lg'),
     plates:[...d.querySelectorAll('.plateR')],names:[...d.querySelectorAll('.tn')],ft:d.querySelector('.ft'),pk:d.querySelector('.pk'),res:d.querySelector('.res'),mk:d.querySelector('.mk'),word:d.querySelector('.word'),
     pickPlate:m.pick.side==='home'?0:m.pick.side==='away'?1:-1};
+});
+
+// ---------- why: stats, goal timeline and the margin, all read from facts ----------
+const fmt=(k,v)=>v==null?'-':k==='xg'?Number(v).toFixed(2):k==='poss'?v+'%':String(v);
+const surname=n=>String(n).trim().split(/\s+/).pop();
+const whys=WS.map(s=>{
+  const m=F.matches.find(x=>`${x.key}-why`===s.key);const st=m.stats;
+  const d=document.createElement('div');d.className='wy';
+  const ROWS=[['xg','โอกาสยิงประตู (xG)'],['shots','ยิงทั้งหมด'],['sot','ยิงตรงกรอบ'],['poss','ครองบอล']].filter(([k])=>st[k]&&st[k][0]!=null&&st[k][1]!=null);
+  let gh=0,ga=0;const pins=m.goals.map(g=>{g.side==='home'?gh++:ga++;return {...g,run:`${gh}-${ga}`};});
+  const margin=m.home.goals-m.away.goals,winner=margin>0?m.home.name:margin<0?m.away.name:null;
+  const real=winner?`${winner} ชนะห่าง ${Math.abs(margin)} ลูก`:'เสมอ';
+  const X=min=>Math.min(820,Math.max(0,min/90*820));
+  d.innerHTML=`<div class="head"><div class="pill">ทำไมถึงพลาด</div></div>
+    <div class="sc"><div class="lg3"><img src="${m.home.logo}"></div><div class="nm">${esc(m.home.name)}</div><div class="g">${m.home.goals} - ${m.away.goals}</div><div class="nm">${esc(m.away.name)}</div><div class="lg3"><img src="${m.away.logo}"></div></div>
+    ${m.prev?`<div class="prev"><div>นัดก่อนหน้า ${esc(m.prev.home)}<b>${m.prev.goals[0]}-${m.prev.goals[1]}</b>${esc(m.prev.away)}</div></div>`:''}
+    <div class="rows">${ROWS.map(([k,lab])=>{const [h,a]=st[k],sum=(h+a)||1;return `<div class="row" data-k="${k}"><div class="track"></div><div class="bar h" style="width:${410*h/sum}px"></div><div class="bar a" style="width:${410*a/sum}px"></div><div class="v h">${fmt(k,h)}</div><div class="lab">${lab}</div><div class="v a">${fmt(k,a)}</div></div>`;}).join('')}</div>
+    <div class="tl"><div class="lab">เส้นทางประตู</div><div class="line"><div class="fill"></div>
+      ${[0,45,90].map(n=>`<div class="tk" style="left:${X(n)}px">${n}′</div>`).join('')}<div class="ht" style="left:${X(45)}px"></div>
+      ${pins.map(p=>{const tm=p.side==='home'?m.home:m.away,pc=p.side==='home'?'#22d3ee':'#c4a5ff';return `<div class="pin" style="left:${X(p.min)}px;top:4px;--pc:${pc}"><div class="dot" style="background:${pc}"></div><div class="cap ${p.side==='home'?'up':'dn'}"><img src="${tm.logo}"><b>${p.min}′</b><span>${esc(surname(p.player))}${p.penalty?' (จุดโทษ)':p.own_goal?' (ทำเข้าประตูตัวเอง)':''}</span><b>${p.run}</b></div></div>`;}).join('')}
+    </div></div>
+    <div class="gap"><div class="p"><div class="k">ที่เลือก</div><div class="v">${esc(m.pick.fan.label)}</div></div><div class="r"><div class="k">ผลจริง</div><div class="v">${esc(real)}</div></div></div>`;
+  $('wwrap').appendChild(d);
+  d.querySelectorAll('.gap .v').forEach(v=>{const n=v.textContent.length;v.style.fontSize=Math.min(48,Math.floor(430/(n*.5)))+'px';});
+  return {s,m,d,head:d.querySelector('.head'),sc:d.querySelector('.sc'),prev:d.querySelector('.prev'),rows:[...d.querySelectorAll('.row')],tl:d.querySelector('.tl'),fill:d.querySelector('.tl .fill'),pins:[...d.querySelectorAll('.pin')],pinData:pins,gap:[...d.querySelectorAll('.gap>div')]};
 });
 
 // ---------- dashboard ----------
@@ -239,22 +314,32 @@ const gArc=el('circle',{cx:220,cy:220,r:164,fill:'none',stroke:'url(#gg)','strok
 const gGlow=el('circle',{cx:220,cy:220,r:164,fill:'none',stroke:'#22d3ee','stroke-width':56,opacity:.2,filter:'blur(10px)',transform:'rotate(-90 220 220)'},gsv);
 const gLen=2*Math.PI*164;[gArc,gGlow].forEach(c=>c.setAttribute('stroke-dasharray',`0 ${gLen}`));
 const gDot=el('circle',{cx:220,cy:56,r:20,fill:'#fff',opacity:0},gsv);
-$('dNote').textContent=S.right+S.wrong>0?'อัตราทายถูก นับแบบเดียวกับหน้าผลงานบนเว็บ':'ยังไม่มีคู่ที่รู้ผล';
+$('dNote').textContent=S.right+S.wrong>0?(S.postponed?'อัตราทายถูก นับเฉพาะคู่ที่แข่งจบแล้ว แบบเดียวกับหน้าผลงานบนเว็บ':'อัตราทายถูก นับแบบเดียวกับหน้าผลงานบนเว็บ'):'ยังไม่มีคู่ที่รู้ผล';
 $('chips').innerHTML=F.matches.map(m=>`<div class="chip"><div class="lg2"><img src="${m.home.logo}"></div><div class="lg2"><img src="${m.away.logo}"></div>${m.badge?`<img class="bd" src="${m.badge}">`:''}</div>`).join('');
 const chipEls=[...document.querySelectorAll('.chip')];
 const icon=(kind)=>kind==='total'?`<svg viewBox="0 0 84 84" width="84" height="84"><circle cx="42" cy="42" r="40" fill="rgba(34,211,238,.18)"/><circle cx="42" cy="42" r="24" fill="none" stroke="#22d3ee" stroke-width="5"/><polygon points="42,24 49,33 46,44 38,44 35,33" fill="#22d3ee"/></svg>`:
   kind==='win'?`<svg viewBox="0 0 84 84" width="84" height="84"><circle cx="42" cy="42" r="40" fill="#16a34a"/><path d="M 24 43 L 37 56 L 61 30" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>`:
   kind==='loss'?`<svg viewBox="0 0 84 84" width="84" height="84"><circle cx="42" cy="42" r="40" fill="#b91c1c"/><path d="M 28 28 L 56 56 M 56 28 L 28 56" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/></svg>`:
+  kind==='pp'?`<svg viewBox="0 0 84 84" width="84" height="84"><circle cx="42" cy="42" r="40" fill="rgba(196,165,255,.22)"/><circle cx="42" cy="42" r="24" fill="none" stroke="#c4a5ff" stroke-width="5"/><path d="M 42 28 L 42 43 L 53 50" fill="none" stroke="#c4a5ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>`:
   `<svg viewBox="0 0 84 84" width="84" height="84"><circle cx="42" cy="42" r="40" fill="rgba(226,232,240,.18)"/><path d="M 42 2 A 40 40 0 0 1 42 82 Z" fill="#16a34a" opacity=".8"/><path d="M 42 2 A 40 40 0 0 0 42 82 Z" fill="#b91c1c" opacity=".8"/><path d="M 26 42 L 58 42" stroke="#fff" stroke-width="8" stroke-linecap="round"/></svg>`;
 const TILES=[
   {kind:'total',n:S.total,lab:'วิเคราะห์ทั้งหมด',sub:'คู่',col:'#22d3ee',tc:'rgba(34,211,238,.55)',at:SUM.marks.total},
   {kind:'win',n:S.shown_win,lab:'ทายถูก',sub:'คู่',col:'#22c55e',tc:'rgba(34,197,94,.6)',at:SUM.marks.win},
   {kind:'loss',n:S.shown_loss,lab:'ทายผิด',sub:'คู่',col:'#ef4444',tc:'rgba(239,68,68,.6)',at:SUM.marks.loss},
   // no ถูกครึ่ง / ผิดครึ่ง on social (owner 2026-11-11): a half result is counted with the whole ones above
-  {kind:'half',n:S.push+S.void,lab:'เสมอตัว',sub:S.void?`โมฆะ ${S.void}`:'คู่',col:'#e2e8f0',tc:'rgba(226,232,240,.35)',at:SUM.marks.loss+.4,sm:true}];
+  S.postponed?{kind:'pp',n:S.postponed,lab:'เลื่อนแข่ง',sub:S.push+S.void?`เสมอตัว ${S.push+S.void}`:'คู่',col:'#c4a5ff',tc:'rgba(196,165,255,.45)',at:SUM.marks.loss+.4,sm:true}
+  :{kind:'half',n:S.push+S.void,lab:'เสมอตัว',sub:S.void?`โมฆะ ${S.void}`:'คู่',col:'#e2e8f0',tc:'rgba(226,232,240,.35)',at:SUM.marks.loss+.4,sm:true}];
 $('tiles').innerHTML=TILES.map(x=>`<div class="tile" style="--tc:${x.tc}"><div class="ic">${icon(x.kind)}</div><div class="body"><div class="num" style="color:${x.col}">0</div><div class="lab">${x.lab}${x.sub?`<small>${x.sub}</small>`:''}</div></div></div>`).join('');
 const tileEls=[...document.querySelectorAll('.tile')];
-const cover=makeCover({C,title:'สรุปผลงานการทำนาย',dateHTML:`ประจำ<b>${esc(F.date_th)}</b>`,pairs:F.matches,before:$('vig')});
+// the cover shows the picks that came out right (owner 2026-11-18) with the real score and the ทายถูก badge, and says how many of how many;
+// a day with none right keeps every pair. The film after it still shows every pick, right or wrong.
+const RIGHT=F.matches.filter(m=>m.result==='ทายถูก');
+const cover=RIGHT.length?makeCover({C,title:'สรุปผลงานการทำนาย',dateHTML:`<b>ทายถูก ${S.shown_win}</b> จาก ${S.total} คู่ · ${esc(F.date_short)}`,
+    // note: the match's pick subtitle (it shows pick.fan.text verbatim; recap.cjs checks it), e.g. เลือกสวีเดน ไม่แพ้
+    pairs:RIGHT.map(m=>{const sc=MS.find(s=>s.key===m.key),pk=sc?subs.slice(sc.subs[0],sc.subs[1]).find(p=>p.show.startsWith('เลือก')&&p.show.includes(m.pick.fan.text)):null;
+      return {...m,score:`${m.home.goals}-${m.away.goals}`,badge:'brand/result-win.webp',note:pk?pk.show:''};}),before:$('vig'),
+    layout:RIGHT.length<=3?{cols:1,top:750,room:780,cardW:980}:{top:750,room:780}})
+  :makeCover({C,title:'สรุปผลงานการทำนาย',dateHTML:`ประจำ<b>${esc(F.date_th)}</b>`,pairs:F.matches.map(m=>m.finished?{...m,score:`${m.home.goals}-${m.away.goals}`}:m),before:$('vig')});
 
 
 // ---------- stadium ----------
@@ -300,7 +385,7 @@ const subEl=$('sub');let lastSub=-1;
 function subHTML(s){let h=s.show;const marks=[];for(const w of s.hi){const i=h.indexOf(w);if(i>=0)marks.push([i,w]);}marks.sort((a,b)=>a[0]-b[0]);let o='',c=0;marks.forEach(([i,w])=>{if(i<c)return;o+=esc(h.slice(c,i))+`<span class="hi" data-f="${(i+w.length*.3)/h.length}">${esc(w)}</span>`;c=i+w.length;});o+=esc(h.slice(c));return o+'<span class="ul"><i></i></span>';}
 
 // ---------- camera impacts ----------
-const impacts=[[.75,.05],...MS.flatMap(s=>[[s.t0+.25,.02],[s.marks.score+.45,.02],[s.marks.result,.055]]),[SUM.t0+.2,.025],[SUM.marks.rate+1.2,.045],[CL.marks.logo,.04]];
+const impacts=[[.75,.05],...MS.flatMap(s=>[[s.t0+.25,.02],[s.marks.score+.45,.02],[s.marks.result,.055]]),...WS.flatMap(s=>[[s.t0+.2,.015],[s.marks.lesson,.03]]),[SUM.t0+.2,.025],[SUM.marks.rate+1.2,.045],[CL.marks.logo,.04]];
 const beams=[['bm1',-60,-14],['bm2',240,10],['bm3',560,-8],['bm4',820,16]];
 const tr=(e,tf,op)=>{e.style.transform=tf;if(op!==undefined)e.style.opacity=op;};
 const rise=(e,k)=>{e.firstElementChild.style.transform=`translateY(${(1-clamp(k,0,1.2))*105}%)`;};
@@ -352,7 +437,7 @@ function story(t){
     // split-flap score: blank tiles until the score is spoken, then one flip onto the real goals (never a made-up digit)
     const goals=[c.m.home.goals,c.m.away.goals];
     c.flaps.forEach((f,i)=>{const t0=s.marks.score-.05+i*.12,dur=.36;const u=prog(t,t0,t0+dur);
-      f.textContent=u<.5?'':String(goals[i]);
+      f.textContent=u<.5?'':String(goals[i]??'–');
       f.style.transform=`scaleY(${t<t0?1:Math.max(.04,Math.abs(Math.cos(u*Math.PI)))})`;
       f.parentElement.style.boxShadow=t>=t0+dur?`inset 0 0 0 2px rgba(34,211,238,${.9*Math.exp(-(t-t0-dur)*2)+.2}),0 10px 24px rgba(0,0,0,.5)`:'';});
     const ftK=spring(t-s.marks.score-.55,1.8,.7);tr(c.ft,`scale(${clamp(ftK,0,1.2)})`,clamp(ftK*2));
@@ -372,6 +457,31 @@ function story(t){
   // result colour wash
   let wash=0,wcol='';MS.forEach((s,k)=>{const rr=t-s.marks.result;if(rr>=0&&rr<1.2){wash=Math.max(wash,.35*Math.exp(-rr*3));wcol=cards[k].tc.glow;}});
   $('wash').style.opacity=wash;if(wcol)$('wash').style.background=`radial-gradient(circle at 50% 55%,${wcol},rgba(0,0,0,0) 70%)`;
+
+  // ----- why: panel slides in, bars fill on their marks, goals drop on the timeline, the margin stamps -----
+  whys.forEach(w=>{const s=w.s,M=s.marks;
+    const vis=t>=s.t0-.05&&t<s.t1+.1;w.d.style.visibility=vis?'visible':'hidden';if(!vis)return;
+    const a=t-s.t0,fo=io(prog(t,s.t1-.32,s.t1+.08));
+    w.d.style.opacity=1-fo;w.d.style.transform=`scale(${1-.08*fo}) translateY(${fo*-40}px)`;
+    const hk=spring(a-.05,1.6,.72);tr(w.head,`translateY(${(1-hk)*-60}px)`,clamp(hk*2));
+    const sk=spring(a-.2,1.5,.75);tr(w.sc,`translateY(${(1-sk)*-40}px) scale(${.9+.1*clamp(sk)})`,clamp(sk*2));
+    if(w.prev){const pa=M.prev??M.head+.6;const pk=spring(t-pa+.05,1.6,.7);tr(w.prev,`scale(${clamp(pk,0,1.15)})`,clamp(pk*2));}
+    // rows come in together on xG; xG fills first, the rest follow, the on-target row lights up on its mark
+    w.rows.forEach((r,i)=>{const k=r.dataset.k;const rk=spring(t-M.xg+.25-i*.08,1.6,.75);tr(r,`translateX(${(1-rk)*(i%2?140:-140)}px)`,clamp(rk*2));
+      const at=k==='xg'?M.xg+.1:k==='sot'?M.sot+.05:M.xg+.5+i*.12;const u=o5(prog(t,at,at+.6));
+      r.querySelectorAll('.bar').forEach(b=>b.style.transform=`scaleX(${u})`);
+      r.querySelectorAll('.v').forEach(v=>v.style.opacity=clamp(u*2));
+      const hot=k==='xg'?t>=M.xg&&t<M.sot:k==='sot'?t>=M.sot&&t<M.goals:false;
+      const on=k==='xg'?prog(t,M.xg,M.xg+.3)*(1-prog(t,M.sot-.2,M.sot)):k==='sot'?prog(t,M.sot,M.sot+.3)*(1-prog(t,M.goals-.2,M.goals)):0;
+      r.style.setProperty('--rc',hot?(k==='sot'?'rgba(239,68,68,.85)':'rgba(34,211,238,.85)'):'rgba(190,150,255,.25)');r.style.setProperty('--rg',(on*40)+'px');
+      r.style.transform+=` scale(${1+.03*on})`;});
+    const tk=spring(t-M.goals+.35,1.5,.75);tr(w.tl,`translateY(${(1-tk)*80}px)`,clamp(tk*2));
+    const tlEnd=M.goals+.3+Math.max(1,w.pinData.length)*.45;
+    w.fill.style.transform=`scaleX(${io(prog(t,M.goals+.1,tlEnd))})`;
+    w.pins.forEach((p,i)=>{const pt=M.goals+.1+(tlEnd-M.goals-.1)*Math.min(1,w.pinData[i].min/90);const k=spring(t-pt,1.8,.55);tr(p,'',t>=pt?1:0);
+      p.querySelector('.dot').style.transform=`scale(${clamp(k,0,1.4)})`;const cap=p.querySelector('.cap');cap.style.transform=`translateX(-50%) translateY(${(1-clamp(k))*(cap.classList.contains('up')?20:-20)}px) scale(${.6+.4*clamp(k,0,1.1)})`;cap.style.opacity=clamp(k*2);});
+    w.gap.forEach((g,i)=>{const k=spring(t-M.lesson+.15-i*.35,1.7,.6);tr(g,`scale(${t<M.lesson-.15+i*.35?0:lerp(1.3,1,clamp(k,0,1.2))})`,clamp(k*3));});
+  });
 
   // ----- dashboard -----
   const din=t-SUM.t0;const dOut=io(prog(t,CL.t0-.2,CL.t0+.5));
@@ -408,7 +518,7 @@ function story(t){
   // ----- fx canvas -----
   fx.clearRect(0,0,1080,1920);fx.globalCompositeOperation='lighter';
   for(const q of trailsIn){const h=o5(prog(t,q.t0,q.t0+.85))*1.25;if(h>0&&h<1.25)trail(q.p,h,.45,10,q.col);}
-  for(const base of [...MS.map(s=>s.t0-.3),SUM.t0-.3]){for(const q of trailsX){const h=o5(prog(t,base+q.t0,base+q.t0+.7))*1.3;if(h>0&&h<1.3)trail(q.p,h,.5,12,q.col);}}
+  for(const base of [...MS.map(s=>s.t0-.3),...WS.map(s=>s.t0-.3),SUM.t0-.3]){for(const q of trailsX){const h=o5(prog(t,base+q.t0,base+q.t0+.7))*1.3;if(h>0&&h<1.3)trail(q.p,h,.5,12,q.col);}}
   for(const e of embers){const y=((e.y-t*e.v)%1960+1960)%1960-20;const x=e.x+Math.sin(t*1.2+e.ph)*18;const a=(.35+.35*Math.sin(t*3+e.ph))*prog(t,0,.8)*(1-.6*dark);fx.fillStyle=e.gold?`rgba(70,225,255,${a})`:`rgba(195,150,255,${a})`;fx.beginPath();fx.arc(x,y,e.r,0,7);fx.fill();}
   doBurst(t,.75,bursts.open,540,650,goldCol);
   MS.forEach((s,k)=>{const st=cards[k].m.status;if(good(st))doBurst(t,s.marks.result,bursts.res[k],540-140,1230,(a,g)=>g<.5?`rgba(80,230,130,${a})`:goldCol(a));});
