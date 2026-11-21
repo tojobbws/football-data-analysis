@@ -180,7 +180,9 @@ function buildOpening(TL) {
   if (H && hookMatch) {
     const hm = hookMatch, side = H.side, other = side === 'away' ? 'home' : 'away';
     const statHTML = esc(H.stat).replace(/(\d+)/g, '<span class="hnum gold">$1</span>');
-    const [rHome, rAway] = side === 'away' ? [H.rank[0], H.rank[1]] : [H.rank[1], H.rank[0]];
+    // rank is optional: national teams have no table (UEFA Nations League, 2026-11-12)
+    const [rHome, rAway] = !H.rank ? [null, null] : side === 'away' ? [H.rank[0], H.rank[1]] : [H.rank[1], H.rank[0]];
+    const rk = (r, top) => (r == null ? '' : `<b class="${top ? 'top' : ''}">อันดับ ${r}</b>`);
     const arrowD = side === 'away' ? 'M 760 0 C 640 -90 440 -90 330 -10' : 'M 320 0 C 440 -90 640 -90 750 -10';
     const ae = bezEnd(arrowD);
     hook = `<div id="${p}-hook" class="hook">
@@ -188,8 +190,8 @@ function buildOpening(TL) {
   <div class="hko" id="${p}-hko">${esc(hm.kickoff_th.split(' · ')[0])} (เวลาไทย) · <img src="${asset(hm.league_logo)}" alt="">${esc(hm.league)}</div>
   <div class="plate" id="${p}-hH"><div class="halo" id="${p}-hHh"></div><div class="face" id="${p}-hHf"><img src="${asset(hm.home.logo)}" alt=""></div></div>
   <div class="plate" id="${p}-hA"><div class="halo" id="${p}-hAh"></div><div class="face" id="${p}-hAf"><img src="${asset(hm.away.logo)}" alt=""></div></div>
-  <div class="hrank" id="${p}-hrH" style="left:${300 - 160}px">${esc(hm.home.name)}<b class="${side === 'home' ? 'top' : ''}">อันดับ ${rHome}</b></div>
-  <div class="hrank" id="${p}-hrA" style="left:${780 - 160}px">${esc(hm.away.name)}<b class="${side === 'away' ? 'top' : ''}">อันดับ ${rAway}</b></div>
+  <div class="hrank" id="${p}-hrH" style="left:${300 - 160}px">${esc(hm.home.name)}${rk(rHome, side === 'home')}</div>
+  <div class="hrank" id="${p}-hrA" style="left:${780 - 160}px">${esc(hm.away.name)}${rk(rAway, side === 'away')}</div>
   <svg class="harrow" viewBox="0 -200 1080 300" width="1080" height="300" style="top:420px"><path id="${p}-har" d="${arrowD}" pathLength="1" fill="none" stroke="#fbbf24" stroke-width="14" stroke-linecap="round" stroke-dasharray="1 1"/><polygon id="${p}-hah" points="0,-26 22,14 -22,14" fill="#fbbf24" transform="translate(${ae.x} ${ae.y}) rotate(${ae.ang.toFixed(1)})"/></svg>
   <div class="hstat" id="${p}-hs"><div class="hline">${statHTML}</div><div class="hsub">${esc(H.statSub)}</div></div>
   <div class="hq" id="${p}-hq"><img src="${BRAND('compass-mark.webp')}" alt="" id="${p}-hqc"><span class="gold" id="${p}-hqm">?</span></div>
@@ -338,8 +340,9 @@ function buildMatch(TL, idx) {
   const END = last ? S3 + 0.25 : T; // the last match hands over to the outro scene
   const seg1 = subs.filter((s) => s.seg === 1), seg0 = subs.filter((s) => s.seg === 0);
   const pt = (i) => seg1[Math.min(i, seg1.length - 1)].t0;
-  if (M.pick.type !== 'team') throw new Error(`${p}: hf.cjs draws team picks only (got ${M.pick.type})`);
-  const st = M.stats, tactic = st.tactic || 'attack-away', side = M.pick.side;
+  // a goals pick (over/under) names no side: both crests stay lit at the reveal (2026-11-13)
+  const ou = M.pick.type === 'ou';
+  const st = M.stats, tactic = st.tactic || 'attack-away', side = ou ? null : M.pick.side;
   const B = TLB();
   const amb = ambient(p, END, 7 + idx);
   amb.tl.forEach((a) => B.ft(...a));
@@ -363,8 +366,8 @@ function buildMatch(TL, idx) {
   // plates: [x, y, scale] per phase (intro, analysis, drumroll, reveal)
   const P = {
     L: [[540, 545, 0.62], [540, 268, 0.36], [540, 250, 0.3], [540, 250, 0.3]],
-    H: [[290, 935, 1], [170, 268, 0.42], [215, 820, 0.7], side === 'home' ? [540, 700, 1.4] : [880, 470, 0.55]],
-    A: [[790, 935, 1], [910, 268, 0.42], [865, 820, 0.7], side === 'away' ? [540, 700, 1.4] : [200, 470, 0.55]],
+    H: [[290, 935, 1], [170, 268, 0.42], [215, 820, 0.7], ou ? [300, 640, 0.85] : side === 'home' ? [540, 700, 1.4] : [880, 470, 0.55]],
+    A: [[790, 935, 1], [910, 268, 0.42], [865, 820, 0.7], ou ? [780, 640, 0.85] : side === 'away' ? [540, 700, 1.4] : [200, 470, 0.55]],
   };
   const sel = side === 'home' ? 'H' : 'A', oth = side === 'home' ? 'A' : 'H';
   const ent = { L: [0.3, 0, -520], H: [0.62, -640, 0], A: [0.78, 640, 0] };
@@ -376,9 +379,12 @@ function buildMatch(TL, idx) {
     B.ft(`#${p}-p${k}`, { x: q[1][0], y: q[1][1], scale: q[1][2] }, { x: q[2][0], y: q[2][1], scale: q[2][2], duration: 0.7, ease: E.io }, S2 - 0.05);
     B.ft(`#${p}-p${k}`, { x: q[2][0], y: q[2][1], scale: q[2][2] }, { x: q[3][0], y: q[3][1], scale: q[3][2], duration: 0.6, ease: E.pop }, R);
   }
-  B.ft(`#${p}-p${sel}h`, { opacity: 0 }, { opacity: 0.95, duration: 0.4, ease: E.out }, R);
-  B.ft(`#${p}-p${oth}f`, { filter: 'brightness(1) saturate(1)' }, { filter: 'brightness(0.45) saturate(0.4)', duration: 0.5, ease: E.out }, R);
-  B.set(`#${p}-p${sel}`, { zIndex: 9 }, R);
+  if (ou) { for (const k of ['H', 'A']) B.ft(`#${p}-p${k}h`, { opacity: 0 }, { opacity: 0.7, duration: 0.4, ease: E.out }, R); }
+  else {
+    B.ft(`#${p}-p${sel}h`, { opacity: 0 }, { opacity: 0.95, duration: 0.4, ease: E.out }, R);
+    B.ft(`#${p}-p${oth}f`, { filter: 'brightness(1) saturate(1)' }, { filter: 'brightness(0.45) saturate(0.4)', duration: 0.5, ease: E.out }, R);
+    B.set(`#${p}-p${sel}`, { zIndex: 9 }, R);
+  }
   B.ft(`#${p}-spot`, { opacity: 0, scaleX: 0.7 }, { opacity: 0.9, scaleX: 1, duration: 0.5, ease: E.out }, R);
 
   // intro text (E: the chip names the tension of the match)
@@ -422,11 +428,12 @@ function buildMatch(TL, idx) {
   const hl = (t, h) => (h ? esc(t).split(esc(h)).join('<b>' + esc(h) + '</b>') : esc(t));
   const logoOf = (s) => asset(s === 'home' ? M.home.logo : M.away.logo);
   const mark = '<div class="mk"><svg viewBox="0 0 40 40" width="44" height="44"><path d="M9 21 L17 29 L32 12" fill="none" stroke="#2a1400" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>';
-  const card = `<div class="title">${esc(st.title || 'เหตุผลจากข้อมูล')}</div>` + st.rows.map((r, i) => `<div class="rrow${r.team ? '' : ' why'}" id="${p}-row${i}">${r.team ? `<img src="${logoOf(r.team)}" alt="">` : mark}<div class="tx">${hl(r.text, r.hi)}</div></div>`).join('');
-  const cardAt = Math.max(S1 + 0.05, Math.min(...st.rows.map((r) => pt(r.at))) - 0.2);
+  const card = `<div class="title">${esc(st.title || 'เหตุผลจากข้อมูล')}</div>` + st.rows.map((r, i) => r.noCard ? '' : `<div class="rrow${r.team ? '' : ' why'}" id="${p}-row${i}">${r.team ? `<img src="${logoOf(r.team)}" alt="">` : mark}<div class="tx">${hl(r.text, r.hi)}</div></div>`).join('');
+  const cardAt = Math.max(S1 + 0.05, Math.min(...st.rows.filter((r) => !r.noCard).map((r) => pt(r.at))) - 0.2);
   B.ft(`#${p}-card`, { y: 260, scale: 0.92, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.6, ease: E.pop }, cardAt);
   B.ft(`#${p}-card`, { opacity: 1 }, { opacity: 0, duration: 0.35, ease: E.in }, S2 - 0.15);
   st.rows.forEach((r, i) => {
+    if (r.noCard) return;
     const t0 = pt(r.at) + st.rows.filter((x, j) => j < i && x.at === r.at).length * 0.18;
     B.ft(`#${p}-row${i}`, { x: i % 2 ? 80 : -80, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: E.pop }, t0);
   });
@@ -464,7 +471,8 @@ function buildMatch(TL, idx) {
   // pick text: the team, then the pick in football words (facts pick.fan, lib.cjs fanPick), never the betting line
   // (owner 2026-11-11: TikTok removed a film that showed "+0.25")
   if (!M.pick.fan) throw new Error(`${p}: facts.json has no pick.fan; run fetch.cjs again`);
-  const pickName = M.pick.fan.team, fanText = M.pick.fan.text;
+  // a goals pick has no team: the headline is the fixture, the line under it is the pick (รวมไม่เกิน 2 ประตู)
+  const pickName = ou ? `${M.home.name} – ${M.away.name}` : M.pick.fan.team, fanText = M.pick.fan.text;
   const progress = Array.from({ length: N }, (_, i) => `<i class="${i < idx ? 'on' : ''}"></i>`).join('');
   const css = `
 #${p}-world{position:absolute;inset:0;perspective:1500px;perspective-origin:540px 700px}
@@ -501,7 +509,7 @@ function buildMatch(TL, idx) {
 .pick .k{display:inline-flex;align-items:center;gap:14px;font-weight:700;font-size:40px;color:#fbbf24}
 .pick .k img{width:62px;height:62px}
 .pick .nm{margin-top:4px;font-family:Barlow;font-weight:900;line-height:1.02;letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
-.pick .ln{display:inline-block;font-weight:700;line-height:1.2;white-space:nowrap}
+.pick .ln{display:inline-block;font-weight:700;line-height:1.2;white-space:nowrap;padding-top:.25em;margin-top:-.25em}
 .pick .note{margin-top:10px;font-weight:600;font-size:30px;color:#9fb3e0}`;
   const plate = (k, logo, league) => `<div class="plate${league ? ' league' : ''}" id="${p}-p${k}"><div class="halo" id="${p}-p${k}h"></div><div id="${p}-p${k}d" style="position:absolute;inset:0;transform-style:preserve-3d"><div class="face" id="${p}-p${k}f"><img src="${asset(logo)}" alt=""></div></div></div>`;
   const nmFs = (n) => nameSize(n, 62);
@@ -588,7 +596,7 @@ function buildOutro(TL, from) {
     <div class="oline" id="${p}-l2" style="top:630px"><div class="mk"><svg viewBox="0 0 40 40" width="40" height="40"><path d="M9 21 L17 29 L32 12" fill="none" stroke="#2a1400" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>ผลงานย้อนหลังทุกคู่ วัดผลจริง</div>
     <div class="url" id="${p}-url"><div class="u">khemthit<b>football</b>.com<div class="sh" id="${p}-urlsh"></div></div></div>
     <div class="fol" id="${p}-fol"><div class="b" id="${p}-folb">กดติดตาม เข็มทิศฟุตบอล</div></div>
-    <div class="com" id="${p}-com">คอมเมนต์บอกเรา <span id="${p}-comq">คู่ไหนที่คุณรอดู?</span></div>
+    <div class="com" id="${p}-com">คอมเมนต์บอกเรา <span id="${p}-comq">${esc(((subs[5] && subs[5].show) || 'คู่ไหนที่คุณรอดู?').replace(/!$/, '?'))}</span></div>
   </div>
   <div class="brand"><div class="in" id="${p}-brandin"><img src="${BRAND('compass-picks-title.webp')}" alt=""><div class="sheen" id="${p}-bsheen"></div></div></div>
   ${sp.html}
