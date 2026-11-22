@@ -87,8 +87,8 @@ export function SiteNav({ ticker, tickerLabel }: { ticker: Array<TickerMatch & {
             <Tab key={n.href} {...n} on={isActive(path, n.href)} />
           ))}
           <li className="flex justify-center">
-            <Link href={COMPASS_HREF} className="flex -translate-y-4 flex-col items-center gap-1 text-xs font-semibold text-[var(--color-compass)]">
-              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg ring-4 ring-white">
+            <Link href={COMPASS_HREF} className="group flex -translate-y-4 flex-col items-center gap-1 text-xs font-semibold text-[var(--color-compass)]">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-lg ring-4 ring-white transition-[scale] duration-150 ease-out group-active:scale-95">
                 <CompassMark size={56} />
               </span>
               เข็มทิศ
@@ -109,9 +109,9 @@ function Tab({ href, label, Icon, on }: { href: string; label: string; Icon: (ty
       <Link
         href={href}
         aria-current={on ? 'page' : undefined}
-        className={`flex h-full flex-col items-center justify-center gap-1 text-xs transition-colors duration-150 ${on ? 'font-semibold text-[var(--color-pitch)]' : 'text-slate-600'}`}
+        className={`group flex h-full flex-col items-center justify-center gap-1 text-xs transition-colors duration-150 ${on ? 'font-semibold text-[var(--color-pitch)]' : 'text-slate-600'}`}
       >
-        <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${on ? 'bg-[var(--color-pitch-soft)]' : ''}`}>
+        <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-[background-color,scale] duration-150 ease-out group-active:scale-90 ${on ? 'bg-[var(--color-pitch-soft)]' : 'group-active:bg-slate-100'}`}>
           <Icon size={20} />
         </span>
         {label}
@@ -151,7 +151,7 @@ function StripItem({ m }: { m: TickerMatch & { clock: string } }) {
   const done = g === 'done';
   return (
     <li className="shrink-0 border-r border-white/10">
-      <Link href={`/matches/${m.slug}`} className="flex h-full min-h-11 items-center gap-3 px-3.5 py-1.5 text-xs transition-colors hover:bg-white/5">
+      <Link href={`/matches/${m.slug}`} className="flex h-full min-h-11 items-center gap-3 px-3.5 py-1.5 text-xs transition-colors hover:bg-white/5 active:bg-white/10">
         <span className={`w-9 shrink-0 text-center font-semibold ${live ? 'text-rose-400' : 'text-slate-400'}`}>{live ? minuteLabel(state) : done ? 'จบ' : m.clock}</span>
         <span className="grid gap-0.5">
           {[

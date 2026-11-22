@@ -27,7 +27,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover', // lets the bottom tab bar pad for the home indicator
-  themeColor: '#ffffff', // the site chrome is white
+  themeColor: '#ffffff', // the site chrome is white (light only: the site has no dark theme)
+  colorScheme: 'light', // keeps native date fields and scrollbars light on phones set to dark mode
 };
 
 const footerLinks = [
@@ -43,7 +44,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const tickerRows = ticker.matches.map((m) => ({ ...m, clock: timeTH(m.kickoff_at) }));
   return (
     <html lang="th" className={thai.variable}>
-      <body className="min-h-screen pb-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom))] font-sans antialiased md:pb-0">
+      <body className="min-h-svh pb-[calc(var(--spacing-tabbar)+env(safe-area-inset-bottom))] font-sans antialiased md:pb-0">
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-[var(--color-ink)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"

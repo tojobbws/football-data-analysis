@@ -27,6 +27,45 @@ html {
   font-feature-settings: 'tnum' 1; /* tabular numbers: odds and % line up */
   -webkit-text-size-adjust: 100%;
   scroll-padding-top: 5rem; /* anchors clear the sticky header */
+  /* phones paint a gray box over every tapped link/button; each control gives its own :active instead.
+     pull-to-refresh stays on: the site is a scrolling document, not an app shell */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* in the base layer so any utility class on a control still wins */
+@layer base {
+  /* no 300 ms double-tap-zoom wait on controls (pinch zoom still works) */
+  :where(a, button, summary, label, select, [role='button']) {
+    touch-action: manipulation;
+  }
+
+  /* long-press on a control must not select its label; content text stays selectable */
+  :where(button, summary, [role='button']) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* press feedback on touch-down, not on release (hover is already gated to mouse by Tailwind v4) */
+  :where(button, [role='button']):not(:disabled) {
+    transition-property: transform, color, background-color, border-color, opacity;
+    transition-duration: 120ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  :where(button, [role='button']):not(:disabled):active {
+    transform: scale(0.97);
+  }
+  :where(summary):active {
+    opacity: 0.6;
+  }
+}
+
+/* iOS zooms into any field under 16px and never zooms back out */
+@media (pointer: coarse) {
+  input:not([type='checkbox'], [type='radio'], [type='range']),
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
 }
 
 body {
@@ -53,6 +92,7 @@ body {
 /* horizontal card rails on mobile: hide the scrollbar, keep it scrollable */
 .rail {
   scrollbar-width: none;
+  overscroll-behavior-x: contain; /* reaching the rail's end must not swipe the browser back a page */
 }
 .rail::-webkit-scrollbar {
   display: none;
