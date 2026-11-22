@@ -14,6 +14,7 @@ import { TeamLogo } from '@/components/ui';
 import { FINISHED, ROUND, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { isLive, toSeed } from '@/lib/live';
 import { matchBySlug, type Compass, type FormRow } from '@/lib/queries';
+import { isThinMatchPage } from '@/lib/indexing';
 import { hasTeamTh, leagueTh, teamShortTh, teamTh } from '@/lib/thai-names';
 import { dateTimeTH, dayMonthTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
 
@@ -31,6 +32,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: `${teamShortTh(home)} vs ${teamShortTh(away)} วิเคราะห์บอล ${leagueTh(league)} ${dayMonthTH(kickoff_at)}`,
     description: `วิเคราะห์บอล ${teamTh(home)} vs ${teamTh(away)}${hasTeamTh(home) || hasTeamTh(away) ? ` (${home.name} vs ${away.name})` : ''} ${leagueTh(league)} ${dayTH(kickoff_at)} — ฟอร์ม, xG, ตัวเจ็บ, แรงตลาด และเข็มทิศเกม`,
     alternates: { canonical: `/matches/${slug}` },
+    // over and never written up: numbers only, kept out of the index (lib/indexing.ts)
+    ...(isThinMatchPage(kickoff_at, Boolean(d.preview)) ? { robots: { index: false, follow: true } } : {}),
   };
 }
 

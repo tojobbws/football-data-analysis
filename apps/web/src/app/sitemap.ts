@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { webEnv } from '@/lib/env';
+import { isThinMatchPage } from '@/lib/indexing';
 import { siteUrl } from '@/lib/site';
 import { allRows, db } from '@/lib/supabase';
 
@@ -11,19 +12,20 @@ const MAX_URLS = 45_000;
 
 /**
  * Public pages for search engines: sections, match pages from 90 days back to 30 days ahead
- * (tracked leagues), and every published article.
+ * (tracked leagues; a match that is over only with a Thai write-up, lib/indexing.ts), and every
+ * published article.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const origin = await siteUrl();
   const now = Date.now();
   const sb = db();
   // .limit(5000) alone was capped at 1000 rows by the server: 3600 matches in the window, 2600 left out (2026-10-26)
-  const [fixtures, articles] = await Promise.all([
-    allRows<{ slug: string; kickoff_at: string; synced_at: string | null }>(
+  const [fixtures, articles, writeUps] = await Promise.all([
+    allRows<{ id: number; slug: string; kickoff_at: string; synced_at: string | null }>(
       (from, to) =>
         sb
           .from('fixtures')
-          .select('slug, kickoff_at, synced_at')
+          .select('id, slug, kickoff_at, synced_at')
           .in('league_id', webEnv().leagues)
           .not('slug', 'is', null)
           .gte('kickoff_at', new Date(now - 90 * DAY).toISOString())
@@ -37,9 +39,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       (from, to) => sb.from('articles').select('slug, published_at, updated_at').eq('status', 'PUBLISHED').order('published_at', { ascending: false }).order('id').range(from, to),
       MAX_URLS,
     ),
+    // matches with a Thai write-up in the window: the others that are over leave the sitemap (lib/indexing.ts)
+    allRows<{ fixture_id: number }>(
+      (from, to) =>
+        sb
+          .from('web_match_previews')
+          .select('fixture_id')
+          .gte('kickoff_at', new Date(now - 90 * DAY).toISOString())
+          .order('fixture_id')
+          .range(from, to),
+      MAX_URLS,
+    ),
   ]);
   if (fixtures.error) console.error('sitemap fixtures:', fixtures.error.message);
   if (articles.error) console.error('sitemap articles:', articles.error.message);
+  if (writeUps.error) console.error('sitemap write-ups:', writeUps.error.message);
+  const written = new Set(writeUps.data.map((w) => w.fixture_id));
 
   const today = new Date(now);
   const pages: MetadataRoute.Sitemap = [
@@ -50,6 +65,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${origin}/performance`, lastModified: today, changeFrequency: 'daily', priority: 0.6 },
   ];
   for (const f of fixtures.data ?? []) {
+    // on a failed write-up read, keep every match rather than drop the written ones
+    if (!writeUps.error && isThinMatchPage(f.kickoff_at, written.has(f.id), now)) continue;
     const upcoming = new Date(f.kickoff_at as string).getTime() > now;
     pages.push({
       url: `${origin}/matches/${f.slug}`,
