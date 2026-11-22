@@ -14,7 +14,8 @@ import { TeamLogo } from '@/components/ui';
 import { FINISHED, ROUND, odds, selectionLabel, toSelection } from '@/lib/labels';
 import { isLive, toSeed } from '@/lib/live';
 import { matchBySlug, type Compass, type FormRow } from '@/lib/queries';
-import { dateTimeTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
+import { hasTeamTh, leagueTh, teamShortTh, teamTh } from '@/lib/thai-names';
+import { dateTimeTH, dayMonthTH, dayTH, shortDayTH, timeTH } from '@/lib/time';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +27,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!d) return { title: 'ไม่พบแมตช์' };
   const { home, away, league, kickoff_at } = d.match;
   return {
-    title: `${home.name} vs ${away.name} วิเคราะห์บอล ${league.name}`,
-    description: `วิเคราะห์ ${home.name} vs ${away.name} (${league.name}) ${dayTH(kickoff_at)} — ฟอร์ม, xG, ตัวเจ็บ, แรงตลาด และเข็มทิศเกม`,
+    // Thai names first: Thai fans search "แมนยู vs ลิเวอร์พูล"; the provider names stay in the description
+    title: `${teamShortTh(home)} vs ${teamShortTh(away)} วิเคราะห์บอล ${leagueTh(league)} ${dayMonthTH(kickoff_at)}`,
+    description: `วิเคราะห์บอล ${teamTh(home)} vs ${teamTh(away)}${hasTeamTh(home) || hasTeamTh(away) ? ` (${home.name} vs ${away.name})` : ''} ${leagueTh(league)} ${dayTH(kickoff_at)} — ฟอร์ม, xG, ตัวเจ็บ, แรงตลาด และเข็มทิศเกม`,
     alternates: { canonical: `/matches/${slug}` },
   };
 }
@@ -75,13 +77,14 @@ export default async function MatchPage({ params }: { params: Promise<{ slug: st
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'SportsEvent',
-    name: `${m.home.name} vs ${m.away.name}`,
+    name: `${teamTh(m.home)} vs ${teamTh(m.away)}`,
+    alternateName: `${m.home.name} vs ${m.away.name}`,
     startDate: m.kickoff_at,
     sport: 'Soccer',
-    homeTeam: { '@type': 'SportsTeam', name: m.home.name },
-    awayTeam: { '@type': 'SportsTeam', name: m.away.name },
+    homeTeam: { '@type': 'SportsTeam', name: teamTh(m.home), alternateName: m.home.name },
+    awayTeam: { '@type': 'SportsTeam', name: teamTh(m.away), alternateName: m.away.name },
     location: m.venue?.name ? { '@type': 'Place', name: m.venue.name, address: m.venue.city ?? undefined } : undefined,
-    superEvent: { '@type': 'SportsEvent', name: m.league.name },
+    superEvent: { '@type': 'SportsEvent', name: leagueTh(m.league), alternateName: m.league.name },
   };
 
   // two-legged cup ties only, and only where the league's 1X2 model passed its test (like the model outlook)
@@ -212,10 +215,14 @@ function MatchHead({ d, standings }: { d: Data; standings: { home: TeamContext; 
           <div className="absolute inset-0 -z-10 bg-white/[.86]" aria-hidden />
         </>
       ) : null}
+      {/* the page's one heading for search engines and screen readers; the team names below show it visually */}
+      <h1 className="sr-only">
+        {teamTh(m.home)} vs {teamTh(m.away)} วิเคราะห์บอล {leagueTh(m.league)} {dayTH(m.kickoff_at)}
+      </h1>
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-zinc-500">
         <span className="inline-flex items-center gap-1.5 font-medium text-zinc-700">
           <TeamLogo src={m.league.logo_url} alt="" size={16} />
-          {m.league.name}
+          {leagueTh(m.league)}
         </span>
         {m.round ? <><Sep />{stageLabelTh(m.round)}</> : null}
         <Sep />
@@ -268,7 +275,8 @@ function TeamHead({ t, side, standing, right = false }: { t: Data['match']['home
     <div className={`flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 ${right ? 'items-end text-right sm:flex-row-reverse' : 'items-start'}`}>
       <TeamLogo src={t.logo_url} alt="" size={48} />
       <div className="min-w-0">
-        <p className="line-clamp-2 text-base font-semibold leading-tight tracking-tight text-zinc-950 sm:text-2xl">{t.name}</p>
+        <p className="line-clamp-2 text-base font-semibold leading-tight tracking-tight text-zinc-950 sm:text-2xl">{teamTh(t)}</p>
+        {hasTeamTh(t) ? <p className="mt-0.5 truncate text-xs text-zinc-400" lang="en">{t.name}</p> : null}
         <p className="mt-1 text-xs text-zinc-500">
           {side}
           {standing ? <span className="tabular-nums"> · อันดับ {standing.rank} · {standing.points} แต้ม</span> : null}
