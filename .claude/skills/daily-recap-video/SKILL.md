@@ -6,17 +6,19 @@ description: Make the เข็มทิศเกม "สรุปผลงา�
 # Daily recap video
 
 The owner's brief is `scripts/video/RECAP_BRIEF.md` (read it once per session). One film per finished football day, 30–45 s:
-0. **cover (0–1 s, `cover.js` shared with the spotlight film, `COVER` in `recap.cjs`):** a still thumbnail frame, complete from frame 0. No voice; it zooms out into the opening. It shows:
-   - the site logo (`brand/logo-lockup.webp` on a white plate) and "สรุปผลงานการทำนาย";
-   - "ทายถูก <shown_win> จาก <total> คู่ · <date_short>";
-   - one wide row per **right** pick (owner, 2026-11-18): both logos, the real score, the pick subtitle (e.g. เลือกสวีเดน ไม่แพ้) and the big ถูก badge;
-   - the เข็มทิศเกม title.
+0. **cover (0–1 s, `makeRecapCover` in `recap.html`, `COVER` in `recap.cjs`):** a still thumbnail frame, complete from frame 0. No voice; it zooms out into the opening. Picture-led since 2026-11-22 (owner asked for a cover that catches the eye with pictures). It shows:
+   - the site logo (`brand/logo-lockup.webp` on a white plate) and a pill "สรุปผลการทำนาย · <date_short>";
+   - a giant "ทายถูก <shown_win>/<total>";
+   - one hero card per **right** pick (owner, 2026-11-18): big crests with the picked side ringed green, the real score, the pick subtitle (e.g. เลือกสวีเดน ไม่แพ้), the league logo and the ถูก badge;
+   - the picked crests as a faded collage behind, and the เข็มทิศเกม title.
 
-   A day with no right pick falls back to every pair with the date. `recap.html` builds this, so there is nothing to do per day: read `probe_0.00.png` and give the owner its path as the thumbnail.
+   A day with no right pick falls back to the shared `cover.js` with every pair and the date. `recap.html` builds this, so there is nothing to do per day: read `probe_0.00.png` and give the owner its path as the thumbnail.
 1. **opening:** night stadium, logo impact, "สรุปผลงานการทำนาย ประจำวันที่ …".
 2. **one scoreboard card per pick**, in the spotlight film's order: logos, real score on split-flaps, เข็มทิศเกมเลือก …, then a drawn ✓ ทายถูก or ✕ ทายผิด.
 3. **dashboard:** win-rate gauge, per-match badges, and count-up tiles for total, right, wrong and เสมอตัว.
 4. **closing:** lights out, a spotlight on the brand, "วิเคราะห์ทุกเกม เรียนรู้ทุกผลลัพธ์" and "เข็มทิศเกม เพราะฟุตบอลมีมากกว่าที่เห็น".
+   - Optional teaser for tonight (2026-11-22): add `closing.marks.tease` (e.g. "คืนนี้" in "คืนนี้จะเลือกคู่ไหน?") after the tagline. The brand rises to the top and three "?" mystery cards flip in with "กดติดตามไว้ แล้วมาลุ้นกัน" on screen. Never name tonight's matches before the 14:00 run has fixed them.
+   - To make room, `closing.marks.line1` / `line2` may be left out of the voice: the motto then rises on screen, silent (example: `days/2026-11-21/recap/spot.json` is gitignored, so copy its shape from this note).
 
 The recap shares the pipeline in `scripts/video/` with `/daily-spotlight-video`:
 - the same fonts and voice;
@@ -56,6 +58,7 @@ Run every step from `scripts/video/`.
    - It then makes the voice (cached per segment), the timeline (it prints every phrase time and the total length) and `days/<date>/out/recap/sheet.png`.
    - The printed times and the length are film time, cover included. The first still of the sheet is the cover (frame 0).
    - Read the sheet. Keep the length at 45 s or less by shortening the text.
+   - `spot.pace` (optional) tightens one film: `{ "hold": 0.5, "summaryHold": 1.0, "lead": { "opening": 0.65, "match": 0.35, "closing": 1.3 }, "tail": 1.7 }` (the 2026-11-21 film, 5 picks + teaser in 45.7 s). Give a short summary line `summaryHold` ≈ 1 s, or the gauge's 1.2 s hit lands after the lights go out. Use `lead.closing` ≈ 1.3 when the motto is silent, so it rises before the voice.
 4. **Film:** run `node recap.cjs <date> film` in the background. It takes about 15–20 min: 8 parallel chunks, then music, SFX and mix to −14 LUFS, then the final mp4 and `final/recap_contact.png`.
    - Read the contact sheet.
    - Give the owner the path, the length and the loudness line.

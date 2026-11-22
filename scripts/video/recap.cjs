@@ -29,7 +29,11 @@ const TAGS = { opening: '[excited] ', match: '[excited] ', why: '[confident] ', 
 const BANNED = ['ทีเด็ด', 'แทง', 'กำไร', 'ตามคู่นี้', 'การันตี', 'ชัวร์', 'แน่นอน', 'ได้เงิน', 'เสียเงิน'];
 // marks each segment must carry: a verbatim piece of its text whose first character times a visual event
 // why: optional matches[].why, a stats panel after that match's card (owner 2026-11-13, a one-pick day: why was it wrong)
-const MARKS = { opening: ['title', 'date'], match: ['score', 'pick', 'result'], why: ['head', 'xg', 'sot', 'goals', 'lesson'], summary: ['total', 'win', 'loss', 'rate'], closing: ['line1', 'line2', 'logo', 'tag'] };
+const MARKS = { opening: ['title', 'date'], match: ['score', 'pick', 'result'], why: ['head', 'xg', 'sot', 'goals', 'lesson'], summary: ['total', 'win', 'loss', 'rate'], closing: ['logo', 'tag'] };
+// closing line1 / line2 (วิเคราะห์ทุกเกม / เรียนรู้ทุกผลลัพธ์) are voiced by default; a script may leave them out of the voice
+// (2026-11-22, a tighter film with a teaser for tonight): they then rise on screen, silent, as the lights go down.
+// closing.marks.tease (optional): a teaser for tonight's picks after the tagline (คืนนี้จะเลือกคู่ไหน?), the brand moves up and mystery cards appear.
+// spot.pace (optional): { hold, lead: { match, ... }, tail, resultPause } overrides the pacing below for one film.
 
 // ---------- 1. script + facts -> segments ----------
 function prepare() {
@@ -39,6 +43,8 @@ function prepare() {
   const s = facts.summary;
   if (s.pending || facts.matches.some((m) => !m.finished && !m.postponed)) errors.push('a match is not finished or settled yet');
   const segs = [{ role: 'opening', ...spot.opening }];
+  const cm = spot.closing.marks || {};
+  if (!!cm.line1 !== !!cm.line2) errors.push('closing: voice both line1 and line2, or neither');
   const keys = spot.matches.map((m) => m.match);
   for (const m of facts.matches) if (!keys.includes(m.key)) errors.push(`${m.key} (${m.home.name} vs ${m.away.name}) is missing from the script: every pick is shown, right or wrong`);
   for (const sm of spot.matches) {
@@ -84,7 +90,7 @@ function prepare() {
     g.i = i;
   });
   if (errors.length) { console.error(errors.join('\n')); process.exit(1); }
-  return { facts, segs };
+  return { facts, segs, pace: spot.pace || {} };
 }
 
 // ---------- 2. voice ----------
@@ -93,7 +99,8 @@ async function voice(segs) {
 }
 
 // ---------- 3. timeline from the character timestamps ----------
-function timeline({ facts, segs }) {
+function timeline({ facts, segs, pace }) {
+  const LD = { ...LEAD, ...(pace.lead || {}) }, HD = pace.hold ?? HOLD, TL_TAIL = pace.tail ?? TAIL, RP = pace.resultPause ?? RESULT_PAUSE;
   let clock = 0;
   const out = [], subs = [], scenes = [];
   for (const g of segs) {
@@ -106,13 +113,13 @@ function timeline({ facts, segs }) {
     const trim = Math.max(0, speechStart - 0.04);
     const fast = path.join(RDIR, 'vo', `s${g.i}_fast.wav`);
     execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(trim), '-i', path.join(RDIR, 'vo', `s${g.i}.mp3`), '-af', `atempo=${TEMPO},aresample=48000`, '-ac', '1', fast]);
-    const at = clock + LEAD[g.role];
+    const at = clock + LD[g.role];
     // a silent beat before the result word
     const cuts = [];
     if (g.role === 'match') {
       const ix = text.indexOf(g.marks.result, tagEnd);
       let p = ix - 1; while (p > tagEnd && !chars[p].trim()) p--;
-      cuts.push({ src: (a.character_end_times_seconds[p] + a.character_start_times_seconds[ix]) / 2, pause: RESULT_PAUSE });
+      cuts.push({ src: (a.character_end_times_seconds[p] + a.character_start_times_seconds[ix]) / 2, pause: RP });
     }
     const toFilm = (t) => at + (t - trim) / TEMPO + cuts.filter((c) => t > c.src).reduce((s, c) => s + c.pause, 0);
     const charAt = (piece, from = tagEnd) => { const ix = text.indexOf(piece, from); if (ix < 0) throw new Error(`s${g.i}: "${piece}" not found`); return ix; };
@@ -127,14 +134,15 @@ function timeline({ facts, segs }) {
     }
     const start = toFilm(speechStart), end = toFilm(speechEnd);
     out.push({ i: g.i, role: g.role, file: `recap/vo/s${g.i}_fast.wav`, at: +at.toFixed(3), start: +start.toFixed(3), end: +end.toFixed(3), cuts: cuts.map((c) => ({ at: +((c.src - trim) / TEMPO).toFixed(3), pause: c.pause })) });
+    if (g.role === 'closing' && marks.line1 == null) { marks.line1 = +(clock + 0.55).toFixed(3); marks.line2 = +(clock + 0.85).toFixed(3); }
     scenes.push({ role: g.role, key: g.match ? (g.role === 'why' ? `${g.match.key}-why` : g.match.key) : g.role, t0: +(g.i === 0 ? 0 : clock + 0.05).toFixed(3), speech: +start.toFixed(3), end: +end.toFixed(3), marks, subs: [first0, subs.length] });
-    clock = end + (g.role === 'match' || g.role === 'why' ? HOLD : 0);
+    clock = end + (g.role === 'match' || g.role === 'why' ? HD : g.role === 'summary' ? (pace.summaryHold ?? 0) : 0); // summaryHold: room for the gauge hit after a short summary line
   }
-  const T = +(clock + TAIL).toFixed(3); // story length; the film is COVER + T
+  const T = +(clock + TL_TAIL).toFixed(3); // story length; the film is COVER + T
   scenes.forEach((s, k) => { s.t1 = k + 1 < scenes.length ? scenes[k + 1].t0 : T; });
   const ms = scenes.filter((s) => s.role === 'match');
   const ws = scenes.filter((s) => s.role === 'why'), sum = scenes.find((s) => s.role === 'summary'), cl = scenes.find((s) => s.role === 'closing');
-  const probe = [-COVER, scenes[0].marks.date + 0.9, ...ms.flatMap((s) => [s.marks.pick + 0.6, s.marks.result + 1.0]), ...ws.flatMap((s) => [s.marks.xg + 1.2, s.marks.sot + 1.0, s.marks.goals + 1.8, s.marks.lesson + 1.2]), sum.marks.rate + 1.4, cl.marks.line2 + 0.8, T - 0.3].map((t) => +(Math.min(t, T - 0.05) + COVER).toFixed(2));
+  const probe = [-COVER, scenes[0].marks.date + 0.9, ...ms.flatMap((s) => [s.marks.pick + 0.6, s.marks.result + 1.0]), ...ws.flatMap((s) => [s.marks.xg + 1.2, s.marks.sot + 1.0, s.marks.goals + 1.8, s.marks.lesson + 1.2]), sum.marks.rate + 1.4, cl.marks.line2 + 0.8, ...(cl.marks.tease != null ? [cl.marks.tag + 0.9] : []), T - 0.3].map((t) => +(Math.min(t, T - 0.05) + COVER).toFixed(2));
   // segs, subs, scenes and marks run on the story clock; T, frames and probe are film time (cover + story)
   const TL = { key: 'recap', page: 'recap.html', type: 'recap', T: +(COVER + T).toFixed(3), cover: COVER, fps: 30, frames: Math.round((COVER + T) * 30), tempo: TEMPO, segs: out, subs, scenes, probe,
     facts: { date: facts.date, date_th: facts.date_th, date_short: facts.date_short, summary: facts.summary, matches: segs.filter((g) => g.role === 'match').map((g) => ({ ...g.match, head: g.head })) } };
@@ -201,6 +209,8 @@ function storySound(TL, T) {
   kick(sfx, cl.marks.line1, 0.3); kick(sfx, cl.marks.line2, 0.3);
   riser(sfx, cl.marks.line2, cl.marks.logo - cl.marks.line2, 0.25);
   audioLogo(cl.marks.logo, T);
+  // teaser for tonight: a whoosh as the brand moves up, a tick per mystery card, a question bell
+  if (cl.marks.tease != null) { const q = cl.marks.tease; whoosh(sfx, q - 0.2, 0.5, 0.3, 0); [0, 1, 2].forEach((k) => { tick(q + 0.25 + k * 0.16, 1); kick(sfx, q + 0.25 + k * 0.16, 0.16); }); bell(sfx, q + 0.8, 79, 0.5, -0.2); bell(sfx, q + 0.95, 83, 0.5, 0.2); }
   fadeTail();
   return { mus, sfx };
 }
