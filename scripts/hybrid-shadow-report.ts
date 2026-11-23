@@ -6,6 +6,7 @@
  *
  *   npx tsx scripts/hybrid-shadow-report.ts            # prompt hybrid-ai-v1.8 and later
  *   npx tsx scripts/hybrid-shadow-report.ts --from 1.6 # also earlier prompts, for comparison (published then)
+ *   npx tsx scripts/hybrid-shadow-report.ts --from 2.0 # the ADR 0020 review: v2.1.1 is counted apart from v2.0 (ADR 0021)
  *
  * Per row: the latest OK decision of each fixture's DAILY round. Hit = fair hit (WIN 1, HALF_WIN ½ weight counted as a
  * hit, HALF_LOSS ½ weight, LOSS 1, PUSH out), the same measure as /admin/review, against the mean no-vig market
@@ -25,14 +26,21 @@ const fromVersion = fromArg > 0 ? String(process.argv[fromArg + 1]) : '1.8';
 const REVIEW_AT = 100;
 const OU_REVIEW_AT = 30; // amendment 2: Over/Under from v1.8
 
-/** Major and minor compared apart: as numbers, v1.10 would sort below v1.8. */
+/**
+ * Each part compared apart: as numbers, v1.10 would sort below v1.8. Any number of parts, so hybrid-ai-v2.1.1 counts
+ * (a two-part pattern left every v2.1.1 decision out of this report until 2026-11-21); a missing part is 0.
+ */
 function versionAtLeast(prompt: string, min: string): boolean {
-  const m = prompt.match(/v(\d+)\.(\d+)$/);
+  const m = prompt.match(/v(\d+(?:\.\d+)*)$/);
   if (!m) return false;
-  const [minMajor, minMinor] = min.split('.').map(Number) as [number, number];
-  const major = Number(m[1]);
-  const minor = Number(m[2]);
-  return major > minMajor || (major === minMajor && minor >= (minMinor ?? 0));
+  const have = m[1]!.split('.').map(Number);
+  const want = min.split('.').map(Number);
+  for (let i = 0; i < Math.max(have.length, want.length); i++) {
+    const a = have[i] ?? 0;
+    const b = want[i] ?? 0;
+    if (a !== b) return a > b;
+  }
+  return true;
 }
 
 const { rows } = await db.query<{
@@ -76,6 +84,7 @@ for (const r of rows) {
   add(`${kind} (all)`, outcome, mp);
   add(`${kind} ${r.side}`, outcome, mp);
   add(`${kind} ${r.prompt_version}`, outcome, mp);
+  add(`all ${r.prompt_version}`, outcome, mp); // AH and O/U together, per prompt version: the ADR 0020 / 0021 review count
 }
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
@@ -100,5 +109,11 @@ const settled = (prefix: string) => [...groups.entries()].filter(([k]) => k.star
 console.log(`\nADR 0019 review at ${REVIEW_AT} settled decisions per shadow group:`);
 console.log(`  O/U (clubs and national, count from v1.8): ${settled('O/U')} of ${OU_REVIEW_AT}`);
 console.log(`  AH national (published again, measured apart): ${settled('AH national')} of ${REVIEW_AT}`);
-console.log(`ADR 0020 review: ${REVIEW_AT} settled v2.0 picks, AH and O/U together (run with --from 2.0): ${settled('')} so far in this run's range`);
+// ADR 0021: v2.1.1 (live from the 17 Nov 2026 run) is counted apart from v2.0, and the review at 100 is judged on
+// v2.1.1 alone (owner, 2026-11-21); v2.0 stays a row of its own for comparison.
+console.log(`ADR 0020 review: ${REVIEW_AT} settled picks per prompt version, AH and O/U together (run with --from 2.0):`);
+for (const [key, t] of [...groups.entries()].filter(([k]) => k.startsWith('all ')).sort(([a], [b]) => a.localeCompare(b))) {
+  const v = key.slice(4);
+  console.log(`  ${v}: ${t.settled} of ${REVIEW_AT}${v === 'hybrid-ai-v2.1.1' ? ' (the review count)' : ''}`);
+}
 await db.close();
