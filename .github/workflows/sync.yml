@@ -40,6 +40,10 @@ jobs:
       HYBRID_VERSION: ${{ vars.HYBRID_VERSION }}
       # Decisions v2 shadow: shadow = run the decisions-v2 job (stored only, never published; .scratch/decisions-v2/spec.md); unset = off
       DECISIONS_V2: ${{ vars.DECISIONS_V2 }}
+      # Gemini Decision shadow: shadow = run the gemini-decision job (Hybrid v2.1.1 prompt answered by Gemini, stored only, never published); unset = off
+      GEMINI_DECISION: ${{ vars.GEMINI_DECISION }}
+      GEMINI_DECISION_MODEL: ${{ vars.GEMINI_DECISION_MODEL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       API_FOOTBALL_RPM: ${{ vars.API_FOOTBALL_RPM || '10' }}
       TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
       SEASON: ${{ vars.SEASON || '2026' }}
@@ -90,6 +94,7 @@ jobs:
           step npm run model:ai-shadow
           # shadow experiment: its failure never fails the run (nothing published depends on it)
           npm run model:decisions-v2 || echo "::warning::decisions-v2 shadow job failed (optional step, the run goes on)"
+          npm run model:gemini-decision || echo "::warning::gemini-decision shadow job failed (optional step, the run goes on)"
           if [ ${#failed[@]} -gt 0 ]; then printf 'failed step: %s\n' "${failed[@]}"; exit 1; fi
 
       - name: Daily

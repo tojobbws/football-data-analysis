@@ -87,7 +87,10 @@ export default async function AdminPickCompare({ searchParams }: { searchParams:
   const res = await sb.rpc('fp_admin_pick_compare', { p_from: from, p_to: to });
   const all = ((res.data ?? []) as Row[]).filter((r) => r.round === round);
   const dres = round === 'DAILY' ? await sb.rpc('fp_admin_decisions_shadow', { p_from: from, p_to: to }) : null;
-  const dRows = ((dres?.data ?? []) as DRow[]);
+  const shadowRows = ((dres?.data ?? []) as DRow[]);
+  // decisions_shadow holds the one-night OpenAI Decisions v1 test and, since 2026-11-23, the Gemini Decision shadow
+  const gRows = shadowRows.filter((r) => r.config.startsWith('gemini:'));
+  const dRows = shadowRows.filter((r) => !r.config.startsWith('gemini:'));
   const v2res = round === 'DAILY' ? await sb.rpc('fp_admin_decisions_v2', { p_from: from, p_to: to }) : null;
   const v2Rows = ((v2res?.data ?? []) as DRow[]);
 
@@ -230,8 +233,9 @@ export default async function AdminPickCompare({ searchParams }: { searchParams:
         )}
       </Section>
 
+      {round === 'DAILY' && gRows.length ? <GeminiCompare rows={gRows} v2Rows={v2Rows} /> : null}
       {round === 'DAILY' && (v2Rows.length || (v2res?.error && dRows.length === 0)) ? <DecisionsShadow v2 rows={v2Rows} error={v2res?.error?.message ?? null} /> : null}
-      {round === 'DAILY' && (dRows.length || dres?.error) ? <DecisionsShadow rows={dRows} error={dres?.error?.message ?? null} /> : null}
+      {round === 'DAILY' && (dRows.length || (dres?.error && !gRows.length)) ? <DecisionsShadow rows={dRows} error={dres?.error?.message ?? null} /> : null}
     </main>
   );
 }
@@ -390,6 +394,134 @@ function DecisionsShadow({ rows, error, v2 = false }: { rows: DRow[]; error: str
                   </td>
                   <td className="py-2 pr-3">{cell(ai, aiRes, r.ai_side, r.ai_status, '')}</td>
                   <td className={`py-2 text-center text-xs ${note === 'ตรงกัน' ? 'text-emerald-700' : note === 'ต่างกัน' ? 'text-amber-700' : 'text-slate-500'}`}>{note}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Section>
+  );
+}
+
+type Res = ReturnType<typeof result>;
+
+/** one engine's choice in a match row: the bet, its price and result, or why there is none */
+function BetCell({ r, bet, res, side, status, extra = '' }: { r: Pick<DRow, 'home' | 'away'>; bet: Bet | null; res: Res; side: string | null; status: string | null; extra?: string }) {
+  if (status == null) return <span className="text-slate-400">ไม่มีข้อมูล</span>;
+  if (status !== 'OK') return <span className="text-rose-600">{status}</span>;
+  if (!bet) return <span className="text-slate-400">ไม่เลือก{extra}</span>;
+  return (
+    <>
+      <p>
+        {selectionLabel(bet.market, bet.selection, bet.line, r.home, r.away)} <span className="text-xs text-slate-500">@{bet.odds ?? '-'} · {SIDE[side ?? ''] ?? ''}{extra}</span>
+      </p>
+      <p className="mt-0.5 flex items-center gap-1.5">
+        {res ? <StatusBadge admin status={res.status} /> : <span className="text-xs text-slate-500">รอผล</span>} <span className="text-xs tabular-nums">{u(res?.units ?? null)}</span>
+      </p>
+    </>
+  );
+}
+
+/**
+ * Shadow only (owner, 2026-11-23): Gemini answers the Hybrid AI v2.1.1 prompt once on exactly the stored input of the
+ * day's DAILY Hybrid AI decision; side by side with Decisions v2 and the Hybrid AI (×3) on the same input and prices.
+ */
+function GeminiCompare({ rows, v2Rows }: { rows: DRow[]; v2Rows: DRow[] }) {
+  const v2By = new Map(v2Rows.map((v) => [v.fixture_id, v]));
+  const lines = rows.map((r) => {
+    const v = v2By.get(r.fixture_id) ?? null;
+    const gem = betOf(r.status === 'OK', r.side, r.market, r.selection, r.line, r.odds);
+    const v2 = v ? betOf(v.status === 'OK', v.side, v.market, v.selection, v.line, v.odds) : null;
+    const ai = betOf(r.ai_status === 'OK', r.ai_side, r.ai_market, r.ai_selection, r.ai_line, r.ai_odds);
+    return { r, v, gem, v2, ai, gemRes: result(r, gem), v2Res: result(r, v2), aiRes: result(r, ai) };
+  });
+  const totals = [
+    ['Gemini (×1)', tally(lines.map((l) => ({ res: l.gemRes, bet: l.gem })))],
+    ['Decisions v2', tally(lines.map((l) => ({ res: l.v2Res, bet: l.v2 })))],
+    ['Hybrid AI (×3)', tally(lines.map((l) => ({ res: l.aiRes, bet: l.ai })))],
+  ] as const;
+  // both chose the same bet, or both chose none
+  const agree = (a: Bet | null, b: Bet | null) => (a && b ? same(a, b) : !a && !b);
+  const withAi = lines.filter((l) => l.r.status === 'OK' && l.r.ai_status === 'OK');
+  const withV2 = lines.filter((l) => l.r.status === 'OK' && l.v?.status === 'OK');
+  const invalid = lines.filter((l) => l.r.status !== 'OK').length;
+  const model = rows[0]?.config.split(':')[1] ?? '';
+  const tone = (x: string) => (x.startsWith('ตรง') ? 'text-emerald-700' : 'text-amber-700');
+  return (
+    <Section title="ทดลอง: Gemini Decision (shadow ไม่เผยแพร่)" aside={`${lines.length} คู่ · ${model}`}>
+      <p className="mb-3 max-w-3xl text-xs leading-relaxed text-slate-600">
+        Gemini ตอบ prompt เดียวกับ Hybrid AI v2.1.1 ครั้งเดียว บน input ชุดเดียวกับรอบ 14:00 (ไม่เห็นคำตอบของ Hybrid) ผ่านตัวตรวจตัวเลขชุดเดิม · ต่างจาก Hybrid แค่ model และจำนวนคำตอบ
+        (Hybrid ใช้เสียงข้างมากจาก 3 คำตอบ) · ผลคิดที่ราคาเดียวกับ Hybrid · ตัวอย่างรายวันเล็กเกินจะสรุปว่าแบบไหนดีกว่า
+      </p>
+      <table className="mb-2 w-full text-sm">
+        <thead>
+          <tr className="text-xs text-slate-500">
+            <th className="pb-2 text-left font-normal">ผู้เลือก</th>
+            <th className="pb-2 font-normal">เลือก</th>
+            <th className="pb-2 font-normal">จบแล้ว</th>
+            <th className="pb-2 font-normal">ได้ (รวมครึ่ง)</th>
+            <th className="pb-2 font-normal">เสีย (รวมครึ่ง)</th>
+            <th className="pb-2 font-normal">เจ๊า</th>
+            <th className="pb-2 font-normal">หน่วยสุทธิ</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 text-center tabular-nums">
+          {totals.map(([name, t]) => (
+            <tr key={name}>
+              <td className="py-1.5 text-left">{name}</td>
+              <td>{t.picks}</td>
+              <td>{t.settled}</td>
+              <td>{t.win}</td>
+              <td>{t.loss}</td>
+              <td>{t.push}</td>
+              <td className="font-semibold">{t.settled ? u(t.units) : '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mb-4 text-xs text-slate-500">
+        Gemini ตรงกับ Hybrid {withAi.filter((l) => agree(l.gem, l.ai)).length}/{withAi.length} คู่ · ตรงกับ Decisions v2 {withV2.filter((l) => agree(l.gem, l.v2)).length}/{withV2.length} คู่ (นับการไม่เลือกที่ตรงกันด้วย)
+        {invalid ? ` · Gemini ตอบไม่ผ่านตัวตรวจ ${invalid} คู่` : ''}
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[920px] text-sm">
+          <thead>
+            <tr className="text-xs text-slate-500">
+              <th className="pb-2 text-left font-normal">คู่</th>
+              <th className="pb-2 text-left font-normal">Gemini (×1)</th>
+              <th className="pb-2 text-left font-normal">Decisions v2</th>
+              <th className="pb-2 text-left font-normal">Hybrid AI (×3)</th>
+              <th className="pb-2 font-normal">Gemini เทียบ</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 align-top">
+            {lines.map(({ r, v, gem, v2, ai, gemRes, v2Res, aiRes }) => {
+              const vsAi = r.status !== 'OK' || r.ai_status !== 'OK' ? '' : agree(gem, ai) ? 'ตรง Hybrid' : 'ต่าง Hybrid';
+              const vsV2 = r.status !== 'OK' || v?.status !== 'OK' ? '' : agree(gem, v2) ? 'ตรง v2' : 'ต่าง v2';
+              const v2Why = v?.status === 'OK' && !v2 && v.no_pick_reasons?.length ? ` · ${v.no_pick_reasons.map((x) => V2_REASON[x] ?? x).join(', ')}` : '';
+              return (
+                <tr key={r.fixture_id}>
+                  <td className="py-2 pr-3">
+                    {r.slug ? <Link href={`/matches/${r.slug}`} className="font-medium hover:underline">{r.home} vs {r.away}</Link> : <span className="font-medium">{r.home} vs {r.away}</span>}
+                    <p className="text-xs text-slate-500">
+                      {timeTH(r.kickoff_at)}
+                      {r.goals_home != null && FINISHED.includes(r.status_short) ? ` · ${r.goals_home}-${r.goals_away}` : ''}
+                    </p>
+                  </td>
+                  <td className="py-2 pr-3">
+                    <BetCell r={r} bet={gem} res={gemRes} side={r.side} status={r.status} />
+                  </td>
+                  <td className="py-2 pr-3">
+                    <BetCell r={r} bet={v2} res={v2Res} side={v?.side ?? null} status={v?.status ?? null} extra={v2Why} />
+                  </td>
+                  <td className="py-2 pr-3">
+                    <BetCell r={r} bet={ai} res={aiRes} side={r.ai_side} status={r.ai_status} />
+                  </td>
+                  <td className="py-2 text-center text-xs">
+                    {vsAi ? <p className={tone(vsAi)}>{vsAi}</p> : null}
+                    {vsV2 ? <p className={tone(vsV2)}>{vsV2}</p> : null}
+                  </td>
                 </tr>
               );
             })}

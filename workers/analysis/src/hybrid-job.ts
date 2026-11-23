@@ -228,7 +228,7 @@ export interface Vote {
  * validator (number guard + match counts), and a retry carries the previous answer and its located violations when
  * the decider supports it; the market options and the input never change between attempts.
  */
-async function askOnce(decider: HybridDecider, input: Record<string, unknown>, options: readonly HybridOption[], version: HybridVersion = 'v2.0'): Promise<Answer> {
+export async function askOnce(decider: HybridDecider, input: Record<string, unknown>, options: readonly HybridOption[], version: HybridVersion = 'v2.0'): Promise<Answer> {
   const v211 = version === 'v2.1.1';
   // v2.0 votes stay exactly as before; v2.1.1 also records feedback retries and time
   const a: Answer = { res: null, result: null, violations: [], attempts: 0, failure: null, persistent: false, ...(v211 ? { feedbackRetries: 0, latencyMs: 0 } : {}) };
@@ -265,7 +265,7 @@ async function askOnce(decider: HybridDecider, input: Record<string, unknown>, o
   return a;
 }
 
-const statusOf = (a: Answer): Vote['status'] => (a.failure ? 'ERROR' : a.res?.refusal ? 'REFUSED' : a.result?.ok && a.result.decision ? 'OK' : 'INVALID');
+export const statusOf = (a: Answer): Vote['status'] => (a.failure ? 'ERROR' : a.res?.refusal ? 'REFUSED' : a.result?.ok && a.result.decision ? 'OK' : 'INVALID');
 
 /** token counts summed over every call of every answer (each numeric usage field added up) */
 function sumUsage(answers: readonly Answer[]): Record<string, number> | null {

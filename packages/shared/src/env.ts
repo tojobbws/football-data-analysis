@@ -89,6 +89,20 @@ export const envSchema = z.object({
     .optional()
     .transform((v) => v || undefined)
     .pipe(z.enum(['shadow']).optional()),
+  /** Google Gemini key (Gemini Decision shadow; the films' voice reads it from the repo .env) */
+  GEMINI_API_KEY: z.string().optional().transform((v) => v || undefined),
+  /**
+   * Gemini Decision shadow (owner, 2026-11-23): `shadow` runs the gemini-decision job, one Gemini answer with the
+   * Hybrid AI v2.1.1 prompt on each stored DAILY input before kickoff, stored in decisions_shadow, never published;
+   * unset = the job does nothing. Set per run (GitHub Actions variable GEMINI_DECISION), so stopping it needs no deploy.
+   */
+  GEMINI_DECISION: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum(['shadow']).optional()),
+  /** the Gemini model of that shadow; gemini-3.8-flash when unset */
+  GEMINI_DECISION_MODEL: z.string().optional().transform((v) => v || undefined),
 });
 
 export type Env = z.infer<typeof envSchema>;

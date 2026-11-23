@@ -14,6 +14,7 @@ import { featuredOnceJob } from './featured-once-job.js';
 import { featuredReport } from './featured-report-job.js';
 import { aiShadowJob } from './ai-shadow-job.js';
 import { decisionsV2Job } from './decisions-v2-job.js';
+import { geminiDecisionJob } from './gemini-decision-job.js';
 import { hybridJob } from './hybrid-job.js';
 import { matchPreviewJob } from './preview-job.js';
 import { pickNoteJob } from './pick-note-job.js';
@@ -35,6 +36,7 @@ jobs:
   hybrid [--budget-minutes M]  Hybrid AI decides each due publish round (PICK_ENGINE=shadow|hybrid; stored, published only in hybrid mode)
   ai-shadow                    AI ranks the candidates of published analyses in parallel (shadow, never published); needs OPENAI_API_KEY + OPENAI_MODEL or ANTHROPIC_API_KEY; skips Hybrid AI picks
   decisions-v2                 Decisions v2 shadow (DECISIONS_V2=shadow): categories from OpenAI Decisions on the stored DAILY inputs, priced by the v2 engine, stored before kickoff in decisions_v2; never published
+  gemini-decision              Gemini Decision shadow (GEMINI_DECISION=shadow): one Gemini answer with the Hybrid AI v2.1.1 prompt on each stored DAILY input before kickoff, stored in decisions_shadow; never published
   preview [--hours N] [--until ISO] [--refresh] [--budget-minutes M]  🔎 วิเคราะห์เกม: written preview for every match in the next N hours (default 48), only those kicking off before --until when given; AI text with an AI key, template text without; --refresh rewrites previews from an older version
   pick-notes [--refresh]      Game Compass note (pick_th) for every published pick not yet explained; AI text with an AI key, template text without; --refresh rewrites notes from an older prompt
   settle                      settle PENDING analyses of finished matches (WIN/LOSS/PUSH/VOID + CLV); run sync:results first
@@ -60,7 +62,7 @@ async function main() {
     options: { days: { type: 'string' }, warmup: { type: 'string' }, league: { type: 'string' }, 'frozen-from': { type: 'string' }, hours: { type: 'string' }, 'budget-minutes': { type: 'string' }, 'min-gap-hours': { type: 'string' }, refresh: { type: 'boolean' }, until: { type: 'string' } },
   });
   const job = positionals[0];
-  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'hybrid', 'ai-shadow', 'decisions-v2', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health', 'refresh-web'].includes(job ?? '')) {
+  if (!['probabilities', 'qualification', 'backtest', 'tune', 'candidates', 'impact', 'publish', 'hybrid', 'ai-shadow', 'decisions-v2', 'gemini-decision', 'preview', 'pick-notes', 'settle', 'closing', 'featured', 'featured-report', 'shadow-report', 'report', 'health', 'refresh-web'].includes(job ?? '')) {
     console.log(USAGE);
     process.exit(1);
   }
@@ -122,6 +124,7 @@ async function main() {
     else if (job === 'hybrid') await hybridJob(ctx, { budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
     else if (job === 'ai-shadow') await aiShadowJob(ctx);
     else if (job === 'decisions-v2') await decisionsV2Job(ctx);
+    else if (job === 'gemini-decision') await geminiDecisionJob(ctx);
     else if (job === 'preview') await matchPreviewJob(ctx, { hours: values.hours ? Number(values.hours) : undefined, until: values.until ? untilDate(values.until) : undefined, refresh: values.refresh, budgetMinutes: values['budget-minutes'] ? Number(values['budget-minutes']) : undefined });
     else if (job === 'report') {
       const r = await matchReport(ctx, { hours: values.hours ? Number(values.hours) : undefined });

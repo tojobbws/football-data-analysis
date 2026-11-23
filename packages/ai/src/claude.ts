@@ -4,6 +4,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { isPersistentOpenAIError } from './openai.js';
+import { isPersistentGeminiError } from './gemini.js';
 import { AI_MODEL, AI_TIMEOUT_MS, OUTPUT_SCHEMA, SYSTEM_PROMPT, userMessage } from './prompt.js';
 import { PREVIEW_OUTPUT_SCHEMA, PREVIEW_SYSTEM_PROMPT } from './preview.js';
 import { PICK_NOTE_OUTPUT_SCHEMA, PICK_NOTE_SYSTEM_PROMPT } from './pick-note.js';
@@ -72,7 +73,7 @@ export function createStructuredCall(opts: StructuredCallOptions): (input: Recor
  * waiting on every fixture. Rate limits, overload and network errors are not.
  */
 export function isPersistentApiError(err: unknown): boolean {
-  return err instanceof Anthropic.BadRequestError || err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError || isPersistentOpenAIError(err);
+  return err instanceof Anthropic.BadRequestError || err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError || isPersistentOpenAIError(err) || isPersistentGeminiError(err);
 }
 
 export function createClaudeRanker(opts: { apiKey?: string; model?: string } = {}): ShadowRanker {
