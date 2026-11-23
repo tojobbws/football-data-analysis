@@ -1,7 +1,9 @@
 // Pull a finished football day's featured list (คู่น่าจับตา) with the real scores and settled results into
 // days/<date>/recap/facts.json, for the Yesterday Prediction Recap film. Same list, same pick (the newest
 // published round) and same counting as /performance (apps/web/src/components/watched-day.tsx daySummary).
-// usage: node recap-fetch.cjs [YYYY-MM-DD] [--spotlight] [--drop=m1,m3]   (default: yesterday's football day)
+// usage: node recap-fetch.cjs [YYYY-MM-DD] [--spotlight] [--extra <fixtureId>[,<fixtureId>]] [--drop=m1,m3]   (default: yesterday's football day)
+//   --extra: a match the owner wants in the film although it is not on the featured list (2026-11-22: Liverpool vs Man Utd,
+//   like fetch.cjs --extra). Keyed x1, x2 ... and shown first; it is counted in the film's summary, so the rate can differ from /performance.
 const path = require('path');
 const { Client } = require('pg');
 const { dayDir, readJson, writeJson, currentFootballDay, MONTHS, MONTHS_FULL, kickoffTh, logo, fanPick, RESULT_WORD } = require('./lib.cjs');
@@ -53,11 +55,14 @@ function summary(ms) {
     const order = readJson(path.join(dayDir(date), 'spot.json')).matches.map((m) => m.match);
     film = { fetched_at: sf.fetched_at, picks: Object.fromEntries(sf.matches.map((m) => [m.key, m.pick])) };
     version = `spotlight-film (${sf.list_version})`;
-    rows = order.map((k, i) => ({ fixture_id: sf.matches.find((m) => m.key === k).fixture_id, rank: Number(k.slice(1)), order: i }));
+    rows = order.map((k, i) => ({ fixture_id: sf.matches.find((m) => m.key === k).fixture_id, key: k, rank: Number(k.slice(1)), extra: k.startsWith('x'), order: i }));
   } else {
     const sel = await q(`select fixture_id, rank, version from featured_selections where football_date = $1 and version = any($2) and rank is not null`, [date, VERSIONS]);
     version = listVersion(sel.map((r) => r.version));
     rows = sel.filter((r) => r.version === version);
+    const ei = process.argv.indexOf('--extra');
+    const extras = ei > 0 ? String(process.argv[ei + 1] || '').split(',').filter(Boolean).map(Number) : [];
+    rows = [...extras.map((id, i) => ({ fixture_id: id, key: `x${i + 1}`, rank: i + 1, extra: true })), ...rows.map((r) => ({ ...r, key: `m${r.rank}`, extra: false }))];
   }
   if (!rows.length) { console.error(`no featured list for ${date}`); process.exit(2); }
   const out = [];
@@ -72,10 +77,10 @@ function summary(ms) {
       from analysis_predictions where fixture_id = $1 and ($2::timestamptz is null or published_at <= $2) order by published_at desc, id desc limit 1`, [r.fixture_id, film && film.fetched_at]);
     if (!p || p.kind !== 'SIGNAL') { console.error(`fixture ${r.fixture_id}: latest round has no pick, left out (same as /performance)`); if (film) process.exit(2); continue; }
     if (film) {
-      const fp = film.picks[`m${r.rank}`];
-      if (String(fp.side).toLowerCase() !== String(p.selection).toLowerCase() || Math.abs(Number(fp.line) - Number(p.line)) > 1e-9) { console.error(`m${r.rank}: the film showed ${fp.label}, prediction ${p.id} is ${p.selection} ${p.line}`); process.exit(2); }
+      const fp = film.picks[r.key];
+      if (String(fp.side).toLowerCase() !== String(p.selection).toLowerCase() || Math.abs(Number(fp.line) - Number(p.line)) > 1e-9) { console.error(`${r.key}: the film showed ${fp.label}, prediction ${p.id} is ${p.selection} ${p.line}`); process.exit(2); }
       const [last] = await q(`select id, publish_round, kind from analysis_predictions where fixture_id = $1 order by published_at desc, id desc limit 1`, [r.fixture_id]);
-      if (Number(last.id) !== Number(p.id)) withdrawn.push(`m${r.rank} ${f.home} vs ${f.away}: film pick from round ${p.publish_round}, the site's newest round ${last.publish_round} is ${last.kind}`);
+      if (Number(last.id) !== Number(p.id)) withdrawn.push(`${r.key} ${f.home} vs ${f.away}: film pick from round ${p.publish_round}, the site's newest round ${last.publish_round} is ${last.kind}`);
     }
     const first = (p.reason || '').split('\n')[0];
     const lineLabel = (first.match(/เข็มทิศเกม:\s*(.+?)\s*\(/) || [])[1] || `${p.selection} ${Number(p.line)}`;
@@ -93,7 +98,7 @@ function summary(ms) {
     const finished = FINISHED.includes(f.status_short);
     const postponed = !finished && (f.status_short === 'PST' || new Date(f.kickoff_at) > dayEndUtc(date));
     out.push({
-      key: `m${r.rank}`, rank: r.rank, ...(film ? { order: r.order } : {}), fixture_id: Number(f.id), prediction_id: Number(p.id), publish_round: p.publish_round, engine: p.decision_rule_version,
+      key: r.key, rank: r.rank, extra: !!r.extra, ...(film ? { order: r.order } : {}), fixture_id: Number(f.id), prediction_id: Number(p.id), publish_round: p.publish_round, engine: p.decision_rule_version,
       league: f.league, league_importance: f.importance == null ? 30 : Number(f.importance), league_logo: await logo(f.llogo, `leagues-${f.league_id}.png`),
       kickoff_th: kickoffTh(f.kickoff_at), fixture_status: f.status_short, finished, postponed,
       home: { name: f.home, logo: await logo(f.hlogo, `teams-${f.hid}.png`), goals: f.goals_home },
@@ -104,7 +109,7 @@ function summary(ms) {
     });
   }
   await c.end();
-  if (film) out.sort((a, b) => a.order - b.order); else out.sort((a, b) => b.league_importance - a.league_importance || a.rank - b.rank);
+  if (film) out.sort((a, b) => a.order - b.order); else out.sort((a, b) => b.extra - a.extra || b.league_importance - a.league_importance || a.rank - b.rank);
   // --drop=m1,m3: the owner leaves a pick out of the film; the summary is then counted on the picks that stay
   const drop = ((process.argv.find((x) => x.startsWith("--drop=")) || "").slice(7)).split(",").filter(Boolean);
   const dropped = out.filter((m) => drop.includes(m.key));
@@ -114,6 +119,7 @@ function summary(ms) {
   const facts = { date, date_th: `วันที่ ${d} ${MONTHS_FULL[mo - 1]}`, date_short: `${d} ${MONTHS[mo - 1]}`, list_version: version, ...(film ? { basis: 'spotlight-film', film_fetched_at: film.fetched_at, withdrawn } : {}), fetched_at: new Date().toISOString(), matches: kept, summary: summary(kept), ...(dropped.length ? { dropped: dropped.map((m) => ({ key: m.key, fixture_id: m.fixture_id, match: `${m.home.name} vs ${m.away.name}`, result: m.result })) } : {}) };
   writeJson(path.join(dayDir(date), 'recap', 'facts.json'), facts);
   console.log(`${date} (${version}) -> days/${date}/recap/facts.json`);
+  if (out.some((m) => m.extra)) console.log('NOTE --extra: a match off the featured list is counted, so the rate can differ from /performance; leave "ทุกผลตรวจสอบได้" out of the summary');
   if (film) console.log('NOTE --spotlight: counted on the film\'s picks, so the rate can differ from /performance; leave "ทุกผลตรวจสอบได้" out of the summary');
   for (const w of withdrawn) console.log(`NOTE withdrawn later: ${w}`);
   for (const m of dropped) console.log(`dropped by the owner: [${m.key}] ${m.home.name} vs ${m.away.name} · ${m.result}`);
