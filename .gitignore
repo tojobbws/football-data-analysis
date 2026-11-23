@@ -24,3 +24,6 @@ apps/web/.impeccable/review/v2.png
 apps/web/.impeccable/surfaces/src-app-matches-slug-page-tsx.md
 .scratch/
 data/
+
+# impeccable per-session hook cache (the detector config in .impeccable/config.json is shared)
+**/.impeccable/hook.cache.json

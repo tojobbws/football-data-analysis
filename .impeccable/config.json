@@ -1,0 +1,92 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "plex",
+        "files": [
+          "scripts/video/recap.html"
+        ],
+        "createdAt": "2026-11-04T02:50:23.086Z",
+        "reason": "agent: video pipeline font (scripts/video/assets/fonts), same as spot.html; DESIGN.md covers the website"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "barlow",
+        "files": [
+          "scripts/video/recap.html"
+        ],
+        "createdAt": "2026-11-04T02:50:23.280Z",
+        "reason": "agent: video pipeline font, same as spot.html"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "scripts/video/recap.html"
+        ],
+        "createdAt": "2026-11-04T02:50:23.505Z",
+        "reason": "agent: broadcast-style motion-graphics video frames; glows are the film's established look, not a web UI"
+      },
+      {
+        "rule": "radial-halo",
+        "value": "*",
+        "files": [
+          "scripts/video/recap.html"
+        ],
+        "createdAt": "2026-11-04T03:00:35.938Z",
+        "reason": "agent: owner's brief asks for a night stadium with stadium lights and a spotlight on the logo in this video page"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "plex",
+        "createdAt": "2026-11-16T03:24:35.266Z",
+        "reason": "video pipeline fonts (scripts/video, shared by spotlight and recap films per the daily-recap-video skill), not site UI"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "barlow",
+        "createdAt": "2026-11-16T03:24:35.430Z",
+        "reason": "video pipeline fonts (scripts/video, shared by spotlight and recap films per the daily-recap-video skill), not site UI"
+      },
+      {
+        "rule": "ai-color-palette",
+        "value": "*",
+        "files": [
+          "scripts/video/recap.html"
+        ],
+        "createdAt": "2026-11-18T02:24:49.849Z",
+        "reason": "owner chose the recap film theme violet night + electric cyan on 2026-11-16 (daily-recap-video skill, Look section)"
+      },
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "scripts/video/insights/40-33-2026-11-22-preview/cover/index.html"
+        ],
+        "createdAt": "2026-11-22T05:03:58.442Z",
+        "reason": "social film cover reuses the films' incumbent gold numeral style (.gold in scripts/video/hfkit.cjs); not site UI"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "plex",
+        "files": [
+          "scripts/video/insights/40-33-2026-11-22-preview/cover/index.html"
+        ],
+        "createdAt": "2026-11-22T05:03:58.678Z",
+        "reason": "film/cover typeface from scripts/video/hfkit.cjs FONTS, not site UI"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "barlow",
+        "files": [
+          "scripts/video/insights/40-33-2026-11-22-preview/cover/index.html"
+        ],
+        "createdAt": "2026-11-22T05:03:58.937Z",
+        "reason": "film/cover numeral typeface from scripts/video/hfkit.cjs FONTS, not site UI"
+      }
+    ]
+  }
+}
