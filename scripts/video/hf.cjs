@@ -182,7 +182,7 @@ function buildOpening(TL) {
   <div class="bmPl" style="left:110px"><img src="${asset(bm.home.logo)}" alt=""></div>
   <div class="bmVs gold">VS</div>
   <div class="bmPl" style="left:670px"><img src="${asset(bm.away.logo)}" alt=""></div>
-  <div class="bmT1">${esc(BM.t1)}</div>
+  <div class="bmT1"${BM.t1Size ? ` style="font-size:${BM.t1Size}px"` : ''}>${esc(BM.t1)}</div>
   <div class="bmT2 gold">${esc(BM.t2)}</div>
   <div class="bmKo"><span>${esc(BM.ko)}</span></div>
   <div class="bmMore">${esc(BM.more)}</div>
@@ -210,7 +210,7 @@ function buildOpening(TL) {
     const arrowD = side === 'away' ? 'M 760 0 C 640 -90 440 -90 330 -10' : 'M 320 0 C 440 -90 640 -90 750 -10';
     const ae = bezEnd(arrowD);
     hook = `<div id="${p}-hook" class="hook">
-  <div class="htitle" id="${p}-ht"><span class="gold">${esc(subs[0].show)}</span></div>
+  <div class="htitle" id="${p}-ht"><span class="gold">${esc(subs[0].show).split(' ').map((w) => `<span style="white-space:nowrap">${w}</span>`).join(' ')}</span></div>
   <div class="hko" id="${p}-hko">${esc(hm.kickoff_th.split(' · ')[0])} (เวลาไทย) · <img src="${asset(hm.league_logo)}" alt="">${esc(hm.league)}</div>
   <div class="plate" id="${p}-hH"><div class="halo" id="${p}-hHh"></div><div class="face" id="${p}-hHf"><img src="${asset(hm.home.logo)}" alt=""></div></div>
   <div class="plate" id="${p}-hA"><div class="halo" id="${p}-hAh"></div><div class="face" id="${p}-hAf"><img src="${asset(hm.away.logo)}" alt=""></div></div>

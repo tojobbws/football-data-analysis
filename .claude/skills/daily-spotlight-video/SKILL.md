@@ -1,6 +1,6 @@
 ---
 name: daily-spotlight-video
-description: Make the day's เข็มทิศเกม "คู่น่าจับตาวันนี้" vertical video (1080x1920, Thai ElevenLabs voice, subtitles, isometric 3D motion) from the production featured list. Use when the owner asks for the daily video, "ทำ video คู่น่าจับตา", "video วันนี้/พรุ่งนี้", or passes a football date.
+description: Make the day's เข็มทิศเกม "คู่น่าจับตาวันนี้" vertical video (1080x1920, Thai Gemini TTS voice, subtitles, isometric 3D motion) from the production featured list. Use when the owner asks for the daily video, "ทำ video คู่น่าจับตา", "video วันนี้/พรุ่งนี้", or passes a football date.
 ---
 
 # Daily spotlight video
@@ -19,8 +19,11 @@ Run from `scripts/video/` (first time on a machine: `npm install`; needs `ffmpeg
    - No list for the day → tell the owner, stop.
    - A match already finished (`fixture_status` FT/AET/PEN) → leave it out (owner, 2026-11-05). Already started → ask the owner.
    - The owner wants a match in the film that is not on the list (2026-11-22, Liverpool vs Man Utd): `node fetch.cjs <date> --extra <fixtureId>` adds it as `x1` (it needs its own published pick) before the featured matches. Lead the cover with it through `opening.cover = {kind:"bigmatch", match:"x1", tag, t1, t2, photo, credit, ko, more}` (hf.cjs: a photo, both crests, a question, never the pick; the featured pairs ride small underneath). Example: `days/2026-11-22/build-spot.cjs`. Never call the extra match คู่น่าจับตา.
-2. **Script:** write `days/<date>/spot.json`. Copy the shape of `examples/2026-11-03.spot.json` (details below).
-3. **Stills:** `node run.cjs <date> stills` runs prepare (validates the script) → ElevenLabs voice (cached per segment, so only changed text is regenerated) → timeline → one stills sheet per clip at `days/<date>/out/c*/sheet.png`. **Read every sheet** and fix overlaps, clipped names, or empty frames before rendering.
+2. **Script:** write `days/<date>/spot.json`. Copy the shape of `examples/2026-11-03.spot.json` (details below). Since 2026-11-23 a `days/<date>/build-spot.cjs` that writes it is the usual way (`days/2026-11-23/build-spot.cjs`).
+   - **Cover = the photo cover, every day (owner, 2026-11-23):** `opening.cover = {kind:"bigmatch", match, tag, t1, t2, photo, credit, ko, more, t1Size?}`. Lead with the day's top match (highest league importance, or the extra `x1`): `tag` e.g. `พรีเมียร์ลีกคืนนี้` (`บิ๊กแมตช์คืนนี้` only for a real big match), `t1` = `<home> × <away>` in Thai, `t2` = `เข็มทิศเกมเลือกใคร?` (never the pick), `ko` = kickoff + the venue from `facts.json`, `more` = `+ คู่น่าจับตาวันนี้ อีก N คู่`. `t1Size` (px, default 100) when `t1` is long (84 fits `เบรนท์ฟอร์ด × เอฟเวอร์ตัน`).
+   - Photo: a sharp, free-licence photo of the home stadium from Wikimedia Commons (search the Commons API, `generator=search&gsrnamespace=6`, read `extmetadata` for licence + author; prefer a portrait or evening shot of the stands and pitch, no identifiable player close-ups). Save it to `days/<date>/photos/`, set `credit` = `ภาพ: <author> · <licence> · Wikimedia Commons`, and add the same credit line to `final/caption.txt`. Example: `days/2026-11-23/build-spot.cjs`.
+   - After changing `opening` (cover, hook), re-run `prepare.cjs` **and** `timeline.cjs <date> c0`: `hf.cjs` reads the opening from `out/c0/timeline.json`. Snapshot the cover (`npx hyperframes snapshot --at 0.45 --no-end`) and check nothing overflows; that still is also `final/<date>_cover.png`.
+3. **Stills:** `node run.cjs <date> stills` runs prepare (validates the script) → voice (Gemini, cached per segment, so only changed text is regenerated) → timeline → one stills sheet per clip at `days/<date>/out/c*/sheet.png`. **Read every sheet** and fix overlaps, clipped names, or empty frames before rendering.
 4. **Film:** `node run.cjs <date> film` (run in background; about 2.5 min of wall time per second of film, all clips in parallel) → `days/<date>/final/<date>_daily-spotlight.mp4` + `final/contact.png`. Read the contact sheet, check the order and the picks, then give the owner the path, the length and the loudness line.
 5. Tell the owner what you could not check: you cannot hear the voice (team names and numbers pronunciation) or the music.
 
@@ -54,6 +57,6 @@ Run from `scripts/video/` (first time on a machine: `npm install`; needs `ffmpeg
 
 ## Files
 
-`fetch.cjs` (DB → facts) · `prepare.cjs` (facts + spot → clips, validation) · `tts.cjs` (ElevenLabs `eleven_v4`, voice `KhBRXgEQjvfdIyXOu7G3`, Thai, `[excited]`-style tags) · `timeline.cjs` (×1.15 speed, scene cuts and subtitle times from the character timestamps) · `spot.html` (match clip) · `opening.html` · `render.cjs` (probe / full) · `audio.cjs` (128 BPM synth music, riser/whoosh/boom/crowd/drumroll/audio logo, VO ducking, two-pass −14 LUFS) · `join.cjs` · `run.cjs`.
+`fetch.cjs` (DB → facts) · `prepare.cjs` (facts + spot → clips, validation) · `tts.cjs` (since 2026-11-23, owner: Gemini 3.8 Flash TTS `gemini-3.8-flash-tts`, owner voice `voice_fu7qdk3csbeb` (`GEMINI_TTS_VOICE`), the `[excited]`-style tag becomes its `speech_metadata.style`; Gemini gives no timestamps, so each take goes through ElevenLabs forced alignment for the character times. Needs `GEMINI_API_KEY` and an ElevenLabs key with the Forced Alignment permission. `TTS_ENGINE=eleven` = the old ElevenLabs `eleven_v4` voice `KhBRXgEQjvfdIyXOu7G3`) · `timeline.cjs` (×1.15 speed, scene cuts and subtitle times from the character timestamps) · `spot.html` (match clip) · `opening.html` · `render.cjs` (probe / full) · `audio.cjs` (128 BPM synth music, riser/whoosh/boom/crowd/drumroll/audio logo, VO ducking, two-pass −14 LUFS) · `join.cjs` · `run.cjs`.
 
 Known limits: API-Football logos are 150 px, so they look slightly soft when scaled up; the music is synthesized (a licensed track can replace `music.wav`). The opening list shrinks to fit when there are more than about 4 matches; check its sheet.
