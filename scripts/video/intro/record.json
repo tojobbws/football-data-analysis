@@ -1,0 +1,880 @@
+{
+  "fetched_at": "2026-11-13T08:45:06.285Z",
+  "count": {
+    "picks": 35,
+    "shown_right": 14,
+    "shown_wrong": 15,
+    "push": 1,
+    "void": 0,
+    "pending": 5,
+    "first_day": "2026-10-18",
+    "last_day": "2026-11-13"
+  },
+  "days": [
+    {
+      "date": "2026-10-18",
+      "version": "featured-v2",
+      "matches": [
+        {
+          "rank": 1,
+          "fixture_id": "1492412",
+          "league": "Serie A",
+          "home": "Bahia",
+          "away": "Flamengo",
+          "home_logo": "assets/logos/teams-118.png",
+          "away_logo": "assets/logos/teams-127.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-118.png",
+          "kickoff_at": "2026-10-18T21:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            0,
+            3
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Bahia ไม่แพ้",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-10-18T21:14:16.704Z",
+          "round": "LINEUP"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-21",
+      "version": "featured-v2",
+      "matches": [
+        {
+          "rank": 3,
+          "fixture_id": "1570389",
+          "league": "La Liga",
+          "home": "Levante",
+          "away": "Athletic Club",
+          "home_logo": "assets/logos/teams-539.png",
+          "away_logo": "assets/logos/teams-531.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-539.png",
+          "kickoff_at": "2026-10-21T18:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            3,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Levante ไม่แพ้",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-10-21T17:18:03.645Z",
+          "round": "LINEUP"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-03",
+      "version": "featured-ai-v1",
+      "matches": [
+        {
+          "rank": 1,
+          "fixture_id": "1563240",
+          "league": "Championship",
+          "home": "Blackburn",
+          "away": "Stoke City",
+          "home_logo": "assets/logos/teams-67.png",
+          "away_logo": "assets/logos/teams-75.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-75.png",
+          "kickoff_at": "2026-11-03T19:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            2
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Stoke City ชนะ",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-03T05:25:36.009Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 2,
+          "fixture_id": "1563244",
+          "league": "Championship",
+          "home": "QPR",
+          "away": "Burnley",
+          "home_logo": "assets/logos/teams-72.png",
+          "away_logo": "assets/logos/teams-44.png",
+          "side": "over",
+          "pick_logo": null,
+          "kickoff_at": "2026-11-03T19:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            1
+          ],
+          "market": "OVER_UNDER",
+          "pick": "รวม 3 ประตูขึ้นไป",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-03T05:25:41.267Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 3,
+          "fixture_id": "1635695",
+          "league": "UEFA Champions League",
+          "home": "Manchester United",
+          "away": "AS Roma",
+          "home_logo": "assets/logos/teams-33.png",
+          "away_logo": "assets/logos/teams-497.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-497.png",
+          "kickoff_at": "2026-11-03T20:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            3,
+            2
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "AS Roma ไม่แพ้",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-03T05:25:58.974Z",
+          "round": "EARLY"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-04",
+      "version": "featured-ai-v1",
+      "matches": [
+        {
+          "rank": 1,
+          "fixture_id": "1492446",
+          "league": "Serie A",
+          "home": "Internacional",
+          "away": "Coritiba",
+          "home_logo": "assets/logos/teams-119.png",
+          "away_logo": "assets/logos/teams-147.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-119.png",
+          "kickoff_at": "2026-11-04T00:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Internacional ชนะ",
+          "status": "HALF_WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-03T05:26:14.149Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 3,
+          "fixture_id": "1563250",
+          "league": "Championship",
+          "home": "Wrexham",
+          "away": "Middlesbrough",
+          "home_logo": "assets/logos/teams-1837.png",
+          "away_logo": "assets/logos/teams-70.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-70.png",
+          "kickoff_at": "2026-11-04T19:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            2,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Middlesbrough ชนะ",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-04T05:26:18.909Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 2,
+          "fixture_id": "1635651",
+          "league": "UEFA Champions League",
+          "home": "Borussia Dortmund",
+          "away": "Real Betis",
+          "home_logo": "assets/logos/teams-165.png",
+          "away_logo": "assets/logos/teams-543.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-543.png",
+          "kickoff_at": "2026-11-04T20:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            2,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Real Betis ไม่แพ้",
+          "status": "HALF_LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-04T05:26:26.165Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 4,
+          "fixture_id": "1635710",
+          "league": "UEFA Champions League",
+          "home": "RB Leipzig",
+          "away": "Manchester City",
+          "home_logo": "assets/logos/teams-173.png",
+          "away_logo": "assets/logos/teams-50.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-50.png",
+          "kickoff_at": "2026-11-04T20:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            2,
+            3
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Manchester City ชนะห่าง 2 ลูกขึ้นไป",
+          "status": "PUSH",
+          "result": "เสมอตัว",
+          "published_at": "2026-11-04T05:26:28.587Z",
+          "round": "EARLY"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-05",
+      "version": "featured-ai-v1",
+      "matches": [
+        {
+          "rank": 1,
+          "fixture_id": "1492448",
+          "league": "Serie A",
+          "home": "Sao Paulo",
+          "away": "Corinthians",
+          "home_logo": "assets/logos/teams-126.png",
+          "away_logo": "assets/logos/teams-131.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-126.png",
+          "kickoff_at": "2026-11-05T00:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            0,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Sao Paulo ชนะ",
+          "status": "HALF_LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-04T05:26:47.898Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 2,
+          "fixture_id": "1636208",
+          "league": "UEFA Europa League",
+          "home": "AC Milan",
+          "away": "Ferencvarosi TC",
+          "home_logo": "assets/logos/teams-489.png",
+          "away_logo": "assets/logos/teams-651.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-651.png",
+          "kickoff_at": "2026-11-05T17:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            0,
+            2
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Ferencvarosi TC ไม่แพ้เกิน 1 ลูก",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-05T10:43:12.620Z",
+          "round": "PREMATCH"
+        },
+        {
+          "rank": 3,
+          "fixture_id": "1636254",
+          "league": "UEFA Europa League",
+          "home": "Crystal Palace",
+          "away": "1899 Hoffenheim",
+          "home_logo": "assets/logos/teams-52.png",
+          "away_logo": "assets/logos/teams-167.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-167.png",
+          "kickoff_at": "2026-11-05T17:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "1899 Hoffenheim ไม่แพ้",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-05T10:43:05.681Z",
+          "round": "PREMATCH"
+        },
+        {
+          "rank": 4,
+          "fixture_id": "1636439",
+          "league": "UEFA Europa Conference League",
+          "home": "KuPS",
+          "away": "Gent",
+          "home_logo": "assets/logos/teams-1165.png",
+          "away_logo": "assets/logos/teams-631.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-631.png",
+          "kickoff_at": "2026-11-05T17:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            0,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Gent ชนะ",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-05T10:42:55.543Z",
+          "round": "PREMATCH"
+        },
+        {
+          "rank": 5,
+          "fixture_id": "1636444",
+          "league": "UEFA Europa Conference League",
+          "home": "Lincoln Red Imps FC",
+          "away": "HNK Hajduk Split",
+          "home_logo": "assets/logos/teams-667.png",
+          "away_logo": "assets/logos/teams-608.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-608.png",
+          "kickoff_at": "2026-11-05T17:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "HNK Hajduk Split ชนะห่าง 2 ลูกขึ้นไป",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-05T10:43:28.908Z",
+          "round": "PREMATCH"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-06",
+      "version": "featured-ai-v2",
+      "matches": [
+        {
+          "rank": 2,
+          "fixture_id": "1584462",
+          "league": "Süper Lig",
+          "home": "Gaziantep FK",
+          "away": "Kasımpaşa",
+          "home_logo": "assets/logos/teams-3573.png",
+          "away_logo": "assets/logos/teams-1004.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-1004.png",
+          "kickoff_at": "2026-11-06T17:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            0,
+            2
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Kasımpaşa ชนะ",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-06T05:31:41.799Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 5,
+          "fixture_id": "1494334",
+          "league": "Allsvenskan",
+          "home": "Hammarby FF",
+          "away": "IF Elfsborg",
+          "home_logo": "assets/logos/teams-363.png",
+          "away_logo": "assets/logos/teams-372.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-372.png",
+          "kickoff_at": "2026-11-06T18:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            4,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "IF Elfsborg ไม่แพ้เกิน 1 ลูก",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-06T05:31:49.029Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 3,
+          "fixture_id": "1552216",
+          "league": "Eredivisie",
+          "home": "Willem II",
+          "away": "PEC Zwolle",
+          "home_logo": "assets/logos/teams-195.png",
+          "away_logo": "assets/logos/teams-193.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-193.png",
+          "kickoff_at": "2026-11-06T19:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "PEC Zwolle ชนะ",
+          "status": "HALF_LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-06T05:31:53.860Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 1,
+          "fixture_id": "1552817",
+          "league": "Ligue 1",
+          "home": "Toulouse",
+          "away": "Strasbourg",
+          "home_logo": "assets/logos/teams-96.png",
+          "away_logo": "assets/logos/teams-95.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-96.png",
+          "kickoff_at": "2026-11-06T19:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            3,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Toulouse ชนะ",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-06T05:32:01.089Z",
+          "round": "EARLY"
+        },
+        {
+          "rank": 4,
+          "fixture_id": "1563256",
+          "league": "Championship",
+          "home": "Derby",
+          "away": "Bolton",
+          "home_logo": "assets/logos/teams-69.png",
+          "away_logo": "assets/logos/teams-68.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-68.png",
+          "kickoff_at": "2026-11-06T20:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            3,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Bolton ชนะ",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-06T05:32:05.904Z",
+          "round": "EARLY"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-07",
+      "version": "featured-ai-v2",
+      "matches": [
+        {
+          "rank": 2,
+          "fixture_id": "1550195",
+          "league": "Serie A",
+          "home": "Torino",
+          "away": "Lecce",
+          "home_logo": "assets/logos/teams-503.png",
+          "away_logo": "assets/logos/teams-867.png",
+          "side": "over",
+          "pick_logo": null,
+          "kickoff_at": "2026-11-07T14:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            1
+          ],
+          "market": "OVER_UNDER",
+          "pick": "รวม 3 ประตูขึ้นไป",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-07T07:29:18.377Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 3,
+          "fixture_id": "1570446",
+          "league": "La Liga",
+          "home": "Espanyol",
+          "away": "Deportivo La Coruna",
+          "home_logo": "assets/logos/teams-540.png",
+          "away_logo": "assets/logos/teams-544.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-544.png",
+          "kickoff_at": "2026-11-07T15:15:00.000Z",
+          "status_short": "FT",
+          "score": [
+            0,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Deportivo La Coruna ไม่แพ้",
+          "status": "HALF_WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-07T07:29:56.359Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 4,
+          "fixture_id": "1550194",
+          "league": "Serie A",
+          "home": "Parma",
+          "away": "Bologna",
+          "home_logo": "assets/logos/teams-523.png",
+          "away_logo": "assets/logos/teams-500.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-500.png",
+          "kickoff_at": "2026-11-07T17:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            2
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Bologna ชนะ",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-07T07:30:13.382Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 1,
+          "fixture_id": "1570448",
+          "league": "La Liga",
+          "home": "Osasuna",
+          "away": "Athletic Club",
+          "home_logo": "assets/logos/teams-727.png",
+          "away_logo": "assets/logos/teams-531.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-727.png",
+          "kickoff_at": "2026-11-07T17:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Osasuna ไม่แพ้",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-07T07:30:22.476Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 5,
+          "fixture_id": "1552811",
+          "league": "Ligue 1",
+          "home": "Auxerre",
+          "away": "Paris FC",
+          "home_logo": "assets/logos/teams-108.png",
+          "away_logo": "assets/logos/teams-114.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-114.png",
+          "kickoff_at": "2026-11-07T18:00:00.000Z",
+          "status_short": "FT",
+          "score": [
+            0,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Paris FC ชนะ",
+          "status": "HALF_WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-07T07:30:35.405Z",
+          "round": "DAILY"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-08",
+      "version": "featured-ai-v2",
+      "matches": [
+        {
+          "rank": 1,
+          "fixture_id": "1550193",
+          "league": "Serie A",
+          "home": "Napoli",
+          "away": "Lazio",
+          "home_logo": "assets/logos/teams-492.png",
+          "away_logo": "assets/logos/teams-487.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-487.png",
+          "kickoff_at": "2026-11-08T11:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Lazio ไม่แพ้",
+          "status": "HALF_WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-08T07:25:39.343Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 2,
+          "fixture_id": "1575219",
+          "league": "Bundesliga",
+          "home": "1. FC Köln",
+          "away": "Bayer Leverkusen",
+          "home_logo": "assets/logos/teams-192.png",
+          "away_logo": "assets/logos/teams-168.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-192.png",
+          "kickoff_at": "2026-11-08T14:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            1,
+            2
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "1. FC Köln ไม่แพ้",
+          "status": "HALF_LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-08T07:26:24.811Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 3,
+          "fixture_id": "1552812",
+          "league": "Ligue 1",
+          "home": "Stade Brestois 29",
+          "away": "Lyon",
+          "home_logo": "assets/logos/teams-106.png",
+          "away_logo": "assets/logos/teams-80.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-106.png",
+          "kickoff_at": "2026-11-08T16:15:00.000Z",
+          "status_short": "FT",
+          "score": [
+            2,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Stade Brestois 29 ชนะ",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-08T07:27:16.749Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 4,
+          "fixture_id": "1575216",
+          "league": "Bundesliga",
+          "home": "SC Freiburg",
+          "away": "Union Berlin",
+          "home_logo": "assets/logos/teams-160.png",
+          "away_logo": "assets/logos/teams-182.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-160.png",
+          "kickoff_at": "2026-11-08T16:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            2,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "SC Freiburg ชนะห่าง 2 ลูกขึ้นไป",
+          "status": "WIN",
+          "result": "ทายถูก",
+          "published_at": "2026-11-08T07:27:23.580Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 5,
+          "fixture_id": "1570452",
+          "league": "La Liga",
+          "home": "Villarreal",
+          "away": "Getafe",
+          "home_logo": "assets/logos/teams-533.png",
+          "away_logo": "assets/logos/teams-546.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-546.png",
+          "kickoff_at": "2026-11-08T17:30:00.000Z",
+          "status_short": "FT",
+          "score": [
+            2,
+            0
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Getafe ไม่แพ้เกิน 1 ลูก",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-08T07:27:34.634Z",
+          "round": "DAILY"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-12",
+      "version": "featured-ai-v3",
+      "matches": [
+        {
+          "rank": 1,
+          "fixture_id": "1528962",
+          "league": "UEFA Nations League",
+          "home": "England",
+          "away": "Croatia",
+          "home_logo": "assets/logos/teams-10.png",
+          "away_logo": "assets/logos/teams-3.png",
+          "side": "home",
+          "pick_logo": "assets/logos/teams-10.png",
+          "kickoff_at": "2026-11-12T19:45:00.000Z",
+          "status_short": "FT",
+          "score": [
+            2,
+            1
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "England ชนะห่าง 2 ลูกขึ้นไป",
+          "status": "LOSS",
+          "result": "ทายผิด",
+          "published_at": "2026-11-12T08:16:55.400Z",
+          "round": "DAILY"
+        }
+      ]
+    },
+    {
+      "date": "2026-11-13",
+      "version": "featured-ai-v4",
+      "matches": [
+        {
+          "rank": 1,
+          "fixture_id": "1528965",
+          "league": "UEFA Nations League",
+          "home": "Serbia",
+          "away": "Germany",
+          "home_logo": "assets/logos/teams-14.png",
+          "away_logo": "assets/logos/teams-25.png",
+          "side": "under",
+          "pick_logo": null,
+          "kickoff_at": "2026-11-13T19:45:00.000Z",
+          "status_short": "NS",
+          "score": [
+            null,
+            null
+          ],
+          "market": "OVER_UNDER",
+          "pick": "รวมไม่เกิน 3 ประตู",
+          "status": "PENDING",
+          "result": "รอผล",
+          "published_at": "2026-11-13T07:16:58.927Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 4,
+          "fixture_id": "1528967",
+          "league": "UEFA Nations League",
+          "home": "Slovakia",
+          "away": "Faroe Islands",
+          "home_logo": "assets/logos/teams-773.png",
+          "away_logo": "assets/logos/teams-1098.png",
+          "side": "under",
+          "pick_logo": null,
+          "kickoff_at": "2026-11-13T19:45:00.000Z",
+          "status_short": "NS",
+          "score": [
+            null,
+            null
+          ],
+          "market": "OVER_UNDER",
+          "pick": "รวมไม่เกิน 2 ประตู",
+          "status": "PENDING",
+          "result": "รอผล",
+          "published_at": "2026-11-13T07:17:01.170Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 5,
+          "fixture_id": "1528969",
+          "league": "UEFA Nations League",
+          "home": "Bulgaria",
+          "away": "Iceland",
+          "home_logo": "assets/logos/teams-1103.png",
+          "away_logo": "assets/logos/teams-18.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-18.png",
+          "kickoff_at": "2026-11-13T19:45:00.000Z",
+          "status_short": "NS",
+          "score": [
+            null,
+            null
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Iceland ชนะ",
+          "status": "PENDING",
+          "result": "รอผล",
+          "published_at": "2026-11-13T07:16:47.721Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 2,
+          "fixture_id": "1545614",
+          "league": "UEFA Nations League",
+          "home": "Luxembourg",
+          "away": "Estonia",
+          "home_logo": "assets/logos/teams-1102.png",
+          "away_logo": "assets/logos/teams-1101.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-1101.png",
+          "kickoff_at": "2026-11-13T19:45:00.000Z",
+          "status_short": "NS",
+          "score": [
+            null,
+            null
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Estonia ไม่แพ้",
+          "status": "PENDING",
+          "result": "รอผล",
+          "published_at": "2026-11-13T07:17:05.654Z",
+          "round": "DAILY"
+        },
+        {
+          "rank": 3,
+          "fixture_id": "1545654",
+          "league": "UEFA Nations League",
+          "home": "Slovenia",
+          "away": "Switzerland",
+          "home_logo": "assets/logos/teams-1091.png",
+          "away_logo": "assets/logos/teams-15.png",
+          "side": "away",
+          "pick_logo": "assets/logos/teams-15.png",
+          "kickoff_at": "2026-11-13T19:45:00.000Z",
+          "status_short": "NS",
+          "score": [
+            null,
+            null
+          ],
+          "market": "ASIAN_HANDICAP",
+          "pick": "Switzerland ชนะ",
+          "status": "PENDING",
+          "result": "รอผล",
+          "published_at": "2026-11-13T07:17:03.410Z",
+          "round": "DAILY"
+        }
+      ]
+    }
+  ]
+}

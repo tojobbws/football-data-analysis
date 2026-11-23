@@ -1,0 +1,381 @@
+<!doctype html><html><head><meta charset="utf-8"><title>เข็มทิศฟุตบอล intro</title>
+<style>
+@font-face{font-family:'IBM Plex Sans Thai';font-weight:600;src:url(assets/fonts/ibm-plex-sans-thai-thai-600-normal.woff2) format('woff2');unicode-range:U+0E01-0E5B,U+200C-200D,U+25CC}
+@font-face{font-family:'IBM Plex Sans Thai';font-weight:600;src:url(assets/fonts/ibm-plex-sans-thai-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'IBM Plex Sans Thai';font-weight:700;src:url(assets/fonts/ibm-plex-sans-thai-thai-700-normal.woff2) format('woff2');unicode-range:U+0E01-0E5B,U+200C-200D,U+25CC}
+@font-face{font-family:'IBM Plex Sans Thai';font-weight:700;src:url(assets/fonts/ibm-plex-sans-thai-latin-700-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+html,body{margin:0;background:#222}canvas{display:block;height:100vh;width:auto;margin:auto}
+</style>
+<script src="springs.js"></script><script src="data.js"></script></head>
+<body><canvas id="c"></canvas><script>
+// เข็มทิศฟุตบอล — 30 s intro, 1080x1920. Every frame is a pure function of t (renderFrame), no state between frames.
+// Facts come from data.js (build-data.cjs): the real 7 Nov list, the Parma–Bologna pick, every settled featured pick.
+const W = 1080, H = 1920;
+const c = document.getElementById('c'); c.width = W; c.height = H; const g = c.getContext('2d', { willReadFrequently: true }); // CPU canvas: the GPU path cached scaled logos and drew a first frame differently
+const D = window.DATA;
+window.FILM_DURATION = 30.6;
+const INK = '#0b1324', SLATE6 = '#475569', SLATE5 = '#64748b', SLATE2 = '#e2e8f0', CARD = '#f8fafc', TEAL = '#0f766e', AMBER = '#d97706', CREAM = '#fefaeb';
+const U = (t, p = 'snappy') => Spring.unit(t, p);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, u) => a + (b - a) * u;
+const hex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, u) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], u))).join(',')})`; };
+// the frame breathes with the music: a small kick on every beat of the 119.6 bpm bed, a bigger one on the downbeats of the lift (bars 10-13)
+const BEAT = 60 / 119.6, LAST_BEAT = 56;
+// each kick rises over ~0.09 s, then decays: no one-frame step
+function punch(t) { let s = 0; for (let k = 0; k <= LAST_BEAT; k++) { const b = k * BEAT; if (b > t) break; const lift = k >= 40 && k < 56 && k % 4 === 0; const x = (t - b) / 0.09; s += (lift ? 0.014 : 0.006) * x * Math.exp(1 - x); } return s; }
+const breathe = (t) => (0.03 * (1 - Math.cos(Math.PI * Math.min(t, 28.6) / 28.6)) / 2 + 0.01 * Math.sin(2 * Math.PI * t / 5.3) + 0.007 * Math.sin(2 * Math.PI * t / 3.7 + 1));
+// voice: line i starts at VS[i]; on-screen row j of line i rises when its word is said
+const VS = [0.20, 3.55, 7.45, 12.35, 16.05, 20.15, 25.75];
+const ROW = (i, j) => VS[i] + D.vo[i].rows[j];
+window.VO = D.vo.map((v, i) => [v.file, VS[i]]);
+// shots
+const T = { B: 3.45, C: 7.30, Dd: 12.10, E: 15.80, F: 19.90, G: 25.50 };
+
+// ---------- pictures ----------
+const IM = {};
+const want = new Set(['assets/logo-lockup.webp', 'assets/compass-picks-title.webp', 'assets/compass-mark.webp', 'assets/result-win.webp', 'assets/result-loss.webp', 'assets/result-push.webp']);
+for (const lg of D.night.leagues) { want.add(lg.logo); for (const m of lg.matches) { want.add(m.hl); want.add(m.al); } }
+for (const m of D.record.settled) { if (m.logo) want.add(m.logo); want.add(m.hl); want.add(m.al); }
+want.add(D.hero.hl); want.add(D.hero.al); want.delete(null);
+// decoded up front into bitmaps, so the first frame that draws a picture draws it exactly like every later frame
+const loads = [...want].map((p) => new Promise((res) => { const i = new Image(); i.onload = () => createImageBitmap(i).then((bm) => { IM[p] = bm; res(); }, () => { IM[p] = i; res(); }); i.onerror = () => res(); i.src = p; }));
+
+// ---------- drawing helpers ----------
+function rr(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function font(size, wt = 700) { g.font = `${wt} ${size}px "IBM Plex Sans Thai"`; }
+function text(s, x, y, size, wt, color, align = 'left') { font(size, wt); g.fillStyle = color; g.textAlign = align; g.textBaseline = 'alphabetic'; g.fillText(s, x, y); }
+function tw(s, size, wt = 700) { font(size, wt); return g.measureText(s).width; }
+function fit(s, size, wt, maxW) { const w = tw(s, size, wt); return w > maxW ? size * maxW / w : size; }
+function pic(p, x, y, w, h, a = 1) { const i = IM[p]; if (!i) return; if (!h) h = w * i.height / i.width; g.save(); g.globalAlpha *= clamp(a); g.drawImage(i, x, y, w, h); g.restore(); }
+function crest(p, cx, cy, size, a = 1) { const i = IM[p]; if (!i) return; const s = size / Math.max(i.width, i.height); pic(p, cx - i.width * s / 2, cy - i.height * s / 2, i.width * s, i.height * s, a); }
+// a row of words that rises into place from behind its own lower edge when it is said, then stays (words.md)
+function rise(s, x, y, size, wt, color, t0, t, align = 'left') {
+  if (t < t0) return;
+  const p = U(t - t0, 'snappy'), top = y - size * 1.32, bot = y + size * 0.5;
+  g.save(); g.beginPath(); g.rect(0, top, W, bot - top); g.clip();
+  g.globalAlpha *= clamp((t - t0) / 0.14);
+  text(s, x, y + (1 - p) * size * 1.15, size, wt, color, align); g.restore();
+}
+// fade-out factor from t1: a short smoothstep, so leaving words are gone in 0.22 s instead of trailing at low opacity
+const out = (t, t1) => { const u = clamp((t - t1) / 0.32); return 1 - u * u * (3 - 2 * u); };
+
+// ---------- the 7 Nov list (shots A, B) ----------
+const S = 2.7, X0 = 56, RW = 967, RH = 60 * S, GAP = 6 * S, LH = 64 * S, GGAP = 20 * S, LIST_TOP = 800;
+const items = [];
+for (const lg of D.night.leagues) {
+  items.push({ kind: 'lg', lg, h: LH, gap: 0, pick: false });
+  lg.matches.forEach((m, i) => items.push({ kind: 'row', m, h: RH, gap: i === lg.matches.length - 1 ? GGAP : GAP, pick: m.pick }));
+}
+const P = items.findIndex((it) => it.kind === 'row' && it.m.home === D.hero.home && it.m.away === D.hero.away);
+const PICKS = items.map((it, i) => (it.pick ? i : -1)).filter((i) => i >= 0);
+const TC = ROW(1, 0) - 0.05;              // the list folds to the five picks on "คัด"
+const TAU = 0.62;                         // momentum scroll: off = OFF1 (1 - e^-t/τ), a flick that brakes
+const yFull = (i) => { let y = 0; for (let j = 0; j < i; j++) y += items[j].h + items[j].gap; return y; };
+const ANCHOR0 = 1210;                     // Parma's row comes to rest here
+const OFF1 = LIST_TOP + yFull(P) - ANCHOR0;
+const offDecay = (t) => OFF1 * (1 - Math.exp(-Math.max(0, t) / TAU));
+const pIn = PICKS.indexOf(P), GROUP_H = PICKS.length * RH + (PICKS.length - 1) * GAP;
+const GROUP_TOP = 1150 - GROUP_H / 2, ANCHOR1 = GROUP_TOP + pIn * (RH + GAP);
+// 1 = full height, 0 = folded away; the rows fade first (0.2 s) and fold after, so no squashed text shows
+function kOf(i, t) {
+  if (items[i].pick) return 1;
+  const d = Math.min(0.2, Math.abs(i - P) * 0.004);
+  return 1 - U(t - TC - 0.16 - d, 'camera');
+}
+// the page lists the picks by league; once folded they settle into kickoff order (before 06:00 counts as after midnight)
+const kickKey = (m) => { const [h, mi] = m.time.split(':').map(Number); return (h < 6 ? h + 24 : h) * 60 + mi; };
+const SORTED = [...PICKS].sort((a, b) => kickKey(items[a].m) - kickKey(items[b].m));
+const TSORT = TC + 1.0;
+const slotY = (i) => GROUP_TOP + SORTED.indexOf(i) * (RH + GAP);
+function pickY(i, t, L) { const y0 = LIST_TOP + L.y[i] - L.off; return t < TSORT ? y0 : lerp(y0, slotY(i), U(t - TSORT, 'camera')); }
+function layout(t) {
+  const k = items.map((_, i) => kOf(i, t)); const y = []; let acc = 0;
+  for (let i = 0; i < items.length; i++) { y.push(acc); const last = items[i].pick && PICKS[PICKS.length - 1] === i; acc += (items[i].h + (items[i].pick ? (last ? 0 : GAP) : items[i].gap)) * k[i]; }
+  let off;
+  if (t < TC) off = offDecay(t);
+  else { const a0 = LIST_TOP + yFull(P) - offDecay(TC); const anchor = Spring.to(t, [[TC, a0], [TC + 0.02, ANCHOR1]], 'camera'); off = LIST_TOP + y[P] - anchor; }
+  return { k, y, off };
+}
+function drawRow(m, x, y, w, h, a) {
+  g.save(); g.globalAlpha *= clamp(a);
+  rr(x, y, w, h, 12 * S); g.fillStyle = m.pick ? CREAM : CARD; g.fill();
+  g.lineWidth = m.pick ? 2 * S : 1 * S; g.strokeStyle = m.pick ? AMBER : SLATE2; g.stroke();
+  const tx = x + 14 * S;
+  if (m.done) { text('จบ', tx + 14 * S, y + h / 2 + 5 * S, 13 * S, 600, SLATE5, 'center'); }
+  else text(m.time, tx, y + h / 2 + 5.5 * S, 15 * S, 700, INK);
+  g.fillStyle = SLATE2; g.fillRect(x + 66 * S, y + 12 * S, 1 * S, h - 24 * S);
+  const nx = x + 76 * S, l1 = y + h * 0.36, l2 = y + h * 0.72;
+  crest(m.hl, nx + 9 * S, l1 - 4.5 * S, 18 * S); crest(m.al, nx + 9 * S, l2 - 4.5 * S, 18 * S);
+  const maxN = m.pick ? 150 * S : 190 * S;
+  const fs = Math.min(fit(m.home, 15 * S, 400, maxN), fit(m.away, 15 * S, 400, maxN));
+  text(m.home, nx + 26 * S, l1 + 1 * S, fs, 600, INK); text(m.away, nx + 26 * S, l2 + 1 * S, fs, 600, INK);
+  if (m.done && m.score) { text(String(m.score[0]), x + w - 18 * S, l1 + 1 * S, 15 * S, 700, INK, 'right'); text(String(m.score[1]), x + w - 18 * S, l2 + 1 * S, 15 * S, 700, INK, 'right'); }
+  if (m.pick) { const bw = 66 * S; pic('assets/compass-picks-title.webp', x + w - bw - 8 * S, y + (h - bw * 235 / 720) / 2, bw); }
+  g.restore();
+}
+function drawLeague(lg, x, y, a) {
+  g.save(); g.globalAlpha *= clamp(a);
+  const cx = x + 16 * S, cy = y + 26 * S;
+  g.beginPath(); g.arc(cx, cy, 16 * S, 0, Math.PI * 2); g.fillStyle = '#fff'; g.fill(); g.lineWidth = 2 * S; g.strokeStyle = TEAL; g.stroke();
+  crest(lg.logo, cx, cy, 20 * S);
+  text(lg.name, x + 40 * S, y + 23 * S, fit(lg.name, 16 * S, 700, 220 * S), 700, INK);
+  text(lg.country || '', x + 40 * S, y + 41 * S, 13 * S, 400, SLATE5);
+  text(lg.matches.length + ' คู่', x + RW - 4 * S, y + 32 * S, 14 * S, 400, SLATE5, 'right');
+  g.restore();
+}
+function drawList(t, aAll, hideHero = false, fadeOthers = 0) {
+  const L = layout(t);
+  const top = lerp(760, 650, U(t - TC, 'camera'));
+  g.save(); g.beginPath(); g.rect(0, top, W, H - top); g.clip();
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i], k = L.k[i]; if (k < 0.004) continue;
+    const y = it.pick ? pickY(i, t, L) : LIST_TOP + L.y[i] - L.off; if (y > H + 50 || y + it.h < 480) continue;
+    let a = aAll * (it.pick ? 1 : 1 - clamp((t - TC) / 0.2));
+    if (a <= 0.002) continue;
+    if (it.kind === 'lg') { g.save(); g.beginPath(); g.rect(0, y, W, it.h * k); g.clip(); drawLeague(it.lg, X0, y, a); g.restore(); continue; }
+    if (hideHero && i === P) continue;
+    let dy = 0;
+    if (it.pick && i !== P && fadeOthers > 0) { a *= 1 - clamp(fadeOthers); dy = (SORTED.indexOf(i) < SORTED.indexOf(P) ? -1 : 1) * 70 * fadeOthers; }
+    g.save(); if (!it.pick) { g.beginPath(); g.rect(0, y, W, it.h * k); g.clip(); }
+    drawRow(it.m, X0, y + dy, RW, it.h, a); g.restore();
+  }
+  // the list slides under the words above it
+  const gr = g.createLinearGradient(0, top, 0, top + 90); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, top, W, 90);
+  g.restore();
+  return L;
+}
+
+// ---------- the match card (shots C, D, E) ----------
+const HERO_ROW = () => { const L = layout(T.C); return { x: X0, y: pickY(P, T.C, L), w: RW, h: RH }; };
+const HC_BIG = { x: 56, y: 250, w: 967, h: 560 }, HC_SMALL = { x: 56, y: 230, w: 967, h: 340 };
+function lerpRect(a, b, u) { return { x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u), w: lerp(a.w, b.w, u), h: lerp(a.h, b.h, u) }; }
+const HC_BACK = T.E - 0.15;
+const isSmall = (t) => (t >= HC_BACK ? 1 : 0);
+function headerRect(t) {
+  if (t < T.Dd) return lerpRect(HERO_ROW(), HC_BIG, U(t - (T.C + 0.12), 'camera'));
+  if (t < HC_BACK) { const r = { ...HC_BIG }; r.y -= 1000 * U(t - T.Dd, 'camera'); return r; }
+  const r = { ...HC_SMALL }; r.y -= 650 * (1 - U(t - HC_BACK, 'camera')); return r;
+}
+function drawHeader(t, a) {
+  const r = headerRect(t), m = HERO_ROW();
+  const u = U(t - (T.C + 0.12), 'camera');
+  g.save(); g.globalAlpha *= clamp(a);
+  rr(r.x, r.y, r.w, r.h, lerp(12 * S, 44, clamp(u * 2))); g.fillStyle = mix(CREAM, CARD, clamp(u)); g.fill();
+  g.lineWidth = lerp(2 * S, 3, clamp(u)); g.strokeStyle = mix(AMBER, SLATE2, clamp(u)); g.stroke();
+  // the row's own content gives way to the card's
+  const rowA = 1 - clamp((t - T.C - 0.1) / 0.3); if (rowA > 0) { g.save(); g.globalAlpha *= rowA; drawRow(D.night.leagues.flatMap((l) => l.matches).find((x) => x.home === D.hero.home), r.x, r.y, r.w, r.h, 1); g.restore(); }
+  const ca = clamp((t - T.C - 0.3) / 0.35) * clamp(u / 0.3); if (ca <= 0) { g.restore(); return; }
+  g.globalAlpha *= ca;
+  const small = isSmall(t); // 0 big card (C, D), 1 compact scoreboard (E)
+  const cs = lerp(180, 130, small), cy = r.y + lerp(225, 125, small);
+  const lx = r.x + r.w * lerp(0.16, 0.17, small), rx = r.x + r.w * lerp(0.84, 0.83, small);
+  crest(D.hero.hl, lx, cy, cs); crest(D.hero.al, rx, cy, cs);
+  const ny = cy + cs / 2 + 78;
+  text(D.hero.home, lx, ny, 64, 700, INK, 'center'); text(D.hero.away, rx, ny, 64, 700, INK, 'center');
+  drawCentre(t, r.x + r.w / 2, cy, small);
+  g.restore();
+}
+// kickoff time, then (shot E) the match clock and the real final score
+const FT_GO = ROW(4, 0) - 0.15, FT_END = FT_GO + 0.7;
+function drawCentre(t, cx, cy, small) {
+  if (t < FT_GO && small) { // the scoreboard comes back with the clock ring already in place, so no kickoff time flashes for 0.3 s
+    g.save(); g.lineWidth = 12; g.strokeStyle = SLATE2; g.beginPath(); g.arc(cx, cy, 92, 0, Math.PI * 2); g.stroke(); g.restore();
+    return;
+  }
+  if (t < FT_GO) {
+    g.save(); g.globalAlpha *= clamp(1 - small); text('เตะ', cx, cy - 95, 64, 600, SLATE5, 'center'); text(D.hero.kickoff, cx, cy + 50, 130, 700, INK, 'center'); g.restore();
+    if (small > 0) { g.save(); g.globalAlpha *= small; const s1 = 'เตะ ', w1 = tw(s1, 64, 600), w2 = tw(D.hero.kickoff, 110, 700), x0 = cx - (w1 + w2) / 2;
+      text(s1, x0, cy + 38, 64, 600, SLATE5); text(D.hero.kickoff, x0 + w1, cy + 38, 110, 700, INK); g.restore(); }
+    return;
+  }
+  if (t < FT_END) { // the clock runs the 90 minutes; it fades in over the kickoff time instead of replacing it in one frame
+    const fin = clamp((t - FT_GO) / 0.18);
+    g.save(); g.lineWidth = 12; g.strokeStyle = SLATE2; g.beginPath(); g.arc(cx, cy, 92, 0, Math.PI * 2); g.stroke(); g.restore();
+    g.save(); g.globalAlpha *= fin;
+    const u = clamp((t - FT_GO) / (FT_END - FT_GO)), e = 1 - Math.pow(1 - u, 2.2);
+    const min = Math.max(1, Math.round(e * 90));
+    g.save(); g.lineWidth = 12; g.strokeStyle = SLATE2; g.beginPath(); g.arc(cx, cy, 92, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = TEAL; g.lineCap = 'round'; g.beginPath(); g.arc(cx, cy, 92, -Math.PI / 2, -Math.PI / 2 + e * Math.PI * 2); g.stroke(); g.restore();
+    text(min + "'", cx, cy + 32, 88, 700, TEAL, 'center'); g.restore();
+    return;
+  }
+  const s1 = U(t - FT_END, 'heavy'), s2 = U(t - FT_END - 0.14, 'heavy');
+  text('จบ', cx, cy + 140, 64, 600, SLATE5, 'center');
+  const num = (v, x, s) => { if (s <= 0) return; g.save(); g.translate(x, cy + 44); const k = lerp(1.7, 1, s); g.scale(k, k); g.globalAlpha *= clamp(s * 3); text(String(v), 0, 0, 130, 700, INK, 'center'); g.restore(); };
+  num(D.hero.score[0], cx - 95, s1); num(D.hero.score[1], cx + 95, s2);
+  g.globalAlpha *= clamp(s2 * 3); g.fillStyle = SLATE5; g.fillRect(cx - 18, cy + 4, 36, 9);
+}
+
+// ---------- the view card (shots D, E), then a tile on the record wall (F) ----------
+const VC = { x: 56, y: 900, w: 967, h: 540 }, VC_D = { x: 56, y: 640, w: 967, h: 540 };
+const viewRect = (t) => lerpRect(VC_D, VC, U(t - (T.E - 0.1), 'camera'));
+function drawView(t, a, r = VC, inner = 1) {
+  g.save(); g.globalAlpha *= clamp(a);
+  rr(r.x, r.y, r.w, r.h, 44 * r.w / VC.w); g.fillStyle = CREAM; g.fill(); g.lineWidth = 6 * r.w / VC.w; g.strokeStyle = AMBER; g.stroke();
+  if (inner > 0) {
+    g.globalAlpha *= inner; const k = r.w / VC.w; g.translate(r.x, r.y); g.scale(k, k);
+    pic('assets/compass-picks-title.webp', 44, 40, 430);
+    const s = U(t - T.Dd - 0.3, 'heavy');
+    g.save(); g.translate(44, 330); g.globalAlpha *= clamp(s * 2.5); const sc = lerp(1.1, 1, s); g.scale(sc, sc);
+    crest(D.hero.al, 75, -45, 150); text(D.hero.pick, 180, 0, fit(D.hero.pick, 132, 700, 500), 700, INK); g.restore();
+    // the timestamp types on when "ก่อนเตะ" is said
+    const stamp = `บันทึก ${D.hero.savedDate} ${D.hero.saved} · เตะ ${D.hero.kickoff}`;
+    const t0 = ROW(3, 1) - 0.1; if (t >= t0) { const n = Math.min(stamp.length, Math.floor((t - t0) / 0.021) + 1); const fs = fit(stamp, 64, 600, 880);
+      text(stamp.slice(0, n), 44, 470, fs, 600, '#334155'); }
+  }
+  g.restore();
+}
+const STAMP_T = ROW(4, 1) + 0.05;
+// after the stamp lands the camera leans in on the card, slowly; shot F eases it back while the card flies to its tile
+const leanAt = (t) => 1 + 0.05 * Spring.unit(t - STAMP_T - 0.5, Spring.make(5, 4.5));
+function drawStamp(t, r = VC, a = 1) {
+  if (t < STAMP_T) return;
+  const s = U(t - STAMP_T, 'heavy'), k = r.w / VC.w;
+  const w = 222 * k, h = w * 240 / 209;
+  g.save(); g.globalAlpha *= a * clamp((t - STAMP_T) / 0.06); g.translate(r.x + r.w - 110 * k, r.y + 240 * k); g.rotate(lerp(-0.36, -0.14, s)); const sc = lerp(1.45, 1, s); g.scale(sc, sc);
+  pic('assets/result-win.webp', -w / 2, -h / 2, w, h); g.restore();
+}
+
+// ---------- the record wall (shot F) ----------
+const COLS = 6, TW = 130, TH = 158, TG = 18, WX = (W - (COLS * TW + (COLS - 1) * TG)) / 2, WY = 680;
+const REC_COUNT = (r) => D.record.settled.filter((m) => m.result === r).length;
+const REC = D.record.settled, HI = REC.findIndex((m) => m.home === D.hero.home && m.away === D.hero.away);
+const TALLY = !(new URLSearchParams(location.search).get('tally') || '').startsWith('0'); // ?tally=0 renders the cut without the right/wrong count
+const CNT = { win: REC_COUNT('win'), loss: REC_COUNT('loss'), push: REC_COUNT('push') };
+const tileRect = (i) => ({ x: WX + (i % COLS) * (TW + TG), y: WY + Math.floor(i / COLS) * (TH + TG), w: TW, h: TH });
+const TILE_T = (i) => T.F + 0.3 + i * 0.035;
+function drawTile(m, r, a, s = 1) {
+  g.save(); g.globalAlpha *= clamp(a); g.translate(r.x + r.w / 2, r.y + r.h / 2); g.scale(s, s); g.translate(-r.w / 2, -r.h / 2);
+  const win = m.result === 'win', loss = m.result === 'loss';
+  rr(0, 0, r.w, r.h, 26); g.fillStyle = win ? '#ecfdf5' : loss ? '#fff1f2' : CARD; g.fill(); g.lineWidth = 4; g.strokeStyle = win ? '#34d399' : loss ? '#fb7185' : '#cbd5e1'; g.stroke();
+  // the picked side's crest; a goals pick (no side) shows a ball
+  if (m.logo) crest(m.logo, r.w / 2, 48, 68); else { font(56, 400); g.font = '56px "Segoe UI Emoji", "Noto Color Emoji", sans-serif'; g.textAlign = 'center'; g.fillStyle = INK; g.fillText('⚽', r.w / 2, 70); }
+  const mc = win ? '#10b981' : loss ? '#e11d48' : '#94a3b8', cx = r.w / 2, cy = 116;
+  g.beginPath(); g.arc(cx, cy, 27, 0, Math.PI * 2); g.fillStyle = mc; g.fill();
+  g.lineWidth = 7; g.lineCap = 'round'; g.strokeStyle = '#ffffff'; g.beginPath();
+  if (win) { g.moveTo(cx - 12, cy + 1); g.lineTo(cx - 3, cy + 10); g.lineTo(cx + 13, cy - 9); } else if (loss) { g.moveTo(cx - 10, cy - 10); g.lineTo(cx + 10, cy + 10); g.moveTo(cx + 10, cy - 10); g.lineTo(cx - 10, cy + 10); } else { g.moveTo(cx - 11, cy); g.lineTo(cx + 11, cy); }
+  g.stroke();
+  g.restore();
+}
+function drawWall(t, a) {
+  for (let i = 0; i < REC.length; i++) {
+    if (i === HI) continue; const t0 = TILE_T(i); if (t < t0) continue;
+    const s = U(t - t0, 'snappy'); drawTile(REC[i], tileRect(i), a * clamp((t - t0) / 0.08), lerp(0.6, 1, s));
+  }
+}
+
+// ---------- shots ----------
+function captions(t, i, rows, tOut) { // rows: [[text, x, y, size, wt, color]]
+  const a = tOut == null ? 1 : out(t, tOut); if (a <= 0.003) return;
+  g.save(); g.globalAlpha *= clamp(a);
+  rows.forEach(([s, x, y, size, wt, color], j) => rise(s, x, y, fit(s, size, wt, W - 2 * x), wt, color, ROW(i, j), t));
+  g.restore();
+}
+window.renderFrame = (t) => {
+  t = Math.max(0, t);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.lineCap = 'butt'; g.lineJoin = 'miter'; g.lineWidth = 1;
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+  // beat punches were tried and read as pops against the still holds; the frame only breathes
+  const cam = 1 + breathe(t); g.translate(W / 2, H * 0.45); g.scale(cam, cam); g.translate(-W / 2, -H * 0.45);
+  try {
+    // A + B: the day's list races past, brakes, folds to the five picks; C taps one open
+    if (t < T.C + 0.9) {
+      const fadeOthers = U(t - T.C - 0.05, 'snappy');
+      drawList(t, out(t, T.C + 0.5), t >= T.C, t >= T.C ? fadeOthers : 0);
+    }
+    // the site's logo sits where the site's header has it, from frame 0, and grows when the name is said
+    if (t < T.C + 0.2) {
+      const gs = U(t - VS[1], 'heavy'), lw = lerp(330, 450, gs);
+      g.save(); g.globalAlpha *= clamp(out(t, T.C - 0.15)); pic('assets/logo-lockup.webp', 72, lerp(150, 205, gs), lw); g.restore();
+    }
+    if (t < T.B + 0.4) { // A: "วันนี้ 106 คู่ / ดูคู่ไหนดี?"
+      const a = out(t, T.B); g.save(); g.globalAlpha *= clamp(a);
+      text('วันนี้', 72, 370, 96, 700, SLATE6);
+      const nx = 72 + tw('วันนี้ ', 96, 700); text(String(D.night.count), nx, 380, 190, 700, INK); text('คู่', nx + tw(String(D.night.count), 190, 700) + 24, 370, 96, 700, SLATE6);
+      rise('ดูคู่ไหนดี?', 72, 560, 150, 700, INK, ROW(0, 1), t);
+      g.restore();
+    }
+    if (t >= T.B && t < T.C + 0.4) { // B: the name, then "คัดคู่น่าจับตา / ให้ทุกวัน"
+      const a = out(t, T.C - 0.15); g.save(); g.globalAlpha *= clamp(a);
+            rise('คัดคู่น่าจับตา', 72, 455, 104, 700, INK, ROW(1, 0), t);
+      rise('ให้ทุกวัน', 72, 590, 104, 700, TEAL, ROW(1, 1), t);
+      g.restore();
+    }
+    // C: the tapped row opens into the match card; the read is Bologna's form
+    if (t >= T.C - 0.3 && t < T.F + 0.5) {
+      if (t >= T.C - 0.3 && t < T.C + 0.2) { const u = clamp((t - T.C + 0.3) / 0.45), r0 = HERO_ROW(); g.save(); g.globalAlpha = (1 - u) * 0.35; g.fillStyle = AMBER; g.beginPath(); g.arc(r0.x + r0.w * 0.62, r0.y + r0.h / 2, 30 + 150 * Math.sqrt(u), 0, Math.PI * 2); g.fill(); g.restore(); }
+      if (t >= T.C) drawHeader(t, out(t, T.F));
+    }
+    if (t >= T.C && t < T.Dd + 0.4) {
+      const a = out(t, T.Dd - 0.15); g.save(); g.globalAlpha *= clamp(a);
+      captions(t, 2, [['อ่านเกมจากข้อมูลจริง', 72, 950, 84, 700, SLATE6], [`${D.hero.team} ชนะ 4 จาก 5 นัด`, 72, 1100, 112, 700, INK]]);
+      const t0 = ROW(2, 1) + 0.25, cw = 150, gap = 26, x0 = (W - (5 * cw + 4 * gap)) / 2;
+      D.hero.form.forEach((r, i) => { const ti = t0 + i * 0.13; if (t < ti) return; const s = U(t - ti, 'snappy'), x = x0 + i * (cw + gap), y = 1200;
+        g.save(); g.translate(x + cw / 2, y + cw / 2); g.scale(1, lerp(0.05, 1, s)); g.globalAlpha *= clamp((t - ti) / 0.06);
+        const win = r === 'W'; rr(-cw / 2, -cw / 2, cw, cw, 26); g.fillStyle = win ? '#ecfdf5' : '#fff1f2'; g.fill(); g.lineWidth = 5; g.strokeStyle = win ? '#10b981' : '#f43f5e'; g.stroke();
+        text(r, 0, 32, 92, 700, win ? '#047857' : '#be123c', 'center'); g.restore(); });
+      g.restore();
+    }
+    // D + E: the view, saved before kickoff; full time, the result lands on the same card
+    if (t >= T.Dd && t < T.F) {
+      const rise_ = U(t - T.Dd - 0.1, 'camera'), vr = viewRect(t);
+      // after the stamp lands the camera leans in on the card, slowly
+      const lean = leanAt(t);
+      g.save(); g.translate(W / 2, vr.y + vr.h / 2); g.scale(lean, lean); g.translate(-W / 2, -(vr.y + vr.h / 2));
+      g.save(); g.translate(0, (1 - rise_) * 900); drawView(t, clamp(rise_ * 2), vr); drawStamp(t, vr); g.restore();
+      g.restore();
+      captions(t, 3, [['บอกมุมมองไว้', 72, 360, 90, 700, SLATE6], ['ก่อนเตะ', 72, 540, 170, 700, INK]], T.E - 0.3);
+      if (t >= T.E) captions(t, 4, [['จบเกม', 72, 700, 84, 700, SLATE6], ['ตรวจผลให้เอง', 72, 850, 130, 700, INK]], T.F);
+    }
+    // F: the card becomes its tile; every settled pick since the first day, right and wrong
+    if (t >= T.F && t < T.G + 0.6) {
+      const a = out(t, T.G - 0.05);
+      const u = U(t - T.F, 'camera'), r = lerpRect(VC, tileRect(HI), u);
+      drawWall(t, a);
+      g.save(); g.globalAlpha *= clamp(a);
+      const innerA = 1 - clamp((t - T.F) / 0.35);
+      if (u < 0.999) { const ln = lerp(leanAt(T.F), 1, u), cyy = VC.y + VC.h / 2; g.save(); g.translate(W / 2, cyy); g.scale(ln, ln); g.translate(-W / 2, -cyy);
+        drawView(t, 1 - clamp((u - 0.55) / 0.4), r, innerA); drawStamp(t, r, innerA); g.restore(); }
+      if (u > 0.55) drawTile(REC[HI], tileRect(HI), clamp((u - 0.55) / 0.3));
+      // the hero tile keeps a ring so the eye can find it
+      g.globalAlpha *= clamp((u - 0.7) / 0.3) * out(t, ROW(5, 1)); const hr = tileRect(HI); rr(hr.x - 10, hr.y - 10, hr.w + 20, hr.h + 20, 32); g.lineWidth = 6; g.strokeStyle = AMBER; g.stroke();
+      g.restore();
+      captions(t, 5, [['ถูกหรือผิด โชว์หมด', 72, 320, 96, 700, SLATE6], ['ไม่ลบสักคู่', 72, 480, 140, 700, INK]], T.G);
+      const ct = ROW(5, 1) + 0.45;
+      if (t >= ct) {
+        g.save(); g.globalAlpha *= clamp((t - ct) / 0.2) * clamp(a);
+        if (TALLY) { // the real count, counted up: right, wrong, push, all since the first day
+          const c = (n) => String(Math.round(n * (1 - Math.pow(1 - clamp((t - ct) / 0.9), 3))));
+          const parts = [['ถูก ', SLATE6, 600], [c(CNT.win), '#047857', 700], ['   ผิด ', SLATE6, 600], [c(CNT.loss), '#be123c', 700], ['   เสมอ ', SLATE6, 600], [c(CNT.push), SLATE6, 700], [`   จาก ${REC.length} คู่`, SLATE6, 600]];
+          const full = parts.reduce((w, [str, , wt]) => w + tw(str, 66, wt), 0), fs = Math.min(66, 66 * 936 / full);
+          let x = 72; for (const [str, col, wt] of parts) { text(str, x, 600, fs, wt, col); x += tw(str, fs, wt); }
+        } else { const cl = `ครบทั้ง ${REC.length} คู่ ตั้งแต่ 18 ต.ค.`; text(cl, 72, 600, fit(cl, 64, 600, 936), 600, SLATE6); }
+        g.restore();
+      }
+    }
+    // G: the end card
+    if (t >= T.G) {
+      // the record wall comes back small under the end card and drifts, so the close is not a blank page
+      const wb = U(t - T.G - 0.1, 'camera'); g.save(); g.globalAlpha *= 0.32 * clamp((t - T.G - 0.1) / 0.3);
+      g.translate(W / 2, 1560 - 40 * (t - T.G) / 5); g.scale(0.62, 0.62); g.translate(-W / 2, -(WY + 430)); g.translate(0, (1 - wb) * 200);
+      for (let i = 0; i < REC.length; i++) drawTile(REC[i], tileRect(i), 1); g.restore();
+      const s = U(t - T.G - 0.35, 'heavy'); g.save(); g.globalAlpha *= clamp((t - T.G - 0.35) / 0.15);
+      pic('assets/logo-lockup.webp', (W - 518) / 2, 470 + (1 - s) * 50, 518); g.restore();
+      rise('ดูคู่น่าจับตาทุกวัน', W / 2, 820, fit('ดูคู่น่าจับตาทุกวัน', 108, 700, 940), 700, INK, ROW(6, 0), t, 'center');
+      const ut = T.G + 0.55; if (t >= ut) { g.save(); g.globalAlpha *= clamp((t - ut) / 0.2); text('khemthitfootball.com', W / 2, 955, 78, 700, TEAL, 'center'); g.restore(); }
+      const bt = ROW(6, 1) - 0.05; if (t >= bt) {
+        const bs = U(t - bt, 'playful'), press = 1 - 0.06 * Math.sin(Math.PI * clamp((t - bt - 0.75) / 0.22));
+        g.save(); g.translate(W / 2, 1150); g.scale(lerp(0.7, 1, bs) * press, lerp(0.7, 1, bs) * press); g.globalAlpha *= clamp((t - bt) / 0.1);
+        rr(-330, -85, 660, 170, 85); g.fillStyle = TEAL; g.fill(); text('กดติดตามเลย', 0, 32, 92, 700, '#ffffff', 'center'); g.restore();
+      }
+    }
+  } finally { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; }
+};
+Promise.all(loads).then(() => Promise.all([document.fonts.load('700 100px "IBM Plex Sans Thai"', 'ดูคู่ไหนดี? Bologna'), document.fonts.load('600 100px "IBM Plex Sans Thai"', 'บันทึก Bologna'), document.fonts.load('400 100px "IBM Plex Sans Thai"', 'คู่ a')])).then(() => document.fonts.ready).then(() => {
+  window.READY = true; if (navigator.webdriver) return;
+  let s0 = performance.now(); const loop = (n) => { window.renderFrame(((n - s0) / 1000) % window.FILM_DURATION); requestAnimationFrame(loop); }; requestAnimationFrame(loop);
+});
+</script></body></html>

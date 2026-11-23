@@ -1,0 +1,12 @@
+{
+  "note": "Intro film v3 voice lines. Facts: home /?date=2026-11-07 shows 106 matches; Parma-Bologna 2026-11-07 (kickoff 00:00 Thai 8 Nov), DAILY pick published 14:30 Thai, Bologna ชนะ, FT 1-2, WIN; Bologna last five W4 D0 L1 (match page).",
+  "lines": [
+    { "id": "s0", "tag": "[excited] ", "text": "วันนี้ ร้อยหกคู่ ดูคู่ไหนดี?", "screen": ["วันนี้ 106 คู่", "ดูคู่ไหนดี?"] },
+    { "id": "s1", "tag": "[confident] ", "text": "เข็มทิศฟุตบอล คัดคู่น่าจับตาให้ทุกวัน", "screen": ["คัดคู่น่าจับตา", "ให้ทุกวัน"] },
+    { "id": "s2", "tag": "[confident] ", "text": "อ่านเกมจากข้อมูลจริง โบโลญญาชนะสี่ จากห้านัดหลังสุด", "screen": ["อ่านเกมจากข้อมูลจริง", "Bologna ชนะ 4 จาก 5 นัด"] },
+    { "id": "s3", "tag": "[confident] ", "text": "แล้วบอกมุมมองไว้ ก่อนเตะ", "screen": ["บอกมุมมองไว้", "ก่อนเตะ"] },
+    { "id": "s4", "tag": "[energetic] ", "text": "จบเกม ตรวจผลให้เอง", "screen": ["จบเกม", "ตรวจผลให้เอง"] },
+    { "id": "s5", "tag": "[confident] ", "text": "ถูกหรือผิด โชว์หมด ไม่ลบสักคู่", "screen": ["ถูกหรือผิด โชว์หมด", "ไม่ลบสักคู่"] },
+    { "id": "s6", "tag": "[excited] ", "text": "ดูคู่น่าจับตาทุกวัน กดติดตามเลย", "screen": ["ดูคู่น่าจับตาทุกวัน", "กดติดตามเลย"] }
+  ]
+}

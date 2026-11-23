@@ -1,0 +1,182 @@
+{
+ "fps": 60,
+ "bpm": 119.6,
+ "key": "D",
+ "seed": 1107,
+ "cues": [
+  {
+   "kind": "whoosh",
+   "frame": 14,
+   "variant": "fast",
+   "label": "list flick",
+   "gainDb": -3
+  },
+  {
+   "kind": "swish",
+   "frame": 291,
+   "variant": "out",
+   "label": "list folds to five"
+  },
+  {
+   "kind": "press",
+   "frame": 427,
+   "variant": "soft",
+   "label": "tap"
+  },
+  {
+   "kind": "whoosh",
+   "frame": 457,
+   "variant": "soft",
+   "label": "row opens into the card"
+  },
+  {
+   "kind": "tick",
+   "frame": 568,
+   "variant": "ui",
+   "label": "form chip 1",
+   "gainDb": 6
+  },
+  {
+   "kind": "tick",
+   "frame": 575,
+   "variant": "ui",
+   "label": "form chip 2",
+   "gainDb": 6
+  },
+  {
+   "kind": "tick",
+   "frame": 583,
+   "variant": "ui",
+   "label": "form chip 3",
+   "gainDb": 6
+  },
+  {
+   "kind": "tick",
+   "frame": 591,
+   "variant": "ui",
+   "label": "form chip 4",
+   "gainDb": 6
+  },
+  {
+   "kind": "tick",
+   "frame": 599,
+   "variant": "ui",
+   "label": "form chip 5",
+   "gainDb": 6
+  },
+  {
+   "kind": "pop",
+   "frame": 750,
+   "variant": "cork",
+   "label": "the view lands"
+  },
+  {
+   "kind": "tick",
+   "frame": 823,
+   "variant": "key",
+   "label": "timestamp types",
+   "gainDb": 6
+  },
+  {
+   "kind": "tick",
+   "frame": 838,
+   "variant": "key",
+   "label": "timestamp types",
+   "gainDb": 6
+  },
+  {
+   "kind": "tick",
+   "frame": 852,
+   "variant": "key",
+   "label": "timestamp types",
+   "gainDb": 6
+  },
+  {
+   "kind": "tick",
+   "frame": 866,
+   "variant": "key",
+   "label": "timestamp types",
+   "gainDb": 6
+  },
+  {
+   "kind": "riser",
+   "frame": 1001,
+   "variant": "soft",
+   "beats": 2,
+   "bpm": 120,
+   "label": "the 90 minutes"
+  },
+  {
+   "kind": "pop",
+   "frame": 1002,
+   "variant": "pop",
+   "label": "Parma 1"
+  },
+  {
+   "kind": "pop",
+   "frame": 1010,
+   "variant": "pop",
+   "label": "Bologna 2"
+  },
+  {
+   "kind": "impact",
+   "frame": 1020,
+   "variant": "boom",
+   "label": "\u0e17\u0e32\u0e22\u0e16\u0e39\u0e01 stamp"
+  },
+  {
+   "kind": "whoosh",
+   "frame": 1209,
+   "variant": "air",
+   "label": "card flies into the wall"
+  },
+  {
+   "kind": "pop",
+   "frame": 1212,
+   "variant": "tiny",
+   "label": "tile 1"
+  },
+  {
+   "kind": "pop",
+   "frame": 1225,
+   "variant": "tiny",
+   "label": "tile 7"
+  },
+  {
+   "kind": "pop",
+   "frame": 1237,
+   "variant": "tiny",
+   "label": "tile 13"
+  },
+  {
+   "kind": "pop",
+   "frame": 1250,
+   "variant": "tiny",
+   "label": "tile 19"
+  },
+  {
+   "kind": "pop",
+   "frame": 1262,
+   "variant": "tiny",
+   "label": "tile 25"
+  },
+  {
+   "kind": "chime",
+   "frame": 1554,
+   "variant": "sparkle",
+   "label": "logo"
+  },
+  {
+   "kind": "pop",
+   "frame": 1658,
+   "variant": "tiny",
+   "label": "follow button"
+  },
+  {
+   "kind": "press",
+   "frame": 1709,
+   "variant": "confirm",
+   "label": "follow pressed"
+  }
+ ]
+}
