@@ -1,7 +1,9 @@
 // Pull the day's featured list (เข็มทิศเกมประจำวัน) from production into days/<date>/facts.json and cache the
 // real club / league logos. Order = league importance (desc), then the list's rank, which is the order the
 // opening shows the leagues and the order the matches are narrated.
-// usage: node fetch.cjs [YYYY-MM-DD]   (default: the current football day, 06:00-06:00 Thai)
+// usage: node fetch.cjs [YYYY-MM-DD] [--extra <fixtureId>[,<fixtureId>]]   (default: the current football day, 06:00-06:00 Thai)
+//   --extra: a match the owner wants in the film although it is not on the featured list (2026-11-22: Liverpool vs Man Utd).
+//   It needs its own published pick; it is keyed x1, x2 ... with extra: true and goes before the featured matches.
 const path = require('path');
 const { Client } = require('pg');
 const { dateArg, dayDir, writeJson, MONTHS_FULL, kickoffTh, logo, fanPick } = require('./lib.cjs');
@@ -21,7 +23,15 @@ const listVersion = (vs) => (vs.includes('featured-ai-v4') ? 'featured-ai-v4' : 
   const rows = sel.filter((r) => r.version === version).sort((a, b) => a.rank - b.rank);
   if (!rows.length) { console.error(`no featured list for ${date}`); process.exit(2); }
   const out = [];
-  for (const r of rows) {
+  const ei = process.argv.indexOf('--extra');
+  const extras = ei > 0 ? String(process.argv[ei + 1] || '').split(',').filter(Boolean).map(Number) : [];
+  for (const [i, id] of extras.entries()) {
+    const [pr] = await q(`select id from analysis_predictions where fixture_id = $1 order by published_at desc limit 1`, [id]);
+    if (!pr) throw new Error(`extra fixture ${id}: no published pick`);
+    out.push(await one({ fixture_id: id, rank: i - 100, prediction_id: pr.id }, `x${i + 1}`, true));
+  }
+  for (const r of rows) out.push(await one(r, `m${r.rank}`, false));
+  async function one(r, key, extra) {
     const [f] = await q(`select f.id, f.season, f.round, f.kickoff_at, f.status_short, l.id league_id, l.name league, l.logo_url llogo,
         h.id hid, h.name home, h.logo_url hlogo, a.id aid, a.name away, a.logo_url alogo, v.name venue,
         (select importance from league_importance li where li.league_id = l.id and li.season in (0, f.season) order by li.season desc limit 1) importance
@@ -38,8 +48,8 @@ const listVersion = (vs) => (vs.includes('featured-ai-v4') ? 'featured-ai-v4' : 
     const isOU = p.market === 'OVER_UNDER';
     // `label` is what the film shows: plain football words, never the betting line (lib.cjs fanPick); `line_label` is the site's line, for checks only
     const fan = fanPick({ market: p.market, side: p.selection, line: p.line, home: f.home, away: f.away });
-    out.push({
-      key: `m${r.rank}`, rank: r.rank, list_version: version, fixture_id: Number(f.id), prediction_id: Number(p.id),
+    return {
+      key, rank: r.rank, extra, list_version: version, fixture_id: Number(f.id), prediction_id: Number(p.id),
       featured_prediction_id: Number(r.prediction_id), publish_round: p.publish_round, engine: p.decision_rule_version, status: p.status,
       league: f.league, league_id: Number(f.league_id), league_importance: f.importance == null ? 30 : Number(f.importance),
       league_logo: await logo(f.llogo, `leagues-${f.league_id}.png`), round: f.round, venue: f.venue,
@@ -50,16 +60,16 @@ const listVersion = (vs) => (vs.includes('featured-ai-v4') ? 'featured-ai-v4' : 
         ? { type: 'ou', side: p.selection.toLowerCase(), label: fan.label, fan, line_label: label, line: Number(p.line).toString(), odds: Number(p.odds_at_publish).toFixed(2), books }
         : { type: 'team', side: p.selection.toLowerCase(), label: fan.label, fan, line_label: label, line: Number(p.line), odds: Number(p.odds_at_publish).toFixed(2), books },
       reason: p.reason,
-    });
+    };
   }
   await c.end();
-  out.sort((a, b) => b.league_importance - a.league_importance || a.rank - b.rank);
+  out.sort((a, b) => b.extra - a.extra || b.league_importance - a.league_importance || a.rank - b.rank);
   const [, mo, d] = date.split('-').map(Number);
   const facts = { date, date_th: `วันที่ ${d} ${MONTHS_FULL[mo - 1]}`, list_version: version, fetched_at: new Date().toISOString(), matches: out };
   writeJson(path.join(dayDir(date), 'facts.json'), facts);
   console.log(`${date} (${version}) -> days/${date}/facts.json`);
   for (const m of out) {
-    console.log(`\n[${m.key}] ${m.league} (importance ${m.league_importance}) · ${m.home.name} vs ${m.away.name} · ${m.kickoff_th} · ${m.fixture_status}`);
+    console.log(`\n[${m.key}]${m.extra ? ' (extra, not featured)' : ''} ${m.league} (importance ${m.league_importance}) · ${m.home.name} vs ${m.away.name} · ${m.kickoff_th} · ${m.fixture_status}`);
     console.log(`  pick: ${m.pick.label} (site: ${m.pick.line_label} @ ${m.pick.odds}) (${m.publish_round}, ${m.engine}${m.prediction_id !== m.featured_prediction_id ? `, newer than featured row ${m.featured_prediction_id}` : ''})`);
     console.log('  ' + (m.reason || '').split('\n').slice(1).join('\n  '));
   }

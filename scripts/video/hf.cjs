@@ -167,6 +167,30 @@ function buildOpening(TL) {
   <div class="cvH2">${esc(M.date_th).replace(/(\d+ \S+)/, '<b>$1</b>')}</div>
   <div class="cvGrid" style="top:770px;height:${room}px;gap:${gap}px 30px">${pairs.map((m) => `<div class="cvp" style="width:${cardW}px;height:${cardH}px;gap:${Math.round(pl * 0.18)}px"><div class="cpl" style="width:${pl}px;height:${pl}px"><img src="${asset(m.home.logo)}" alt=""></div><div class="cvs" style="font-size:${Math.round(pl * 0.38)}px">VS</div><div class="cpl" style="width:${pl}px;height:${pl}px"><img src="${asset(m.away.logo)}" alt=""></div></div>`).join('')}</div>
   <div class="cvTitle"><img src="${BRAND('compass-picks-title.webp')}" alt=""></div></div></div>`;
+  // big-match cover (owner, 2026-11-22): one match the owner wants seen leads the thumbnail (a photo, both crests,
+  // a question, never the pick), the day's featured pairs ride small underneath
+  const BM = M.cover && M.cover.kind === 'bigmatch' ? M.cover : null;
+  const bigCover = () => {
+    const bm = clips.find((c) => c.src === BM.match), rest = pairs.filter((r) => r.match !== BM.match);
+    const mw = Math.min(196, Math.floor((1000 - (rest.length - 1) * 14) / Math.max(1, rest.length))), mp = Math.round(mw * 0.38);
+    return `<div id="${p}-cover" class="cover bm">
+  <div class="cv" id="${p}-cv">
+  <div class="bmph"><img src="assets/photos/${path.basename(BM.photo)}" alt=""></div>
+  <div class="cglow"></div>
+  <div id="${p}-cvLogo" class="bmLogo"><img src="${BRAND('logo-lockup.webp')}" alt=""><div class="sheen" id="${p}-sheen"></div></div>
+  <div class="bmTag"><span>${esc(BM.tag)}</span></div>
+  <div class="bmPl" style="left:110px"><img src="${asset(bm.home.logo)}" alt=""></div>
+  <div class="bmVs gold">VS</div>
+  <div class="bmPl" style="left:670px"><img src="${asset(bm.away.logo)}" alt=""></div>
+  <div class="bmT1">${esc(BM.t1)}</div>
+  <div class="bmT2 gold">${esc(BM.t2)}</div>
+  <div class="bmKo"><span>${esc(BM.ko)}</span></div>
+  <div class="bmMore">${esc(BM.more)}</div>
+  <div class="bmRow">${rest.map((m) => `<div class="bmm" style="width:${mw}px"><div class="cpl" style="width:${mp}px;height:${mp}px"><img src="${asset(m.home.logo)}" alt=""></div><div class="cpl" style="width:${mp}px;height:${mp}px"><img src="${asset(m.away.logo)}" alt=""></div></div>`).join('')}</div>
+  <div class="bmTitle"><img src="${BRAND('compass-picks-title.webp')}" alt=""></div>
+  ${BM.credit ? `<div class="bmCred">${esc(BM.credit)}</div>` : ''}</div></div>`;
+  };
+  const coverHTML = BM ? bigCover() : cover;
   if (C) {
     B.ft(`#${p}-sheen`, { x: -300 }, { x: 1100, duration: 0.65, ease: E.io }, 0.15);
     B.ft(`#${p}-cv`, { scale: 1 }, { scale: 1.03, duration: C - 0.22, ease: 'none' }, 0);
@@ -281,6 +305,28 @@ function buildOpening(TL) {
 .cvs{font-family:Barlow;font-weight:900;color:#fbbf24;text-shadow:0 4px 0 #3a2203}
 .cvTitle{position:absolute;left:240px;top:1430px;width:600px}
 .cvTitle img{display:block;width:600px;filter:drop-shadow(0 16px 30px rgba(0,0,0,.6))}
+.bmph{position:absolute;left:0;top:0;width:1080px;height:1200px;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,#000 55%,transparent 100%);mask-image:linear-gradient(180deg,#000 55%,transparent 100%)}
+.bmph img{width:100%;height:100%;object-fit:cover;object-position:50% 60%;filter:saturate(.95) contrast(1.08) brightness(.8)}
+.bmph::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(5,12,34,.55) 0%,rgba(5,12,34,.1) 22%,rgba(5,12,34,.35) 45%,rgba(5,12,34,.9) 80%,rgba(5,12,34,1) 100%)}
+.bmLogo{position:absolute;left:310px;top:56px;width:460px;height:130px;border-radius:26px;background:linear-gradient(180deg,#fff,#eef3fb);box-shadow:0 0 0 5px #fbbf24,0 0 0 10px #3a2203,0 18px 50px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.bmLogo img{width:410px;height:auto;display:block}
+.bmLogo .sheen{position:absolute;top:-20px;bottom:-20px;width:160px;left:0;background:linear-gradient(100deg,rgba(255,255,255,0),rgba(255,255,255,.85),rgba(255,255,255,0));transform:skewX(-18deg)}
+.bmTag{position:absolute;left:0;top:262px;width:1080px;text-align:center}
+.bmTag span{display:inline-block;padding:14px 46px 20px;border-radius:18px;background:linear-gradient(180deg,#ffd166,#f59e0b 60%,#d9730a);color:#1a0d00;font-weight:700;font-size:64px;line-height:1.1;box-shadow:0 8px 0 #7a3a04,0 20px 50px rgba(245,158,11,.45);transform:rotate(-3deg)}
+.bmPl{position:absolute;top:440px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle at 38% 30%,#fff,#eef3fb 45%,#cfd9ea);box-shadow:0 0 0 9px #f6b72a,0 0 0 15px #3a2203,0 30px 70px rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center}
+.bmPl img{width:66%;height:66%;object-fit:contain}
+.bmVs{position:absolute;left:0;top:520px;width:1080px;text-align:center;font-family:Barlow;font-weight:900;font-size:150px;line-height:1}
+.bmT1{position:absolute;left:0;top:800px;width:1080px;text-align:center;font-weight:700;font-size:100px;line-height:1.2;white-space:nowrap;text-shadow:0 7px 0 #04102e,0 18px 44px rgba(0,0,0,.85)}
+.bmT2{position:absolute;left:0;top:935px;width:1080px;text-align:center;font-weight:700;font-size:104px;line-height:1.25;white-space:nowrap}
+.bmKo{position:absolute;left:0;top:1105px;width:1080px;text-align:center}
+.bmKo span{display:inline-block;padding:10px 40px 16px;border-radius:999px;background:rgba(2,6,20,.75);box-shadow:inset 0 0 0 4px #fbbf24;font-weight:700;font-size:50px;white-space:nowrap}
+.bmMore{position:absolute;left:0;top:1262px;width:1080px;text-align:center;font-weight:700;font-size:54px;color:#ffd166;white-space:nowrap;text-shadow:0 5px 0 #04102e}
+.bmRow{position:absolute;left:40px;top:1360px;width:1000px;display:flex;justify-content:center;gap:14px}
+.bmm{height:118px;border-radius:26px;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(180deg,rgba(16,36,86,.92),rgba(5,12,34,.96));box-shadow:inset 0 0 0 3px rgba(251,191,36,.55),0 16px 40px rgba(0,0,0,.5)}
+.bm .cpl{box-shadow:0 0 0 4px #f6b72a,0 0 0 7px #3a2203}
+.bmTitle{position:absolute;left:290px;top:1560px;width:500px}
+.bmTitle img{display:block;width:500px;filter:drop-shadow(0 16px 30px rgba(0,0,0,.6))}
+.bmCred{position:absolute;left:28px;right:28px;top:1874px;font-weight:600;font-size:21px;color:rgba(230,236,250,.6)}
 .hook{position:absolute;inset:0;z-index:9;transform-origin:540px 800px}
 .htitle{position:absolute;left:0;top:210px;width:1080px;text-align:center;font-weight:700;font-size:92px;line-height:1.25}
 .hko{position:absolute;left:0;top:345px;width:1080px;text-align:center;font-weight:600;font-size:40px;color:#cfe0ff;display:flex;justify-content:center;align-items:center;gap:14px;white-space:nowrap}
@@ -328,7 +374,7 @@ function buildOpening(TL) {
   ${hook}
 </div>
 <div class="flash" id="${p}-flash"></div><div class="vig"></div><div class="dark" id="${p}-dark"></div>
-${cover}`;
+${coverHTML}`;
   return scene(p, css, body, B.js());
 }
 
@@ -668,6 +714,7 @@ for (const f of fs.readdirSync(path.join(ROOT, 'assets', 'fonts'))) fs.copyFileS
 const logos = new Set();
 clips.forEach((c) => { if (c.type === 'opening') c.groups.forEach((g) => { logos.add(g.logo); g.rows.forEach((r) => { logos.add(r.home.logo); logos.add(r.away.logo); }); }); else { logos.add(c.league_logo); logos.add(c.home.logo); logos.add(c.away.logo); } });
 for (const l of logos) fs.copyFileSync(path.join(ROOT, l), path.join(HF, l));
+if (clips[0].cover && clips[0].cover.photo) { fs.mkdirSync(path.join(HF, 'assets', 'photos'), { recursive: true }); fs.copyFileSync(path.join(ROOT, clips[0].cover.photo), path.join(HF, 'assets', 'photos', path.basename(clips[0].cover.photo))); }
 for (const f of ['logo-lockup.webp', 'compass-mark.webp', 'compass-picks-title.webp']) fs.copyFileSync(path.join(REPO, 'apps', 'web', 'public', 'brand', f), path.join(HF, 'assets', 'brand', f));
 
 // the film clock: each clip lasts a whole number of frames (as join.cjs)
