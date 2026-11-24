@@ -1,9 +1,9 @@
 // Voice for every clip segment, with character timestamps (they time the subtitles and the cuts).
-// Engine (env TTS_ENGINE): "gemini" (default since 2026-11-23, owner) or "eleven".
+// Engine (env TTS_ENGINE): "eleven" (the default again since 2026-11-24, owner) or "gemini" (default 2026-11-23).
 //  - gemini: Gemini 3.8 Flash TTS (gemini-3.8-flash-tts, voice GEMINI_TTS_VOICE) speaks the text; the
 //    leading [tag] becomes its speech_metadata style. Gemini returns no timestamps, so the take is sent
 //    with its text to ElevenLabs forced alignment, which returns the character times.
-//  - eleven: ElevenLabs eleven_v4 text-to-speech with timestamps (the pipeline before 2026-11-23).
+//  - eleven: ElevenLabs eleven_v4 text-to-speech with timestamps.
 // Both write <vdir>/s<i>.mp3 + s<i>.json {text, alignment} in the same shape, so timeline.cjs, recap.cjs,
 // insight*.cjs and match-preview.cjs read either one unchanged.
 // Cached: a segment is only re-generated when its text, engine or voice changes.
@@ -13,7 +13,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { dateArg, dayDir, readJson } = require('./lib.cjs');
 
-const ENGINE = (process.env.TTS_ENGINE || 'gemini').toLowerCase();
+const ENGINE = (process.env.TTS_ENGINE || 'eleven').toLowerCase();
 const VOICE_11 = 'KhBRXgEQjvfdIyXOu7G3';
 const MODEL_11 = 'eleven_v4';
 const GEMINI_MODEL = process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-tts';
