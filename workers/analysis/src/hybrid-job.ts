@@ -24,6 +24,11 @@
  * time, adds the precomputed totals with their match counts, uses the v2.1.1 prompt and validator (the same number
  * guard plus the match-count rule) and asks a rejected answer again with its located violations, on the same input
  * and within the same attempt limit. v2.0 is the locked baseline, exactly as before: the rollback.
+ *
+ * v2.2-panel (EXPERIMENTAL, docs/adr/0022-hybrid-v22-adversarial-panel.md; never the default): the v2.1.1 input,
+ * validator and feedback retry, but the three answers come from three lenses (metrics, context, defender) asked in
+ * parallel, one each; the majority rule is unchanged, and a majority decision keeps the text of the most
+ * market-sceptical agreeing lens (defender, then metrics, then context). Rollback: HYBRID_VERSION=v2.1.1.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -31,21 +36,26 @@ import {
   createClaudeHybridDecider,
   createOpenAIHybridDecider,
   createOpenAIHybridDeciderV21,
+  createOpenAIHybridPanelDecider,
   HYBRID_ENGINE_VERSION,
   HYBRID_MAX_ATTEMPTS,
   HYBRID_PROMPT_VERSION,
   HYBRID_PROMPT_VERSION_V211,
+  HYBRID_PROMPT_VERSION_V22_PANEL,
   HYBRID_SYSTEM_PROMPT_V211,
   HYBRID_VOTES,
   isPersistentApiError,
   locateViolations,
   majorityVote,
+  PANEL_ROLES,
   prepareHybridInputV211,
   retryFeedbackV21,
   validateHybridOutput,
   validateHybridOutputV211,
   type HybridDecider,
   type HybridSource,
+  type PanelReasoningEffort,
+  type PanelRole,
   type RankerResult,
 } from '@fp/ai';
 import { DEFAULT_RULES, hybridMarket, hybridOptions, regularStarters, type HybridOption } from '@fp/analysis';
@@ -65,6 +75,8 @@ export interface HybridJobOptions {
   budgetMinutes?: number;
   /** tests inject a fake; null = no AI available */
   decider?: HybridDecider | null;
+  /** v2.2-panel: tests inject one fake per lens; default one OpenAI decider per lens (a given `decider` serves all three) */
+  panelDeciders?: Record<PanelRole, HybridDecider> | null;
   /** only matches of the current football day (06:00→06:00 Thai); false lifts the cap, for tests */
   sameFootballDay?: boolean;
   /** when picks are made; default env PICK_SCHEDULE, unset = rounds */
@@ -75,14 +87,56 @@ export interface HybridJobOptions {
   version?: HybridVersion;
 }
 
-export type HybridVersion = 'v2.0' | 'v2.1.1';
-/** The Hybrid AI version in force: HYBRID_VERSION, unset = v2.1.1 (ADR 0021); v2.0 is the rollback. */
+export type HybridVersion = 'v2.0' | 'v2.1.1' | 'v2.2-panel';
+/** The Hybrid AI version in force: HYBRID_VERSION, unset = v2.1.1 (ADR 0021); v2.0 is the rollback; v2.2-panel is experimental (ADR 0022). */
 export const hybridVersion = (env: { HYBRID_VERSION?: HybridVersion }): HybridVersion => env.HYBRID_VERSION ?? 'v2.1.1';
 /** The prompt_version stored with each decision of that version. */
-export const hybridPromptVersion = (v: HybridVersion) => (v === 'v2.0' ? HYBRID_PROMPT_VERSION : HYBRID_PROMPT_VERSION_V211);
+export const hybridPromptVersion = (v: HybridVersion) => (v === 'v2.0' ? HYBRID_PROMPT_VERSION : v === 'v2.2-panel' ? HYBRID_PROMPT_VERSION_V22_PANEL : HYBRID_PROMPT_VERSION_V211);
+/** v2.1.1 and the version built on it (v2.2-panel): the cut-off check, the totals with counts, the v2.1.1 validator and the feedback retry. */
+export const usesV211Pipeline = (v: HybridVersion) => v !== 'v2.0';
 
 /** The OpenAI model of the pick decision: OPENAI_HYBRID_MODEL, else the shared OPENAI_MODEL. */
 export const hybridOpenAIModel = (env: { OPENAI_MODEL?: string; OPENAI_HYBRID_MODEL?: string }) => env.OPENAI_HYBRID_MODEL ?? env.OPENAI_MODEL;
+
+type PanelEnvKey = `OPENAI_PANEL_${'METRICS' | 'CONTEXT' | 'DEFENDER'}_${'MODEL' | 'EFFORT'}`;
+type PanelEnv = { OPENAI_MODEL?: string; OPENAI_HYBRID_MODEL?: string } & Partial<Record<PanelEnvKey, string>>;
+const panelKey = (role: PanelRole, what: 'MODEL' | 'EFFORT') => `OPENAI_PANEL_${role.toUpperCase()}_${what}` as PanelEnvKey;
+/** v2.2-panel: the OpenAI model of one lens: OPENAI_PANEL_<ROLE>_MODEL, else the Hybrid AI model. */
+export const panelOpenAIModel = (env: PanelEnv, role: PanelRole) => env[panelKey(role, 'MODEL')] ?? hybridOpenAIModel(env);
+/** v2.2-panel: reasoning.effort of one lens (OPENAI_PANEL_<ROLE>_EFFORT); undefined = not sent. */
+export const panelReasoningEffort = (env: PanelEnv, role: PanelRole) => env[panelKey(role, 'EFFORT')] as PanelReasoningEffort | undefined;
+
+/** One answer of a decision: who is asked, and (v2.2-panel) through which lens and model. */
+interface Voter {
+  decider: HybridDecider;
+  role?: PanelRole;
+  model?: string | null;
+}
+
+/** v2.2-panel: one OpenAI decider per lens (OpenAI only, no Claude fallback). */
+function defaultPanelDeciders(ctx: JobContext): Record<PanelRole, HybridDecider> | null {
+  const { OPENAI_API_KEY } = ctx.env;
+  if (!OPENAI_API_KEY || PANEL_ROLES.some((r) => !panelOpenAIModel(ctx.env, r))) return null;
+  const make = (role: PanelRole): HybridDecider => {
+    const effort = panelReasoningEffort(ctx.env, role);
+    return createOpenAIHybridPanelDecider({ apiKey: OPENAI_API_KEY, model: panelOpenAIModel(ctx.env, role)!, role, ...(effort ? { reasoningEffort: effort } : {}) });
+  };
+  return { metrics: make('metrics'), context: make('context'), defender: make('defender') };
+}
+
+/** Who answers each decision: HYBRID_VOTES calls of one decider (as before), or (v2.2-panel) one call per lens. */
+function votersFor(ctx: JobContext, version: HybridVersion, opts: HybridJobOptions): Voter[] | null {
+  if (version === 'v2.2-panel') {
+    let panel: Record<PanelRole, HybridDecider> | null;
+    if (opts.panelDeciders !== undefined) panel = opts.panelDeciders;
+    else if (opts.decider !== undefined) panel = opts.decider ? { metrics: opts.decider, context: opts.decider, defender: opts.decider } : null;
+    else panel = defaultPanelDeciders(ctx);
+    if (!panel) return null;
+    return PANEL_ROLES.map((role) => ({ decider: panel[role], role, model: (panel[role] as { model?: string }).model ?? panelOpenAIModel(ctx.env, role) ?? null }));
+  }
+  const decider = opts.decider === undefined ? defaultDecider(ctx, version) : opts.decider;
+  return decider ? Array.from({ length: HYBRID_VOTES }, () => ({ decider })) : null;
+}
 
 /** OpenAI when OPENAI_API_KEY and a model (OPENAI_HYBRID_MODEL or OPENAI_MODEL) are set, else Claude when ANTHROPIC_API_KEY is, else none. */
 function defaultDecider(ctx: JobContext, version: HybridVersion): HybridDecider | null {
@@ -106,8 +160,8 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
       ctx.log.info('PICK_ENGINE=legacy: the Hybrid AI does not run');
       return 0;
     }
-    const decider = opts.decider === undefined ? defaultDecider(ctx, version) : opts.decider;
-    if (!decider) {
+    const voters = votersFor(ctx, version, opts);
+    if (!voters) {
       ctx.log.error('no AI key (OPENAI_API_KEY + OPENAI_MODEL, or ANTHROPIC_API_KEY): no Hybrid AI decision this run');
       return 0;
     }
@@ -157,7 +211,13 @@ export function hybridJob(ctx: JobContext, opts: HybridJobOptions = {}) {
         // nothing to choose from: no main AH or O/U line the market trades now; no AI call
         row = { ...base, model: null, status: 'OK', attempts: 0, side: 'NO_PICK', summary_th: 'ยังไม่มีเส้นหลักของตลาดที่เชื่อถือได้ ณ เวลาที่วิเคราะห์', output: null };
       } else {
-        const answers = await Promise.all(Array.from({ length: HYBRID_VOTES }, () => askOnce(decider, input, options, version)));
+        // HYBRID_VOTES identical calls in parallel, as before; v2.2-panel: the three lenses in one parallel round
+        const answers = await Promise.all(
+          voters.map(async (v): Promise<Answer> => {
+            const a = await askOnce(v.decider, input, options, version);
+            return v.role ? { ...a, role: v.role, model: v.model ?? null } : a;
+          }),
+        );
         row = { ...base, ...combineVotes(answers) };
         const stopOn = answers.find((a) => a.persistent);
         if (stopOn) {
@@ -210,6 +270,10 @@ export interface Answer {
   feedbackRetries?: number;
   /** time spent on this answer's calls (ms) */
   latencyMs?: number;
+  /** v2.2-panel: the lens this answer was asked through */
+  role?: PanelRole;
+  /** v2.2-panel: the model configured for that lens */
+  model?: string | null;
 }
 
 /** One answer's choice as stored in hybrid_decisions.votes */
@@ -221,6 +285,9 @@ export interface Vote {
   /** v2.1.1 */
   feedbackRetries?: number;
   latencyMs?: number;
+  /** v2.2-panel (optional fields in the jsonb, no migration) */
+  role?: PanelRole;
+  model?: string | null;
 }
 
 /**
@@ -229,8 +296,8 @@ export interface Vote {
  * the decider supports it; the market options and the input never change between attempts.
  */
 export async function askOnce(decider: HybridDecider, input: Record<string, unknown>, options: readonly HybridOption[], version: HybridVersion = 'v2.0'): Promise<Answer> {
-  const v211 = version === 'v2.1.1';
-  // v2.0 votes stay exactly as before; v2.1.1 also records feedback retries and time
+  const v211 = usesV211Pipeline(version);
+  // v2.0 votes stay exactly as before; v2.1.1 (and v2.2-panel) also records feedback retries and time
   const a: Answer = { res: null, result: null, violations: [], attempts: 0, failure: null, persistent: false, ...(v211 ? { feedbackRetries: 0, latencyMs: 0 } : {}) };
   let previous: unknown = null;
   let feedback: string | null = null;
@@ -274,6 +341,21 @@ function sumUsage(answers: readonly Answer[]): Record<string, number> | null {
   return Object.keys(out).length ? out : null;
 }
 
+/** v2.2-panel: whose text a majority decision keeps, the most market-sceptical lens first. */
+export const PANEL_TEXT_PRIORITY: readonly PanelRole[] = ['defender', 'metrics', 'context'];
+
+/**
+ * The answer whose output and text a majority decision keeps: without lenses the first answer that gave the choice
+ * (as before); with lenses the agreeing answer of the first lens in PANEL_TEXT_PRIORITY.
+ */
+function representativeIndex(answers: readonly Answer[], sides: ReadonlyArray<string | null>, side: string, first: number): number {
+  for (const role of PANEL_TEXT_PRIORITY) {
+    const i = answers.findIndex((a, j) => a.role === role && sides[j] === side);
+    if (i >= 0) return i;
+  }
+  return first;
+}
+
 /**
  * The stored decision from the answers: the choice at least HYBRID_MAJORITY valid answers gave, with the first such
  * answer's output and text. Every answer valid and no majority: NO_PICK. Fewer valid answers than that: the decision
@@ -287,14 +369,16 @@ export function combineVotes(answers: readonly Answer[]): Record<string, unknown
     confidence: decisions[i]?.confidence ?? null,
     attempts: a.attempts,
     ...(a.feedbackRetries !== undefined ? { feedbackRetries: a.feedbackRetries, latencyMs: a.latencyMs } : {}),
+    ...(a.role ? { role: a.role, model: a.res?.model ?? a.model ?? null } : {}),
   }));
   const violations = answers.flatMap((a, i) => [...a.violations, ...(a.failure ? [a.failure] : []), ...(a.res?.refusal ? [`refusal: ${a.res.refusal.category ?? 'unknown'}`] : [])].map((v) => `answer ${i + 1}: ${v}`));
   const common = { attempts: answers.reduce((s, a) => s + a.attempts, 0), violations, votes, usage: sumUsage(answers) };
   const tally = majorityVote(decisions.map((d) => d?.side ?? null));
 
   if (tally) {
-    const a = answers[tally.first]!;
-    const d = decisions[tally.first]!;
+    const at = representativeIndex(answers, decisions.map((d) => d?.side ?? null), tally.side, tally.first);
+    const a = answers[at]!;
+    const d = decisions[at]!;
     const o = d.option;
     return {
       ...common,
@@ -395,7 +479,7 @@ export async function collectHybridInput(ctx: JobContext, f: Fixture, round: str
   // v2.1.1: the cut-off check against the decision time, then the precomputed totals with their match counts; the
   // hash is of exactly what the AI sees. v2.0 (and the scripts that call this without a version) are unchanged.
   const built = buildHybridInput(src);
-  const v211 = opts.version === 'v2.1.1' ? prepareHybridInputV211(built) : null;
+  const v211 = opts.version && usesV211Pipeline(opts.version) ? prepareHybridInputV211(built) : null;
   const input = v211 ? v211.input : built;
   const cutoffWarnings = v211 ? v211.cutoffWarnings : [];
   const inputHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');

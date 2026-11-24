@@ -7,5 +7,6 @@ export * from './openai.js';
 export * from './pick-note.js';
 export * from './hybrid.js';
 export * from './hybrid-v21.js';
+export * from './hybrid-panel.js';
 export * from './decisions-v2.js';
 export * from './gemini.js';

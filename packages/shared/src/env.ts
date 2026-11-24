@@ -25,6 +25,13 @@ const csvStrings = z
       .filter(Boolean),
   );
 
+/** an OpenAI reasoning effort, or unset ('' from an unset GitHub variable) */
+const panelEffort = z
+  .string()
+  .optional()
+  .transform((v) => v || undefined)
+  .pipe(z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']).optional());
+
 export const envSchema = z.object({
   API_FOOTBALL_KEY: z.string().min(1, 'API_FOOTBALL_KEY is required'),
   API_FOOTBALL_BASE_URL: z.string().url().default('https://v3.football.api-sports.io'),
@@ -72,13 +79,23 @@ export const envSchema = z.object({
    * Which Hybrid AI prompt and input make the pick (docs/adr/0021-hybrid-v21-no-ai-arithmetic.md):
    *  v2.1.1 - (default) precomputed totals in the input, no-calculation and match-count rules, retry with feedback
    *  v2.0   - the locked v2.0 baseline (ADR 0020), exactly as before: the rollback
+   *  v2.2-panel - EXPERIMENTAL (ADR 0022): the v2.1.1 input and guards, three answers through three lenses
+   *           (metrics, context, defender); not for production before the owner approves it
    * Set per run (GitHub Actions variable HYBRID_VERSION), so rolling back needs no deploy.
    */
   HYBRID_VERSION: z
     .string()
     .optional()
     .transform((v) => v || undefined)
-    .pipe(z.enum(['v2.0', 'v2.1.1']).optional()),
+    .pipe(z.enum(['v2.0', 'v2.1.1', 'v2.2-panel']).optional()),
+  /** Optional, v2.2-panel only (ADR 0022): the OpenAI model of each lens; OPENAI_HYBRID_MODEL / OPENAI_MODEL when unset. */
+  OPENAI_PANEL_METRICS_MODEL: z.string().optional().transform((v) => v || undefined),
+  OPENAI_PANEL_CONTEXT_MODEL: z.string().optional().transform((v) => v || undefined),
+  OPENAI_PANEL_DEFENDER_MODEL: z.string().optional().transform((v) => v || undefined),
+  /** Optional, v2.2-panel only: reasoning.effort of each lens; not sent when unset (the model's default). */
+  OPENAI_PANEL_METRICS_EFFORT: panelEffort,
+  OPENAI_PANEL_CONTEXT_EFFORT: panelEffort,
+  OPENAI_PANEL_DEFENDER_EFFORT: panelEffort,
   /**
    * Decisions v2 shadow (.scratch/decisions-v2/spec.md, migration 0062): `shadow` runs the decisions-v2 job on the
    * stored DAILY inputs before kickoff, stored only, never published; unset = the job does nothing.
