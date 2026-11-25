@@ -17,6 +17,9 @@
   "vars": {
     "SITE_URL": "https://khemthitfootball.com",
     "SUPABASE_URL": "https://tblynxlstpnxslzlvpol.supabase.co",
+    // home-page banners (ADR 0024): public bucket and its custom domain; the R2 token is the /admin/social secret
+    "R2_BANNERS_BUCKET": "banners",
+    "R2_BANNERS_PUBLIC_URL": "https://img.khemthitfootball.com",
     "WEB_LEAGUES": "39,140,135,78,61,296,5,2,3,848,1129,40,88,94,144,203,179,119,218,207,103,113,292,98,253,262,128,307,188,71,48,143,536,36,7"
   }
 }
