@@ -9,7 +9,7 @@
 import { createJobContext, createPgDb } from '@fp/database';
 import { syncLive } from '@fp/football-sync';
 import { loadEnv } from '@fp/shared';
-import { dispatchWorkflow, HOURLY_CRON } from './dispatch.js';
+import { dispatchWorkflow, HOURLY_CRON, NEWS_DRYRUN_CRON, NEWS_DRYRUN_WORKFLOW, newsDryRunDue } from './dispatch.js';
 import { pollMinute } from './poll.js';
 
 interface WorkerEnv {
@@ -21,6 +21,8 @@ interface WorkerEnv {
   LOG_LEVEL?: string;
   GITHUB_REPO: string;
   GITHUB_DISPATCH_TOKEN?: string;
+  /** last Thai date (YYYY-MM-DD) the grounded-news dry run is dispatched; unset = off */
+  NEWS_DRYRUN_UNTIL?: string;
 }
 
 interface ExecutionContext {
@@ -33,9 +35,23 @@ export default {
       ctx.waitUntil(runHourly(env));
       return;
     }
+    if (controller.cron === NEWS_DRYRUN_CRON) {
+      ctx.waitUntil(runNewsDryRun(env));
+      return;
+    }
     ctx.waitUntil(runMinute(env));
   },
 };
+
+/** Grounded-news Phase 0 dry run (ADR 0023): read-only research, dispatched until NEWS_DRYRUN_UNTIL. */
+async function runNewsDryRun(env: WorkerEnv): Promise<void> {
+  if (!newsDryRunDue(new Date(), env.NEWS_DRYRUN_UNTIL)) return;
+  if (!env.GITHUB_DISPATCH_TOKEN) {
+    console.error('grounded-news dry run not dispatched: GITHUB_DISPATCH_TOKEN is not set');
+    return;
+  }
+  await dispatchWorkflow({ token: env.GITHUB_DISPATCH_TOKEN, repo: env.GITHUB_REPO, workflow: NEWS_DRYRUN_WORKFLOW, job: 'dry-run' });
+}
 
 async function runHourly(env: WorkerEnv): Promise<void> {
   if (!env.GITHUB_DISPATCH_TOKEN) {

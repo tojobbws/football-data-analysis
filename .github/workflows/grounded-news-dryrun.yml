@@ -1,0 +1,46 @@
+name: grounded-news-dryrun
+
+# Grounded-news Phase 0 dry run (ADR 0023, approved by the owner 2026-11-24/25): read-only research, never published.
+# Dispatched at 13:15 Thai by the live-score Worker's "15 6 * * *" cron while the Thai date is <= its NEWS_DRYRUN_UNTIL var
+# (GitHub's own schedule fires too late to be sure of the 14:00 pick cut-off). Every DB query runs in a READ ONLY
+# transaction; the reports are uploaded as an artifact (reports/ is gitignored). Follow-up (--followup) runs locally.
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'dry-run (the only job)'
+        required: false
+        default: dry-run
+
+concurrency:
+  group: grounded-news-dryrun
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # the model the smoke runs were priced on; a repo var may override it
+      OPENAI_NEWS_MODEL: ${{ vars.OPENAI_NEWS_MODEL || 'gpt-6-luna' }}
+      TRACKED_LEAGUES: ${{ vars.TRACKED_LEAGUES || '39,140' }}
+      SEASON: ${{ vars.SEASON || '2026' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # exits 1 by itself when the 14:00 cut-off has passed (not a valid Phase 0 day); never --allow-late here
+      - run: npx tsx scripts/research/grounded-news/dry-run.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: grounded-news-${{ github.run_id }}
+          path: reports/grounded-news/
+          retention-days: 30
+          if-no-files-found: warn

@@ -4,6 +4,20 @@
  */
 export const HOURLY_CRON = '5 * * * *';
 
+/**
+ * Grounded-news Phase 0 dry run (ADR 0023, .scratch/grounded-news/spec.md §11): 13:15 Thai, after the 13:05 sync
+ * has refreshed injuries and before the 14:00 pick cut-off. Read-only research run, never published.
+ */
+export const NEWS_DRYRUN_CRON = '15 6 * * *';
+export const NEWS_DRYRUN_WORKFLOW = 'grounded-news-dryrun.yml';
+
+/** The dry run is dispatched only up to and including NEWS_DRYRUN_UNTIL (a Thai date, YYYY-MM-DD); unset = never. */
+export function newsDryRunDue(now: Date, until: string | undefined): boolean {
+  if (!until || !/^\d{4}-\d{2}-\d{2}$/.test(until)) return false;
+  const thaiDate = new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+  return thaiDate <= until;
+}
+
 export interface DispatchOptions {
   /** fine-grained token with Actions: write on the repo */
   token: string;
