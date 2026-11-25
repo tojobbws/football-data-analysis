@@ -63,6 +63,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${origin}/matches`, lastModified: today, changeFrequency: 'hourly', priority: 0.8 },
     { url: `${origin}/analysis`, lastModified: today, changeFrequency: 'daily', priority: 0.7 },
     { url: `${origin}/performance`, lastModified: today, changeFrequency: 'daily', priority: 0.6 },
+    { url: `${origin}/privacy`, lastModified: new Date('2026-11-25T00:00:00+07:00'), changeFrequency: 'yearly', priority: 0.1 },
+    { url: `${origin}/terms`, lastModified: new Date('2026-11-25T00:00:00+07:00'), changeFrequency: 'yearly', priority: 0.1 },
   ];
   for (const f of fixtures.data ?? []) {
     // on a failed write-up read, keep every match rather than drop the written ones

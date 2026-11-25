@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { cancelSocialPost } from './actions';
 import {
-  CHANNEL_LABEL, SOCIAL_CHANNELS, SOCIAL_FORMATS, STATUS_LABEL, checkCaption, checkVideo, hashtags, isOpen,
-  type SocialChannel, type SocialFormat, type SocialStatus, type VideoInfo,
+  CHANNEL_LABEL, SOCIAL_CHANNELS, SOCIAL_FORMATS, STATUS_LABEL, YT_PRIVACY, YT_TITLE_MAX, checkCaption, checkVideo, checkYtTitle, hashtags, isOpen, ytTitleFrom,
+  type SocialChannel, type SocialFormat, type SocialStatus, type VideoInfo, type YtPrivacy,
 } from '@/lib/social';
 
 const input = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm';
@@ -51,12 +51,14 @@ async function call<T>(url: string, init: RequestInit): Promise<{ ok: boolean; b
   }
 }
 
-export function SocialForm({ ready }: { ready: boolean }) {
+export function SocialForm({ ready, available }: { ready: boolean; available: Record<SocialChannel, boolean> }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ seconds: number; width: number; height: number } | null>(null);
-  const [channels, setChannels] = useState<Record<SocialChannel, boolean>>({ FACEBOOK: true, INSTAGRAM: true });
+  const [channels, setChannels] = useState<Record<SocialChannel, boolean>>({ ...available });
+  const [ytTitle, setYtTitle] = useState('');
+  const [privacy, setPrivacy] = useState<YtPrivacy>('public');
   const [shareToFeed, setShareToFeed] = useState(true);
   const [format, setFormat] = useState<SocialFormat>('SPOTLIGHT');
   const [title, setTitle] = useState('');
@@ -83,9 +85,10 @@ export function SocialForm({ ready }: { ready: boolean }) {
       const v = info ? checkVideo(info, c) : { errors: [], warnings: [] };
       out[c] = { errors: [...v.errors, ...(caption.trim() ? checkCaption(caption, c) : [])], warnings: v.warnings };
     }
+    out.YOUTUBE_SHORTS.errors.push(...checkYtTitle(ytTitle));
     return out;
-  }, [info, caption]);
-  const chosen = SOCIAL_CHANNELS.filter((c) => channels[c]);
+  }, [info, caption, ytTitle]);
+  const chosen = SOCIAL_CHANNELS.filter((c) => channels[c] && available[c]);
   const blocked = !ready || !info || !caption.trim() || !chosen.length || chosen.some((c) => checks[c].errors.length > 0);
 
   /** The frame on screen now becomes the cover (Instagram: its time; Facebook: this JPEG). */
@@ -111,13 +114,13 @@ export function SocialForm({ ready }: { ready: boolean }) {
 
   async function post() {
     if (!file || !info || blocked) return;
-    if (!window.confirm(`โพสต์สาธารณะลง ${chosen.map((c) => CHANNEL_LABEL[c]).join(' และ ')} ตอนนี้?\nโพสต์แล้วลบได้จากแอป Facebook / Instagram เท่านั้น`)) return;
+    if (!window.confirm(`โพสต์ลง ${chosen.map((c) => CHANNEL_LABEL[c]).join(' และ ')} ตอนนี้?\nโพสต์แล้วลบได้จากแอปของแต่ละช่องทางเท่านั้น (Facebook / Instagram / YouTube Studio)`)) return;
     setRunning(true);
     setError(null);
     const start = await call<{ posts: Post[]; putUrl: string }>('/api/admin/social/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title, format, caption, channels: chosen, shareToFeed, coverMs: Math.round((cover?.at ?? 0) * 1000), video: info }),
+      body: JSON.stringify({ title, format, caption, channels: chosen, shareToFeed, coverMs: Math.round((cover?.at ?? 0) * 1000), video: info, ytTitle, privacy }),
     });
     if (!start.ok) {
       setError(start.body.error ?? 'เริ่มโพสต์ไม่สำเร็จ');
@@ -153,7 +156,7 @@ export function SocialForm({ ready }: { ready: boolean }) {
         .map(async (p) => {
           const until = Date.now() + POLL_MAX_MS;
           while (Date.now() < until) {
-            const r = await call<{ status: SocialStatus; url?: string | null }>('/api/admin/social/finish', {
+            const r = await call<{ status: SocialStatus; url?: string | null; note?: string }>('/api/admin/social/finish', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ id: p.id }),
@@ -163,6 +166,7 @@ export function SocialForm({ ready }: { ready: boolean }) {
               break;
             }
             Object.assign(p, { status: r.body.status, url: r.body.url, error: r.body.error });
+            if (r.body.note) p.note = r.body.note;
             if (p.channel === 'FACEBOOK' && cover && !p.note && (p.status === 'PROCESSING' || p.status === 'PUBLISHED')) {
               const c = await call<{ ok: boolean }>(`/api/admin/social/cover?id=${p.id}`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: cover.blob });
               p.note = c.ok ? 'ตั้งภาพปกแล้ว' : `ตั้งภาพปกไม่สำเร็จ (โพสต์ยังอยู่ตามปกติ): ${c.body.error}`;
@@ -171,7 +175,7 @@ export function SocialForm({ ready }: { ready: boolean }) {
             if (!isOpen(p.status)) break;
             await sleep(POLL_MS);
           }
-          if (isOpen(p.status)) p.error = 'Meta ยังประมวลผลไม่เสร็จใน 15 นาที กดรีเฟรชหน้านี้ภายหลังเพื่อตรวจสถานะ';
+          if (isOpen(p.status)) p.error = `${CHANNEL_LABEL[p.channel]} ยังประมวลผลไม่เสร็จใน 15 นาที เปิดดูในแอปของช่องทางนั้นภายหลัง`;
           show();
         }),
     );
@@ -238,7 +242,7 @@ export function SocialForm({ ready }: { ready: boolean }) {
 
         <label className="block text-sm">
           <span className="flex items-center justify-between">
-            แคปชัน (ใช้ร่วมกันทั้งสองช่องทาง)
+            แคปชัน (ใช้ทุกช่องทาง YouTube ใช้เป็นคำอธิบาย)
             <button type="button" disabled={running} onClick={() => setCaption(TEMPLATES[format])} className="rounded-full px-2 py-0.5 text-xs text-sky-700 hover:bg-sky-50">
               ใส่แคปชันตัวอย่าง
             </button>
@@ -253,8 +257,9 @@ export function SocialForm({ ready }: { ready: boolean }) {
           {SOCIAL_CHANNELS.map((c) => (
             <div key={c} className="rounded-xl border border-slate-200 p-3">
               <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={channels[c]} disabled={running} onChange={(e) => setChannels({ ...channels, [c]: e.target.checked })} />
+                <input type="checkbox" checked={channels[c] && available[c]} disabled={running || !available[c]} onChange={(e) => setChannels({ ...channels, [c]: e.target.checked })} />
                 {CHANNEL_LABEL[c]}
+                {!available[c] ? <span className="text-xs font-normal text-slate-500">ยังไม่ได้ตั้งค่าบัญชี</span> : null}
                 {c === 'INSTAGRAM' ? (
                   <label className="ml-auto flex items-center gap-1 text-xs font-normal text-slate-600">
                     <input type="checkbox" checked={shareToFeed} disabled={running || !channels.INSTAGRAM} onChange={(e) => setShareToFeed(e.target.checked)} />
@@ -262,8 +267,30 @@ export function SocialForm({ ready }: { ready: boolean }) {
                   </label>
                 ) : null}
               </label>
-              {channels[c] && checks[c].errors.length ? <ul className="mt-1 list-disc pl-6 text-xs text-rose-700">{checks[c].errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
-              {channels[c] && checks[c].warnings.length ? <ul className="mt-1 list-disc pl-6 text-xs text-amber-700">{checks[c].warnings.map((e) => <li key={e}>{e}</li>)}</ul> : null}
+              {c === 'YOUTUBE_SHORTS' && channels[c] && available[c] ? (
+                <div className="mt-2 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <label className="block text-xs text-slate-600">
+                    <span className="flex items-center justify-between">
+                      ชื่อคลิปบน YouTube ({[...ytTitle.trim()].length}/{YT_TITLE_MAX})
+                      <button type="button" disabled={running || !caption.trim()} onClick={() => setYtTitle(ytTitleFrom(caption))} className="rounded-full px-2 py-0.5 text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+                        ใช้บรรทัดแรกของแคปชัน
+                      </button>
+                    </span>
+                    <input value={ytTitle} disabled={running} onChange={(e) => setYtTitle(e.target.value)} className={input} />
+                  </label>
+                  <label className="block text-xs text-slate-600">
+                    การมองเห็น
+                    <select value={privacy} disabled={running} onChange={(e) => setPrivacy(e.target.value as YtPrivacy)} className={input}>
+                      {Object.entries(YT_PRIVACY).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="text-xs text-slate-500 sm:col-span-2">ภาพปกของ Shorts ตั้งผ่าน API ไม่ได้ YouTube เลือกเฟรมให้เอง เปลี่ยนได้ในแอป YouTube</p>
+                </div>
+              ) : null}
+              {channels[c] && available[c] && checks[c].errors.length ? <ul className="mt-1 list-disc pl-6 text-xs text-rose-700">{checks[c].errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
+              {channels[c] && available[c] && checks[c].warnings.length ? <ul className="mt-1 list-disc pl-6 text-xs text-amber-700">{checks[c].warnings.map((e) => <li key={e}>{e}</li>)}</ul> : null}
             </div>
           ))}
         </div>

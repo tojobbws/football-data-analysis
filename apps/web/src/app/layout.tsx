@@ -71,6 +71,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <p className="max-w-xl text-xs leading-relaxed text-slate-400">
                 บทวิเคราะห์จัดทำขึ้นเพื่อข้อมูลและความบันเทิง ไม่ใช่คำแนะนำในการเล่นพนัน และไม่มีโมเดลใดรับประกันผลการแข่งขันได้
               </p>
+              <p className="flex gap-4 text-xs text-slate-400">
+                <Link href="/privacy" className="inline-flex min-h-11 items-center hover:text-white sm:min-h-0">นโยบายความเป็นส่วนตัว</Link>
+                <Link href="/terms" className="inline-flex min-h-11 items-center hover:text-white sm:min-h-0">ข้อกำหนดการใช้งาน</Link>
+              </p>
             </div>
             <nav aria-label="ลิงก์ท้ายเว็บ">
               <ul className="flex flex-wrap gap-x-5 gap-y-1 sm:flex-col">

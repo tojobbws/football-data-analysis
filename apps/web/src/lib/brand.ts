@@ -5,3 +5,5 @@ export const SITE_NAME_EN = 'Khemthit Football';
 export const SITE_TAGLINE = 'วิเคราะห์บอลวันนี้ ด้วยข้อมูลจริง';
 export const SITE_DESCRIPTION =
   'วิเคราะห์บอลวันนี้ด้วย Data, Model และ Market — ผลบอลสด โปรแกรมแข่ง ตารางคะแนน ดาวซัลโว และ 🧭 เข็มทิศเกม ทุกบทวิเคราะห์ถูกบันทึกก่อนเตะ ตรวจสอบผลงานย้อนหลังได้ทั้งหมด';
+/** Where readers write to (the /privacy and /terms pages). Empty until the owner names an address. */
+export const CONTACT_EMAIL = '';

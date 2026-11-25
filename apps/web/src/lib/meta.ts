@@ -1,6 +1,8 @@
 import 'server-only';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import type { R2Config } from './r2';
+import type { SocialChannel } from './social';
+import type { YouTubeEnv } from './youtube';
 
 /**
  * Meta Graph API for /admin/social. The film sits in a private R2 bucket (src/lib/r2.ts); Meta fetches it by a
@@ -23,9 +25,20 @@ export interface MetaEnv {
 
 const META_KEYS = ['META_PAGE_ID', 'META_IG_USER_ID', 'META_PAGE_TOKEN'];
 const R2_KEYS = ['R2_ACCOUNT_ID', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
+const YOUTUBE_KEYS = ['YT_CLIENT_ID', 'YT_CLIENT_SECRET', 'YT_REFRESH_TOKEN'];
 
-/** The Meta account and the R2 bucket, or the names of the secrets still missing. */
-export function socialEnv(): { meta: MetaEnv | null; r2: R2Config | null; missing: string[] } {
+export interface SocialEnv {
+  /** null until every META_* secret is set (Facebook + Instagram) */
+  meta: MetaEnv | null;
+  /** null until every YT_* secret is set (YouTube Shorts) */
+  youtube: YouTubeEnv | null;
+  /** the private bucket every film goes through; no channel works without it */
+  r2: R2Config | null;
+  missing: { meta: string[]; youtube: string[]; r2: string[] };
+}
+
+/** The Meta account, the YouTube channel and the R2 bucket, each with the names of its secrets still missing. */
+export function socialEnv(): SocialEnv {
   let src: Record<string, unknown> = process.env;
   try {
     src = { ...process.env, ...(getCloudflareContext().env as unknown as Record<string, unknown>) };
@@ -33,13 +46,18 @@ export function socialEnv(): { meta: MetaEnv | null; r2: R2Config | null; missin
     // not running inside the Cloudflare runtime
   }
   const get = (k: string) => String(src[k] ?? '').trim();
-  const missing = [...META_KEYS, ...R2_KEYS].filter((k) => !get(k));
-  if (missing.length) return { meta: null, r2: null, missing };
+  const missing = { meta: META_KEYS.filter((k) => !get(k)), youtube: YOUTUBE_KEYS.filter((k) => !get(k)), r2: R2_KEYS.filter((k) => !get(k)) };
   return {
-    meta: { pageId: get('META_PAGE_ID'), igUserId: get('META_IG_USER_ID'), token: get('META_PAGE_TOKEN'), version: get('META_GRAPH_VERSION') || 'v23.0' },
-    r2: { accountId: get('R2_ACCOUNT_ID'), bucket: get('R2_BUCKET'), accessKeyId: get('R2_ACCESS_KEY_ID'), secretAccessKey: get('R2_SECRET_ACCESS_KEY') },
+    meta: missing.meta.length ? null : { pageId: get('META_PAGE_ID'), igUserId: get('META_IG_USER_ID'), token: get('META_PAGE_TOKEN'), version: get('META_GRAPH_VERSION') || 'v23.0' },
+    youtube: missing.youtube.length ? null : { clientId: get('YT_CLIENT_ID'), clientSecret: get('YT_CLIENT_SECRET'), refreshToken: get('YT_REFRESH_TOKEN') },
+    r2: missing.r2.length ? null : { accountId: get('R2_ACCOUNT_ID'), bucket: get('R2_BUCKET'), accessKeyId: get('R2_ACCESS_KEY_ID'), secretAccessKey: get('R2_SECRET_ACCESS_KEY') },
     missing,
   };
+}
+
+/** Which channels can post now: the bucket plus that channel's account. */
+export function channelReady(env: SocialEnv): Record<SocialChannel, boolean> {
+  return { FACEBOOK: !!(env.r2 && env.meta), INSTAGRAM: !!(env.r2 && env.meta), YOUTUBE_SHORTS: !!(env.r2 && env.youtube) };
 }
 
 export class MetaError extends Error {}
