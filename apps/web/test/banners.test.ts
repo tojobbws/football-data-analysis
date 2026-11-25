@@ -55,3 +55,14 @@ describe('checks', () => {
     expect(thaiLocalToIso('bad')).toBeNull();
   });
 });
+
+describe('checkImageFile', () => {
+  it('takes GIF up to 1MB and the others up to 300KB', async () => {
+    const { checkImageFile, bannerKey } = await import('../src/lib/banners');
+    expect(checkImageFile('wide', 'image/gif', 900 * 1024)).toBeNull();
+    expect(checkImageFile('wide', 'image/gif', 1100 * 1024)).toMatch(/1024KB/);
+    expect(checkImageFile('wide', 'image/jpeg', 400 * 1024)).toMatch(/300KB/);
+    expect(checkImageFile('phone', 'image/svg+xml', 10)).toMatch(/GIF/);
+    expect(bannerKey('phone', 'image/gif')).toMatch(/^b\/phone\/.+\.gif$/);
+  });
+});

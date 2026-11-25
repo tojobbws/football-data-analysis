@@ -23,7 +23,9 @@ export const BANNER_IMAGES = {
 export type BannerImageKind = keyof typeof BANNER_IMAGES;
 export const WIDE_MIN_SCREEN = 640;
 export const BANNER_MAX_BYTES = 300 * 1024;
-export const BANNER_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png' };
+/** An animated GIF carries every frame, so it may be larger; it still loads lazily below the top slot. */
+export const BANNER_MAX_GIF_BYTES = 1024 * 1024;
+export const BANNER_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/png': 'png', 'image/gif': 'gif' };
 
 export interface Banner {
   id: number;
@@ -91,8 +93,9 @@ export function checkImageSize(kind: BannerImageKind, width: number, height: num
 /** The checks on a picture file before upload: type and bytes. */
 export function checkImageFile(kind: BannerImageKind, type: string, bytes: number): string | null {
   const t = BANNER_IMAGES[kind];
-  if (!(type in BANNER_TYPES)) return `${t.label} ต้องเป็น JPG, WebP หรือ PNG`;
-  if (bytes > BANNER_MAX_BYTES) return `${t.label} ใหญ่เกิน 300KB (${Math.round(bytes / 1024)}KB)`;
+  if (!(type in BANNER_TYPES)) return `${t.label} ต้องเป็น JPG, WebP, PNG หรือ GIF`;
+  const max = type === 'image/gif' ? BANNER_MAX_GIF_BYTES : BANNER_MAX_BYTES;
+  if (bytes > max) return `${t.label} ใหญ่เกิน ${max / 1024}KB (${Math.round(bytes / 1024)}KB)`;
   return null;
 }
 

@@ -72,13 +72,13 @@ function ImagePicker({ kind, value, onChange }: { kind: BannerImageKind; value: 
   return (
     <div>
       <span className="text-sm font-medium">
-        {t.label} <span className="font-normal text-slate-500">{t.width}×{t.height} px · JPG/WebP/PNG ≤ 300KB</span>
+        {t.label} <span className="font-normal text-slate-500">{t.width}×{t.height} px · JPG/WebP/PNG ≤ 300KB · GIF ≤ 1MB</span>
       </span>
       {value ? (
         // eslint-disable-next-line @next/next/no-img-element -- admin preview of our own upload
         <img src={value} alt="" width={t.width} height={t.height} className={`mt-1 h-auto rounded-lg ring-1 ring-slate-200 ${kind === 'wide' ? 'w-full max-w-[670px]' : 'w-full max-w-[360px]'}`} />
       ) : null}
-      <input type="file" accept="image/jpeg,image/webp,image/png" disabled={state.busy} onChange={(e) => pick(e.target.files?.[0])} className="mt-1 block text-sm" />
+      <input type="file" accept="image/jpeg,image/webp,image/png,image/gif" disabled={state.busy} onChange={(e) => pick(e.target.files?.[0])} className="mt-1 block text-sm" />
       {state.busy ? <p className="mt-1 text-xs text-slate-500">กำลังอัปโหลด…</p> : null}
       {state.error ? <p className="mt-1 text-xs text-red-700">{state.error}</p> : null}
     </div>
