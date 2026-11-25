@@ -1,12 +1,15 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { BannerSlot } from '@/components/banner';
 import { ArticleGrid, MoreLink, PreviewTable } from '@/components/home';
 import { watchSlugs } from '@/components/featured-picks';
 import { CompassMark, IconChevronRight } from '@/components/icons';
 import { LeagueWidgets } from '@/components/league-widgets';
 import { BandEmpty, BandTitle, DateStrip, ScoreboardBand, ScoreboardList } from '@/components/scoreboard';
 import { Empty } from '@/components/ui';
+import { slotAfterLeague, type SlotBanners } from '@/lib/banners';
+import { homeBanners } from '@/lib/banners-server';
 import { FINISHED } from '@/lib/labels';
 import { isLive as liveNow } from '@/lib/live';
 import { byLeagueThenKickoff } from '@/lib/popularity';
@@ -42,7 +45,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   const recentRead = soft('recent previews', previewCards('recent', 4), []);
   const noRanks = new Map<number, number>();
   // only the day's matches (or the live list on ?live=1) may fail the page; every other read falls back to empty
-  const [shown, live, articles, upcomingPreviews, ranks, prevRanks, registry] = await Promise.all([
+  const [shown, live, articles, upcomingPreviews, ranks, prevRanks, registry, banners] = await Promise.all([
     date ? matchesOnFootballDay(date, { withPreDawn: true }) : liveRead,
     soft('live count', liveRead, []),
     soft('articles', latestArticles(4), []),
@@ -50,6 +53,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
     date ? soft('featured ranks', featuredRanks(date), noRanks) : noRanks,
     date ? soft('featured ranks', featuredRanks(addDaysStr(date, -1)), noRanks) : noRanks,
     popularityRegistry(),
+    soft('banners', homeBanners(), {} as SlotBanners),
   ]);
   // the matches' written previews; between match days, the latest ones written
   const previews = upcomingPreviews.length ? upcomingPreviews : await recentRead;
@@ -73,6 +77,8 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <DateStrip base="/" selected={date} today={today} liveCount={live.length} />
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-x-6">
           <section aria-labelledby="day-h" className="min-w-0">
+            {/* banner slots (ADR 0024): above the day's matches, then after the 2nd and 5th league groups */}
+            <BannerSlot banner={banners.home_top} eager className="mt-4" />
             <BandTitle
               id="day-h"
               title={liveView ? 'กำลังแข่งขัน' : onToday ? 'แมตช์วันนี้' : date! < today ? 'ผลการแข่งขัน' : 'โปรแกรมแข่ง'}
@@ -81,7 +87,15 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
             />
             {ordered.some((m) => m.compass?.kind === 'SIGNAL') ? <SignalLegend /> : null}
             {ordered.length ? (
-              <ScoreboardList matches={ordered} date={date} watch={watch} />
+              <ScoreboardList
+                matches={ordered}
+                date={date}
+                watch={watch}
+                afterGroup={(i, total) => {
+                  const slot = slotAfterLeague(i, total);
+                  return slot ? <BannerSlot banner={banners[slot]} /> : null;
+                }}
+              />
             ) : (
               <BandEmpty>{liveView ? 'ตอนนี้ไม่มีคู่ที่กำลังแข่งในลีกที่ติดตาม' : 'ไม่มีแมตช์ในวันนี้ในลีกที่ติดตาม — ลองเลือกวันอื่นจากแถบด้านบน'}</BandEmpty>
             )}

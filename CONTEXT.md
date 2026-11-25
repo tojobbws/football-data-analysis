@@ -175,3 +175,13 @@ _Avoid_: using it as a model input or a second opinion on the pick
 
 **Data coverage**:
 Which kinds of match data a league season provides (statistics, lineups, events, injuries, odds …); it decides which model inputs that league can use. A gap turns those inputs off for the league but never removes the league from picks.
+
+### Advertising
+
+**Banner (ป้ายโฆษณา)**:
+A clickable image placed by the site owner that takes the reader to an outside page. One banner has a wide picture and a phone picture of the same message, a destination link and a run period; it is always marked as โฆษณา so it never reads as part of the analysis.
+_Avoid_: ad (too broad: also means networks like AdSense), promo, sponsor post
+
+**Banner slot (ตำแหน่งป้าย)**:
+A fixed place on a page where at most one banner shows at a time. The home page has three: above the day's matches, and two between league groups of the scoreboard. A slot with no banner running takes no space.
+_Avoid_: zone, placement (when the fixed place is meant)

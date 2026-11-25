@@ -15,6 +15,7 @@ const nav = [
   { href: '/admin/registry', label: 'คู่ใหญ่ & ไทย' },
   { href: '/admin/articles', label: '📝 บทความ' },
   { href: '/admin/social', label: 'โพสต์ Reels' },
+  { href: '/admin/banners', label: 'ป้ายโฆษณา' },
 ];
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {

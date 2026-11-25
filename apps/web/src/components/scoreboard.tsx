@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import type { MatchRow } from '@/lib/queries';
 import { FINISHED, STATUS, selectionLabel } from '@/lib/labels';
 import { addDaysStr, dayMonthTH, footballDayRange, thaiDate, timeTH, weekdayShortTH } from '@/lib/time';
@@ -81,7 +81,8 @@ export function DateStrip({ base, selected, today, liveCount }: { base: string; 
  * Matches grouped by league (in kickoff order). On a football day (`date` given), kick-offs that fall
  * on the next calendar morning get a "เช้ามืด…" divider, like the reference app's "tomorrow morning".
  */
-export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; date: string | null; watch?: Set<string> }) {
+/** `afterGroup(i, total)`: anything to place after league group i (0-based) of total, e.g. a banner (ADR 0024). */
+export function ScoreboardList({ matches, date, watch, afterGroup }: { matches: MatchRow[]; date: string | null; watch?: Set<string>; afterGroup?: (index: number, total: number) => ReactNode }) {
   const groups = new Map<number, { league: MatchRow['league']; rows: MatchRow[] }>();
   for (const m of matches) {
     const g = groups.get(m.league.id) ?? { league: m.league, rows: [] };
@@ -94,25 +95,29 @@ export function ScoreboardList({ matches, date, watch }: { matches: MatchRow[]; 
   const isPreDawn = (m: MatchRow) => dayStart != null && Date.parse(m.kickoff_at) < dayStart;
   return (
     <div className="space-y-5">
-      {[...groups.values()].map(({ league, rows }) => {
+      {[...groups.values()].map(({ league, rows }, gi, all) => {
         const firstLate = nextMorning ? rows.findIndex((m) => thaiDate(new Date(m.kickoff_at)) === nextMorning) : -1;
         const firstEarly = rows.findIndex(isPreDawn);
         // when the pre-dawn matches come first, the first regular one gets a divider of the day itself
         const firstRegular = firstEarly === 0 ? rows.findIndex((m) => !isPreDawn(m) && thaiDate(new Date(m.kickoff_at)) !== nextMorning) : -1;
+        const after = afterGroup?.(gi, all.length);
         return (
-          <section key={league.id} aria-label={league.name}>
-            <LeagueHeader league={league} count={rows.length} />
-            <ul className="space-y-1.5">
-              {rows.map((m, i) => (
-                <li key={m.id}>
-                  {i === firstEarly ? <Divider label={`${morningWord(rows[i]!)}วัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
-                  {i === firstRegular && firstRegular > 0 ? <Divider label={`วัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
-                  {i === firstLate ? <Divider label={`${morningWord(rows[i]!)}วัน${longWeekday(nextMorning!)} ${dayMonthTH(noon(nextMorning!))}`} /> : null}
-                  <MatchCard m={m} watched={watch?.has(m.slug) ?? false} />
-                </li>
-              ))}
-            </ul>
-          </section>
+          <Fragment key={league.id}>
+            <section aria-label={league.name}>
+              <LeagueHeader league={league} count={rows.length} />
+              <ul className="space-y-1.5">
+                {rows.map((m, i) => (
+                  <li key={m.id}>
+                    {i === firstEarly ? <Divider label={`${morningWord(rows[i]!)}วัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
+                    {i === firstRegular && firstRegular > 0 ? <Divider label={`วัน${longWeekday(date!)} ${dayMonthTH(noon(date!))}`} /> : null}
+                    {i === firstLate ? <Divider label={`${morningWord(rows[i]!)}วัน${longWeekday(nextMorning!)} ${dayMonthTH(noon(nextMorning!))}`} /> : null}
+                    <MatchCard m={m} watched={watch?.has(m.slug) ?? false} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+            {after}
+          </Fragment>
         );
       })}
     </div>

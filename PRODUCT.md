@@ -18,7 +18,7 @@ web
 
 The loop it exists to close: Data → Analysis → Decision → Content → Result → Track Record → Trust.
 
-The website is the home base. Social posts drive traffic to it; it holds scores, fixtures, standings, analysis and the verifiable record. Revenue is planned from ads and sponsorship, deliberately not dependent on gambling advertisers.
+The website is the home base. Social posts drive traffic to it; it holds scores, fixtures, standings, analysis and the verifiable record. Revenue is planned from ads and sponsorship. Since 2026-11-25 home-page banners accept gambling advertisers too, flagged and behind a one-switch kill (ADR 0024); analysis wording stays free of betting language.
 
 Success means fans come back daily for scores and analysis, find the site through Thai search, and trust it because every call is on the record.
 
