@@ -42,7 +42,7 @@ function serve() {
   await page.addStyleTag({ content: '#hud{display:none}' });
   const shot = async (t) => {
     await page.evaluate((t) => new Promise((r) => { window.seek(t); requestAnimationFrame(() => requestAnimationFrame(r)); }), t);
-    return page.screenshot({ type: 'png' });
+    return page.screenshot({ type: 'png', timeout: 120000 }); // 8 parallel chunks on a busy machine can pass the 30 s default (2026-11-25)
   };
   if (mode === 'probe') {
     const times = rest.length ? rest.map(Number) : TL.probe ? TL.probe : TL.type === 'opening' ? TL.subs.filter((_, i) => i % 2 === 0 || i === TL.subs.length - 1).map((x) => Math.min(x.t1, TL.T - 0.5)) : [1.6, TL.scenes[1] + 1.2, TL.scenes[1] + 3.5, Math.min(TL.reveal, TL.T) - 0.4, Math.min(TL.reveal + 0.9, TL.T - 0.5), TL.T - 0.3].filter((t) => t > 0 && t < TL.T);
