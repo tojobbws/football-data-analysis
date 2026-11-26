@@ -3,17 +3,19 @@ import { authClient, currentAdmin, type Admin } from './auth';
 import { channelReady, fbFinish, fbState, fbThumbnail, fbUpload, igCreate, igPublish, igState, socialEnv, type MetaEnv } from './meta';
 import { presign, socialKey, type R2Config } from './r2';
 import {
-  checkCaption, checkVideo, checkYtTitle, isOpen, SOCIAL_CHANNELS, SOCIAL_FORMATS, YT_PRIVACY,
+  checkCaption, checkVideo, checkYtTitle, isOpen, SOCIAL_CHANNELS, SOCIAL_FORMATS, TIKTOK_PENDING_MAX, YT_PRIVACY,
   type SocialChannel, type SocialStatus, type VideoInfo, type YtPrivacy,
 } from './social';
+import { INBOX_NOTE, ttState, ttUpload, type TikTokEnv, type TokenRow, type TokenStore } from './tiktok';
 import { shortUrl, ytState, ytUpload, type YouTubeEnv } from './youtube';
 
 /**
  * The server half of /admin/social. The browser puts the film once into the private R2 bucket by a presigned link;
  * then each channel (one social_contents row) takes it from a short-lived presigned GET link — Meta fetches it
- * itself, the Worker streams it into YouTube's upload session:
+ * itself, the Worker streams it into YouTube's upload session and in chunks to TikTok:
  *   UPLOADING (the browser is sending the film to R2) -> PUBLISHING (one request hands it to the channel)
  *   -> PROCESSING (the channel encodes) -> PUBLISHED (+ social_publications row) | FAILED (error kept).
+ * TikTok ends at DRAFT instead: the film waits in the app's inbox for the owner to post it there (ADR 0026).
  * The R2 object is deleted when no row that uses it is still open (and a 1-day lifecycle rule catches the rest).
  * Writes run as the logged-in admin (RLS 0057: role ADMIN only).
  */
@@ -38,14 +40,30 @@ interface Upload {
 interface Row { id: number; channel: SocialChannel; caption: string; status: SocialStatus; upload: Upload; video_bytes: number }
 
 /** Admin with role ADMIN and the R2 bucket, plus whichever channel accounts are set, or the Response to send back. */
-async function gate(): Promise<{ admin: Admin; meta: MetaEnv | null; youtube: YouTubeEnv | null; r2: R2Config; ready: Record<SocialChannel, boolean> } | Response> {
+async function gate(): Promise<{ admin: Admin; meta: MetaEnv | null; youtube: YouTubeEnv | null; tiktok: TikTokEnv | null; r2: R2Config; ready: Record<SocialChannel, boolean> } | Response> {
   const admin = await currentAdmin();
   if (!admin) return json({ error: 'ต้องเข้าสู่ระบบหลังบ้าน' }, 401);
   if (admin.role !== 'ADMIN') return json({ error: 'เฉพาะ ADMIN โพสต์ได้' }, 403);
   const env = socialEnv();
   if (!env.r2) return json({ error: `ยังไม่ได้ตั้งค่า ${env.missing.r2.join(', ')}` }, 503);
-  return { admin, meta: env.meta, youtube: env.youtube, r2: env.r2, ready: channelReady(env) };
+  return { admin, meta: env.meta, youtube: env.youtube, tiktok: env.tiktok, r2: env.r2, ready: channelReady(env) };
 }
+
+/** The TikTok sign-in in oauth_tokens (0064), read and rotated as the logged-in ADMIN. */
+const tiktokTokens: TokenStore = {
+  async read() {
+    const sb = await authClient();
+    const { data, error } = await sb.from('oauth_tokens').select('refresh_token, refresh_expires_at, access_token, access_expires_at').eq('provider', 'TIKTOK').maybeSingle();
+    if (error) throw new Error(`อ่าน oauth_tokens ไม่ได้: ${error.message} (รัน migration 0064 แล้วหรือยัง?)`);
+    return (data as TokenRow | null) ?? null;
+  },
+  async save(previous, next) {
+    const sb = await authClient();
+    const { data, error } = await sb.from('oauth_tokens').update({ ...next, updated_at: new Date().toISOString() }).eq('provider', 'TIKTOK').eq('refresh_token', previous).select('provider');
+    if (error) throw new Error(`บันทึก token TikTok ไม่ได้: ${error.message}`);
+    return (data ?? []).length > 0;
+  },
+};
 
 async function load(id: number): Promise<Row | null> {
   const sb = await authClient();
@@ -89,6 +107,12 @@ export async function startPost(req: Request): Promise<Response> {
     errors.push(...checkYtTitle(ytTitle));
     if (!(privacy in YT_PRIVACY)) errors.push('การมองเห็นบน YouTube ไม่ถูกต้อง');
   }
+  if (channels.includes('TIKTOK')) {
+    // TikTok takes at most 5 shares to the inbox in any 24 hours
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { count } = await (await authClient()).from('social_contents').select('id', { count: 'exact', head: true }).eq('channel', 'TIKTOK').neq('status', 'FAILED').gte('created_at', since);
+    if ((count ?? 0) >= TIKTOK_PENDING_MAX) errors.push(`TIKTOK: ส่งเข้า Inbox ครบ ${TIKTOK_PENDING_MAX} คลิปใน 24 ชม. แล้ว (ข้อจำกัดของ TikTok)`);
+  }
   if (errors.length) return json({ error: [...new Set(errors)].join('\n') }, 400);
   // the cover frame: inside the film, the first frame (our films open on a cover) when not given
   const coverMs = Math.min(Math.max(0, Math.round(Number(b.coverMs) || 0)), Math.floor(video.seconds * 1000));
@@ -97,7 +121,7 @@ export async function startPost(req: Request): Promise<Response> {
   const sb = await authClient();
   const posts: Array<{ id: number; channel: SocialChannel; status: SocialStatus }> = [];
   for (const channel of channels) {
-    const upload: Upload = channel === 'YOUTUBE_SHORTS' ? { key, ytTitle, privacy } : { key, coverMs, shareToFeed: b.shareToFeed !== false };
+    const upload: Upload = channel === 'YOUTUBE_SHORTS' ? { key, ytTitle, privacy } : channel === 'TIKTOK' ? { key } : { key, coverMs, shareToFeed: b.shareToFeed !== false };
     const { data, error } = await sb
       .from('social_contents')
       .insert({ format, channel, caption, title: String(b.title ?? '').trim() || null, status: 'UPLOADING', upload, video_name: video.name, video_bytes: video.bytes, video_seconds: Math.round(video.seconds * 100) / 100, created_by: g.admin.email })
@@ -127,6 +151,7 @@ export async function finishPost(req: Request): Promise<Response> {
     try {
       const meta = () => g.meta ?? fatal('ยังไม่ได้ตั้งค่า META_*');
       const youtube = () => g.youtube ?? fatal('ยังไม่ได้ตั้งค่า YT_*');
+      const tiktok = () => g.tiktok ?? fatal('ยังไม่ได้ตั้งค่า TIKTOK_*');
       if (row.status === 'UPLOADING') {
         if (await update(id, { status: 'PUBLISHING' }, ['UPLOADING'])) {
           const head = await fetch(await presign(g.r2, 'HEAD', u.key, 300), { method: 'HEAD' });
@@ -140,6 +165,9 @@ export async function finishPost(req: Request): Promise<Response> {
           } else if (row.channel === 'INSTAGRAM') {
             const containerId = await igCreate(meta(), link, row.caption, u.shareToFeed !== false, u.coverMs ?? 0);
             await update(id, { status: 'PROCESSING', upload: { ...u, id: containerId } });
+          } else if (row.channel === 'TIKTOK') {
+            const publishId = await ttUpload(tiktok(), tiktokTokens, link, row.video_bytes);
+            await update(id, { status: 'PROCESSING', upload: { ...u, id: publishId } });
           } else {
             const videoId = await ytUpload(youtube(), link, row.video_bytes, { title: u.ytTitle ?? '', description: row.caption, privacy: u.privacy ?? 'public' });
             await update(id, { status: 'PROCESSING', upload: { ...u, id: videoId } });
@@ -150,6 +178,10 @@ export async function finishPost(req: Request): Promise<Response> {
           const s = await fbState(meta(), u.id);
           if (s.state === 'error') await fail(id, s.error);
           else if (s.state === 'published' && (await update(id, { status: 'PUBLISHED', error: null }, ['PROCESSING']))) await record(id, 'FACEBOOK', u.id, s.url);
+        } else if (row.channel === 'TIKTOK') {
+          const s = await ttState(tiktok(), tiktokTokens, u.id);
+          if (s.state === 'error') await fail(id, s.error);
+          else if (s.state !== 'processing') await update(id, { status: 'DRAFT', error: null, upload: { ...u, note: INBOX_NOTE } }, ['PROCESSING']);
         } else if (row.channel === 'YOUTUBE_SHORTS') {
           const s = await ytState(youtube(), u.id);
           if (s.state === 'error') await fail(id, s.error);

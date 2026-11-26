@@ -45,7 +45,7 @@ export default function PrivacyPage() {
 
       <LegalSection title="4. คลิปบนโซเชียลและ YouTube API Services">
         <p>
-          เราโพสต์คลิปของเราเองลงเพจ Facebook, Instagram และช่อง YouTube ของ{SITE_NAME} จากหน้าหลังบ้านของเว็บ การโพสต์ลง YouTube ใช้ YouTube API Services
+          เราโพสต์คลิปของเราเองลงเพจ Facebook, Instagram, ช่อง YouTube และบัญชี TikTok ของ{SITE_NAME} จากหน้าหลังบ้านของเว็บ การโพสต์ลง YouTube ใช้ YouTube API Services
         </p>
         <ul className={legalList}>
           <li>เราใช้ YouTube API Services เพื่ออัปโหลดคลิปลงช่องของเราเองและเช็กสถานะคลิปเท่านั้น ไม่ได้เข้าถึง อ่าน หรือเก็บข้อมูลบัญชี YouTube ของผู้ชม</li>
@@ -59,6 +59,12 @@ export default function PrivacyPage() {
             <a href="https://security.google.com/settings/security/permissions" className={legalLink} target="_blank" rel="noreferrer">หน้าการตั้งค่าความปลอดภัยของ Google</a>
           </li>
           <li>คลิปบน Facebook และ Instagram เป็นไปตามนโยบายของ Meta</li>
+          <li>
+            TikTok: เราใช้ TikTok Content Posting API ส่งคลิปของเราเองเข้า Inbox ของบัญชี TikTok ของเรา แล้วเจ้าของบัญชีกดโพสต์เองในแอป เราเก็บเฉพาะ token
+            ของบัญชีเราเองและชื่อบัญชีที่แสดง ไม่ได้เข้าถึงหรือเก็บข้อมูลของผู้ชมบน TikTok การดูคลิปบน TikTok เป็นไปตาม{' '}
+            <a href="https://www.tiktok.com/legal/page/row/terms-of-service/th-TH" className={legalLink} target="_blank" rel="noreferrer">ข้อกำหนดในการให้บริการของ TikTok</a> และ{' '}
+            <a href="https://www.tiktok.com/legal/page/row/privacy-policy/th-TH" className={legalLink} target="_blank" rel="noreferrer">นโยบายความเป็นส่วนตัวของ TikTok</a>
+          </li>
         </ul>
       </LegalSection>
 

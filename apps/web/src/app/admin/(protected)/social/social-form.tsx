@@ -68,6 +68,17 @@ export function SocialForm({ ready, available }: { ready: boolean; available: Re
   const [posts, setPosts] = useState<Post[]>([]);
   const [cover, setCover] = useState<Cover | null>(null);
   const [player, setPlayer] = useState<HTMLVideoElement | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function copyCaption() {
+    try {
+      await navigator.clipboard.writeText(caption.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
   useEffect(() => () => { if (cover) URL.revokeObjectURL(cover.url); }, [cover]);
@@ -114,7 +125,7 @@ export function SocialForm({ ready, available }: { ready: boolean; available: Re
 
   async function post() {
     if (!file || !info || blocked) return;
-    if (!window.confirm(`โพสต์ลง ${chosen.map((c) => CHANNEL_LABEL[c]).join(' และ ')} ตอนนี้?\nโพสต์แล้วลบได้จากแอปของแต่ละช่องทางเท่านั้น (Facebook / Instagram / YouTube Studio)`)) return;
+    if (!window.confirm(`โพสต์ลง ${chosen.map((c) => CHANNEL_LABEL[c]).join(' และ ')} ตอนนี้?\nโพสต์แล้วลบได้จากแอปของแต่ละช่องทางเท่านั้น (Facebook / Instagram / YouTube Studio)${channels.TIKTOK && available.TIKTOK ? '\nTikTok: คลิปเข้า Inbox เป็นร่าง ยังไม่ขึ้นโปรไฟล์จนกว่าจะกดโพสต์ในแอป' : ''}`)) return;
     setRunning(true);
     setError(null);
     const start = await call<{ posts: Post[]; putUrl: string }>('/api/admin/social/start', {
@@ -289,6 +300,11 @@ export function SocialForm({ ready, available }: { ready: boolean; available: Re
                   <p className="text-xs text-slate-500 sm:col-span-2">ภาพปกของ Shorts ตั้งผ่าน API ไม่ได้ YouTube เลือกเฟรมให้เอง เปลี่ยนได้ในแอป YouTube</p>
                 </div>
               ) : null}
+              {c === 'TIKTOK' && channels[c] && available[c] ? (
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                  คลิปจะเข้า Inbox ของแอป TikTok เป็นร่าง ยังไม่ขึ้นโปรไฟล์ TikTok ไม่รับแคปชันผ่าน API: เปิดการแจ้งเตือนในแอป วางแคปชัน (ปุ่มคัดลอกอยู่ใต้ผลการโพสต์) เลือกภาพปกและเพลงในแอป แล้วกดโพสต์ ส่งได้ไม่เกิน 5 คลิปใน 24 ชม.
+                </p>
+              ) : null}
               {channels[c] && available[c] && checks[c].errors.length ? <ul className="mt-1 list-disc pl-6 text-xs text-rose-700">{checks[c].errors.map((e) => <li key={e}>{e}</li>)}</ul> : null}
               {channels[c] && available[c] && checks[c].warnings.length ? <ul className="mt-1 list-disc pl-6 text-xs text-amber-700">{checks[c].warnings.map((e) => <li key={e}>{e}</li>)}</ul> : null}
             </div>
@@ -308,7 +324,7 @@ export function SocialForm({ ready, available }: { ready: boolean; available: Re
                 <li key={p.id} className="rounded-xl bg-slate-50 p-3 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <b>{CHANNEL_LABEL[p.channel]}</b>
-                    <span className={p.status === 'PUBLISHED' ? 'text-emerald-700' : p.status === 'FAILED' ? 'text-rose-700' : 'text-slate-600'}>
+                    <span className={p.status === 'PUBLISHED' || p.status === 'DRAFT' ? 'text-emerald-700' : p.status === 'FAILED' ? 'text-rose-700' : 'text-slate-600'}>
                       {STATUS_LABEL[p.status]}{p.status === 'UPLOADING' ? ` ${pct}%` : ''}
                     </span>
                   </div>
@@ -317,7 +333,12 @@ export function SocialForm({ ready, available }: { ready: boolean; available: Re
                   ) : null}
                   {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="mt-1 block break-all text-xs text-sky-700 underline">{p.url}</a> : null}
                   {p.error ? <p className="mt-1 text-xs text-rose-700">{p.error}</p> : null}
-                  {p.note ? <p className={`mt-1 text-xs ${p.note.startsWith('ตั้งภาพปกแล้ว') ? 'text-emerald-700' : 'text-amber-700'}`}>{p.note}</p> : null}
+                  {p.note ? <p className={`mt-1 text-xs ${p.note.startsWith('ตั้งภาพปกแล้ว') || p.status === 'DRAFT' ? 'text-emerald-700' : 'text-amber-700'}`}>{p.note}</p> : null}
+                  {p.channel === 'TIKTOK' && p.status === 'DRAFT' ? (
+                    <button type="button" onClick={copyCaption} className="mt-2 rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-300">
+                      {copied ? 'คัดลอกแล้ว' : 'คัดลอกแคปชันไปวางใน TikTok'}
+                    </button>
+                  ) : null}
                 </li>
               );
             })}

@@ -1,12 +1,21 @@
 /**
  * Rules for posting a finished film as a Reel or a Short (/admin/social). Pure: the admin page checks a draft with
- * these as the owner types, and the server checks them again before anything is sent to Meta or YouTube.
+ * these as the owner types, and the server checks them again before anything is sent to Meta, YouTube or TikTok.
+ * TikTok gets the film as a draft in the app's inbox (ADR 0026): the owner pastes the caption and posts it in the app.
  */
 
-export const SOCIAL_CHANNELS = ['FACEBOOK', 'INSTAGRAM', 'YOUTUBE_SHORTS'] as const;
+export const SOCIAL_CHANNELS = ['FACEBOOK', 'INSTAGRAM', 'YOUTUBE_SHORTS', 'TIKTOK'] as const;
 export type SocialChannel = (typeof SOCIAL_CHANNELS)[number];
 
-export const CHANNEL_LABEL: Record<SocialChannel, string> = { FACEBOOK: 'Facebook Reels', INSTAGRAM: 'Instagram Reels', YOUTUBE_SHORTS: 'YouTube Shorts' };
+export const CHANNEL_LABEL: Record<SocialChannel, string> = {
+  FACEBOOK: 'Facebook Reels',
+  INSTAGRAM: 'Instagram Reels',
+  YOUTUBE_SHORTS: 'YouTube Shorts',
+  TIKTOK: 'TikTok (ส่งเข้า Inbox)',
+};
+
+/** TikTok's cap on drafts sent to the inbox within any 24 hours (spam_risk_too_many_pending_share). */
+export const TIKTOK_PENDING_MAX = 5;
 
 /** Who can see a YouTube Short once it is up. (An API project YouTube has not audited gets every upload locked private.) */
 export const YT_PRIVACY = { public: 'สาธารณะ', unlisted: 'ไม่เป็นสาธารณะ (มีลิงก์ดูได้)', private: 'ส่วนตัว' } as const;
@@ -36,6 +45,8 @@ export const REEL_LIMITS: Record<SocialChannel, { minSeconds: number; maxSeconds
   FACEBOOK: { minSeconds: 3, maxSeconds: 90, maxBytes: 1024 ** 3, captionMax: 5000, hashtagMax: 30 },
   INSTAGRAM: { minSeconds: 3, maxSeconds: 15 * 60, maxBytes: 1024 ** 3, captionMax: 2200, hashtagMax: 30 },
   YOUTUBE_SHORTS: { minSeconds: 1, maxSeconds: 180, maxBytes: 1024 ** 3, captionMax: 5000, hashtagMax: 15 },
+  // TikTok Content Posting API: up to 10 minutes, 360–4096 px a side; the caption is pasted in the app (≤ 2,200)
+  TIKTOK: { minSeconds: 3, maxSeconds: 600, maxBytes: 1024 ** 3, captionMax: 2200, hashtagMax: 30 },
 };
 
 export interface VideoInfo {
@@ -60,6 +71,7 @@ export function checkVideo(v: VideoInfo, channel: SocialChannel): { errors: stri
     const r = v.width / v.height;
     if (channel === 'YOUTUBE_SHORTS' && r > 1.02) errors.push(`วิดีโอแนวนอน ${v.width}x${v.height} ไม่ขึ้นเป็น Shorts (ต้องแนวตั้งหรือจัตุรัส)`);
     else if (Math.abs(r - 9 / 16) > 0.02) warnings.push(`สัดส่วน ${v.width}x${v.height} ไม่ใช่ 9:16 จะมีขอบหรือถูกครอป`);
+    if (channel === 'TIKTOK' && (Math.min(v.width, v.height) < 360 || Math.max(v.width, v.height) > 4096)) errors.push(`TikTok รับด้านละ 360–4096 px (ไฟล์นี้ ${v.width}x${v.height})`);
     if (v.height < 1280) warnings.push(`ความละเอียด ${v.width}x${v.height} ต่ำกว่า 720x1280`);
   }
   return { errors, warnings };
@@ -105,7 +117,7 @@ export function ytTitleFrom(caption: string): string {
 
 export type SocialStatus = 'DRAFT' | 'APPROVED' | 'UPLOADING' | 'PUBLISHING' | 'PROCESSING' | 'PUBLISHED' | 'FAILED' | 'REJECTED';
 export const STATUS_LABEL: Record<SocialStatus, string> = {
-  DRAFT: 'ร่าง',
+  DRAFT: 'ร่างใน Inbox (รอกดโพสต์ในแอป)',
   APPROVED: 'อนุมัติแล้ว',
   UPLOADING: 'กำลังอัปโหลด',
   PUBLISHING: 'กำลังโพสต์',

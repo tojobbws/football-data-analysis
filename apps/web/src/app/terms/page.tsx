@@ -45,7 +45,7 @@ export default function TermsPage() {
 
       <LegalSection title="5. คลิปบนโซเชียล">
         <p>
-          คลิปของเราบน Facebook, Instagram และ YouTube อยู่ภายใต้ข้อกำหนดของแต่ละแพลตฟอร์มด้วย สำหรับ YouTube ดูได้ที่{' '}
+          คลิปของเราบน Facebook, Instagram, YouTube และ TikTok อยู่ภายใต้ข้อกำหนดของแต่ละแพลตฟอร์มด้วย สำหรับ YouTube ดูได้ที่{' '}
           <a href="https://www.youtube.com/t/terms" className={legalLink} target="_blank" rel="noreferrer">ข้อกำหนดในการให้บริการของ YouTube</a>{' '}
           ส่วนการจัดการข้อมูลดูได้ที่ <Link href="/privacy" className={legalLink}>นโยบายความเป็นส่วนตัว</Link>
         </p>

@@ -2,6 +2,7 @@ import 'server-only';
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 import type { R2Config } from './r2';
 import type { SocialChannel } from './social';
+import type { TikTokEnv } from './tiktok';
 import type { YouTubeEnv } from './youtube';
 
 /**
@@ -26,18 +27,22 @@ export interface MetaEnv {
 const META_KEYS = ['META_PAGE_ID', 'META_IG_USER_ID', 'META_PAGE_TOKEN'];
 const R2_KEYS = ['R2_ACCOUNT_ID', 'R2_BUCKET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
 const YOUTUBE_KEYS = ['YT_CLIENT_ID', 'YT_CLIENT_SECRET', 'YT_REFRESH_TOKEN'];
+/** TikTok's refresh token rotates, so it lives in oauth_tokens (0064), not here */
+const TIKTOK_KEYS = ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET'];
 
 export interface SocialEnv {
   /** null until every META_* secret is set (Facebook + Instagram) */
   meta: MetaEnv | null;
   /** null until every YT_* secret is set (YouTube Shorts) */
   youtube: YouTubeEnv | null;
+  /** null until both TIKTOK_* secrets are set (TikTok inbox); the sign-in itself is in oauth_tokens */
+  tiktok: TikTokEnv | null;
   /** the private bucket every film goes through; no channel works without it */
   r2: R2Config | null;
-  missing: { meta: string[]; youtube: string[]; r2: string[] };
+  missing: { meta: string[]; youtube: string[]; tiktok: string[]; r2: string[] };
 }
 
-/** The Meta account, the YouTube channel and the R2 bucket, each with the names of its secrets still missing. */
+/** The Meta account, the YouTube channel, the TikTok app and the R2 bucket, each with the names of its secrets still missing. */
 export function socialEnv(): SocialEnv {
   let src: Record<string, unknown> = process.env;
   try {
@@ -46,10 +51,11 @@ export function socialEnv(): SocialEnv {
     // not running inside the Cloudflare runtime
   }
   const get = (k: string) => String(src[k] ?? '').trim();
-  const missing = { meta: META_KEYS.filter((k) => !get(k)), youtube: YOUTUBE_KEYS.filter((k) => !get(k)), r2: R2_KEYS.filter((k) => !get(k)) };
+  const missing = { meta: META_KEYS.filter((k) => !get(k)), youtube: YOUTUBE_KEYS.filter((k) => !get(k)), tiktok: TIKTOK_KEYS.filter((k) => !get(k)), r2: R2_KEYS.filter((k) => !get(k)) };
   return {
     meta: missing.meta.length ? null : { pageId: get('META_PAGE_ID'), igUserId: get('META_IG_USER_ID'), token: get('META_PAGE_TOKEN'), version: get('META_GRAPH_VERSION') || 'v23.0' },
     youtube: missing.youtube.length ? null : { clientId: get('YT_CLIENT_ID'), clientSecret: get('YT_CLIENT_SECRET'), refreshToken: get('YT_REFRESH_TOKEN') },
+    tiktok: missing.tiktok.length ? null : { clientKey: get('TIKTOK_CLIENT_KEY'), clientSecret: get('TIKTOK_CLIENT_SECRET') },
     r2: missing.r2.length ? null : { accountId: get('R2_ACCOUNT_ID'), bucket: get('R2_BUCKET'), accessKeyId: get('R2_ACCESS_KEY_ID'), secretAccessKey: get('R2_SECRET_ACCESS_KEY') },
     missing,
   };
@@ -57,7 +63,7 @@ export function socialEnv(): SocialEnv {
 
 /** Which channels can post now: the bucket plus that channel's account. */
 export function channelReady(env: SocialEnv): Record<SocialChannel, boolean> {
-  return { FACEBOOK: !!(env.r2 && env.meta), INSTAGRAM: !!(env.r2 && env.meta), YOUTUBE_SHORTS: !!(env.r2 && env.youtube) };
+  return { FACEBOOK: !!(env.r2 && env.meta), INSTAGRAM: !!(env.r2 && env.meta), YOUTUBE_SHORTS: !!(env.r2 && env.youtube), TIKTOK: !!(env.r2 && env.tiktok) };
 }
 
 export class MetaError extends Error {}
