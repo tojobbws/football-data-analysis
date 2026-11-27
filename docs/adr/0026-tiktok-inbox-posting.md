@@ -23,7 +23,7 @@ Status: **Accepted, 2026-11-26** (owner chose inbox upload over Direct Post).
    the owner pastes the caption (a copy button on the result), picks the cover and, if wanted, a TikTok sound, then
    posts in the app. The 0057 check constraint already allowed `TIKTOK`.
 2. The Worker streams the film from R2 to TikTok's `upload_url` (FILE_UPLOAD): one chunk up to 64 MB, above that
-   64 MB chunks with the remainder in the last (≤ 128 MB); each chunk is a ranged GET from R2 piped into a
+   32 MB chunks (always ≥ 2; one 64 MB chunk for a 64–128 MB film is refused, 2026-11-27) with the remainder in the last; each chunk is a ranged GET from R2 piped into a
    fixed-length PUT. It then polls `/v2/post/publish/status/fetch/`; `SEND_TO_USER_INBOX` (or `PUBLISH_COMPLETE`)
    ends the row at status **DRAFT** with a note, since nothing public exists to link to.
 3. Checks before upload: 3 s – 10 min, each side 360–4096 px, caption checked like the others (≤ 2,200, banned

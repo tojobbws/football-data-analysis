@@ -103,10 +103,17 @@ async function api<T>(token: string, what: string, path: string, body: unknown):
   return json.data;
 }
 
-/** TikTok's chunk rules: one chunk up to 64 MB; above that 64 MB chunks, the remainder joins the last (≤ 128 MB). */
+/**
+ * TikTok's chunk rules (Media Transfer Guide): a film up to 64 MB may go whole (chunk_size = video_size); a bigger film
+ * MUST go in several chunks of 5–64 MB, total_chunk_count = floor(video_size / chunk_size), the remainder joining the
+ * last chunk (≤ 128 MB). A 64–128 MB film sent as one chunk with chunk_size 64 MB is refused at init with
+ * "invalid_params The chunk size is invalid" (2026-11-27), so above CHUNK_MAX we split into CHUNK_SPLIT pieces: always
+ * ≥ 2 chunks, the last < 2 × CHUNK_SPLIT. Decimal MB stays inside the limits whether TikTok means 10^6 or 2^20.
+ */
 export const CHUNK_MAX = 64_000_000;
+export const CHUNK_SPLIT = 32_000_000;
 export function chunkPlan(bytes: number): { chunkSize: number; count: number; ranges: Array<[number, number]> } {
-  const chunkSize = bytes <= CHUNK_MAX ? bytes : CHUNK_MAX;
+  const chunkSize = bytes <= CHUNK_MAX ? bytes : CHUNK_SPLIT;
   const count = Math.max(1, Math.floor(bytes / chunkSize));
   const ranges: Array<[number, number]> = [];
   for (let i = 0; i < count; i++) ranges.push([i * chunkSize, i === count - 1 ? bytes - 1 : (i + 1) * chunkSize - 1]);

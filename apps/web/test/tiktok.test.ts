@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
-const { CHUNK_MAX, accessToken, chunkPlan } = await import('../src/lib/tiktok');
+const { CHUNK_MAX, CHUNK_SPLIT, accessToken, chunkPlan } = await import('../src/lib/tiktok');
 const { checkVideo } = await import('../src/lib/social');
 
 describe('chunkPlan', () => {
@@ -13,14 +13,22 @@ describe('chunkPlan', () => {
     expect(chunkPlan(3_000_000)).toEqual({ chunkSize: 3_000_000, count: 1, ranges: [[0, 2_999_999]] });
     expect(chunkPlan(CHUNK_MAX).count).toBe(1);
   });
-  it('splits a bigger film into 64 MB chunks, the remainder joining the last (<= 128 MB)', () => {
-    const bytes = 2 * CHUNK_MAX + 5_000_123;
-    const p = chunkPlan(bytes);
-    expect(p).toMatchObject({ chunkSize: CHUNK_MAX, count: 2 });
-    expect(p.ranges).toEqual([[0, CHUNK_MAX - 1], [CHUNK_MAX, bytes - 1]]);
-    const last = p.ranges.at(-1)!;
-    expect(last[1] - last[0] + 1).toBeLessThanOrEqual(128_000_000);
-    expect(chunkPlan(CHUNK_MAX + 1)).toMatchObject({ count: 1, ranges: [[0, CHUNK_MAX]] });
+  it('never sends a film over 64 MB as one chunk (TikTok: "The chunk size is invalid")', () => {
+    for (const bytes of [CHUNK_MAX + 1, 90_123_456, 127_999_999, 2 * CHUNK_MAX + 5_000_123, 500_000_001]) {
+      const p = chunkPlan(bytes);
+      expect(p.chunkSize).toBe(CHUNK_SPLIT);
+      expect(p.count).toBe(Math.floor(bytes / CHUNK_SPLIT));
+      expect(p.count).toBeGreaterThanOrEqual(2);
+      expect(p.ranges).toHaveLength(p.count);
+      expect(p.ranges[0]![0]).toBe(0);
+      expect(p.ranges.at(-1)![1]).toBe(bytes - 1);
+      p.ranges.forEach(([a, b], i) => {
+        if (i > 0) expect(a).toBe(p.ranges[i - 1]![1] + 1);
+        const size = b - a + 1;
+        expect(size).toBeGreaterThanOrEqual(5 * 1048576);
+        expect(size).toBeLessThanOrEqual(i === p.count - 1 ? 64_000_000 : CHUNK_SPLIT);
+      });
+    }
   });
 });
 
